@@ -1,0 +1,531 @@
+<?xml version="1.0" encoding="windows-1250"?>
+<xsd:schema 
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+  xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd"
+	xmlns:prn="http://www.stormware.cz/schema/version_2/print.xsd"
+	xmlns:rdc="http://www.stormware.cz/schema/version_2/documentresponse.xsd"
+  xmlns:srv="http://www.stormware.cz/schema/version_2/service.xsd" 
+	xmlns:clm="http://www.stormware.cz/schema/version_2/claim.xsd"
+	xmlns="http://www.stormware.cz/schema/version_2/claim.xsd"
+	targetNamespace="http://www.stormware.cz/schema/version_2/claim.xsd"
+ 	elementFormDefault="qualified"
+  >
+  
+  <xsd:import namespace="http://www.stormware.cz/schema/version_2/service.xsd" schemaLocation="service.xsd"/>
+  <xsd:import namespace="http://www.stormware.cz/schema/version_2/type.xsd" schemaLocation="type.xsd"/>
+  <xsd:import namespace="http://www.stormware.cz/schema/version_2/documentresponse.xsd" schemaLocation="documentresponse.xsd"/>
+  <xsd:import namespace="http://www.stormware.cz/schema/version_2/print.xsd" schemaLocation="print.xsd"/>
+
+  <!-- ************************************************************************** 
+  Reklamace 
+  ************************************************************************** -->
+
+  <!-- REQUEST -->
+  <xsd:element name="claim" type="claimType"/>
+
+  <xsd:complexType name="claimType">
+    <xsd:sequence>
+      <xsd:element name="claimHeader" type="clm:claimHeaderType" minOccurs="1"/>
+      <xsd:element name="claimSubject" type="clm:claimSubjectType" minOccurs="1"/>
+      <xsd:element name="claimStates" type="clm:claimStatesType" minOccurs="0" maxOccurs="unbounded"/>
+      <xsd:element name="components" type="clm:componentsType" minOccurs="0" maxOccurs="unbounded"/>
+      <xsd:element name="linkedDocuments" type="typ:linksType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>
+            Vazby na doklad. Informace o vazbách dokladu na jiné doklady (pouze pro export).
+          </xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+        <xsd:element name="attachments" type="typ:attachmentsType" minOccurs="0">
+          <xsd:annotation>
+            <xsd:documentation>Záznamy ze záložky "Dokumenty".</xsd:documentation>
+          </xsd:annotation>
+        </xsd:element>
+      </xsd:sequence>
+    <xsd:attribute name="version" type="clm:claimVersionType" use="required"/>
+  </xsd:complexType>
+
+  <xsd:simpleType name="claimVersionType">
+    <xsd:annotation>
+      <xsd:documentation>Verze, které jsou dostupné k tomuto dokladu. Podrobnosti k jednotlivým verzím najdete na www.stormware.cz/xml</xsd:documentation>
+    </xsd:annotation>
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="2.0"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:complexType name="claimHeaderType">
+    <xsd:all>
+      <xsd:element name="id" type="typ:idType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>ID záznamu (jen pro export).</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="claimType" type="clm:claimTypeType">
+        <xsd:annotation>
+          <xsd:documentation>Typ reklamačního záznamu.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="number" type="typ:numberType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Evidenční číslo dokladu. Pokud není hodnota uvedena, použije se číselná řada přednastavená v uživatelském nastavení nebo se nastaví první číselná řada pro daný doklad.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="numberClaim" type="typ:string32" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Číslo reklamace. Pouze pro typ reklamace Skladová a Nákupní.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="received" type="xsd:date" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Datum přijetí Reklamace. Pokud není hodnota zadaná, použije se aktuální datum nebo datum posledního záznamu, dle volby v uživatelském nastavení.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="settleUntil" type="xsd:date" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Vyřídit do.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="executed" type="xsd:date" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Vyřízeno.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="item" type="typ:string90" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Předmět reklamace. Jen pro export. Vyplňuje se automaticky, dle záložky Předmět reklamace.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="status" type="typ:refType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Stav reklamace. Jen pro export. Vyplňuje se automaticky, dle záložky Stav reklamace.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="responsiblePerson" type="typ:refTypeLong" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Odpovědná osoba.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="text" type="typ:string240" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Text dokladu reklamace.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="supplier" type="typ:string255" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Dodavatel. Pouze pro export.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="claimNumberSheet" type="typ:string32" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Číslo reklamačního listu. Pouze pro export.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="partnerIdentity" type="typ:address" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Zákazníkova adresa.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <!--kontaktní osoba-->
+      <xsd:element name="contactName" type="typ:string64" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Jméno a příjmení kontaktní osoby.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="contactDetail" type="typ:string32" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Doplňující údaje ke kontaktní osobě např. titul.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <!--Konec -kontaktní osoby -->
+
+      <xsd:element name="numberDocument" type="typ:documentNumberType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Číslo nebo jiná identifikace daňového dokladu, kterým bylo zboží původně vyskladněno, nebo naskladněno.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="dateDocument" type="xsd:date" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Datum vystavení daňového dokladu, kterým bylo zboží původně vyskladněno, nebo naskladněno.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="receiving" type="typ:refSrvDeliveryType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Způsob přijetí reklamovaného předmětu.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="forwarding" type="typ:refSrvDeliveryType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Způsob předání reklamovaného předmětu.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="centre" type="typ:refType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Středisko.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="activity" type="typ:refType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Činnost.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="contract" type="typ:refType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Zakázka.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="note" type="xsd:string" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Poznámka.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="intNote" type="xsd:string" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Interní poznámka, libovolný text, který nevstupuje do tiskových sestav.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="lock1" type="typ:boolean" minOccurs="0" default="true">
+        <xsd:annotation>
+          <xsd:documentation>Zámek I (pouze verze E1). Doklady uzamčené prvním stupněm mohou editovat pouze uživatelé, kteří mají v agendě Přístupová práva nastaveno právo Editace záznamů uzamčených I. stupněm. Pouze pro export.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="lock2" type="typ:boolean" minOccurs="0" default="true">
+        <xsd:annotation>
+          <xsd:documentation>Zámek II (pouze verze E1). Uzamčení dokladů pro uživatele s vyšším oprávněním. Takto uzamčené doklady nelze editovat. Pouze pro export.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="markRecord" type="typ:boolean" minOccurs="0" default="true">
+        <xsd:annotation>
+          <xsd:documentation>Označení záznamu v programu POHODA, sloupec "X". Výchozí hodnota je "označený záznam".</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="labels" type="typ:labelsType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Štítky záznamu.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="parameters" type="typ:parametersType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Volitelný parametr.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+    </xsd:all>
+  </xsd:complexType>
+
+  <xsd:simpleType name="claimTypeType">
+    <xsd:annotation>
+      <xsd:documentation>Typ reklamace.</xsd:documentation>
+    </xsd:annotation>
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="customer">
+        <xsd:annotation>
+          <xsd:documentation>Zákaznická.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:enumeration>
+      <xsd:enumeration value="wareHouse">
+        <xsd:annotation>
+          <xsd:documentation>Skladová.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:enumeration>
+      <xsd:enumeration value="purchase">
+        <xsd:annotation>
+          <xsd:documentation>Nákupní.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:enumeration>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <!-- Předmět reklamace  -->
+  <xsd:complexType name="claimSubjectType">
+    <xsd:sequence>
+      <xsd:element name="subject" type="clm:subjectType" maxOccurs="1"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="subjectType">
+    <xsd:all>
+      <xsd:element name="id" type="typ:idType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>ID položky dokladu (jen pro export).</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="text" type="typ:string90" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Text položky.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="quantity" type="xsd:float" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Množství.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="unit" type="typ:unitType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Měrná jednotka.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="coefficient" type="xsd:float" minOccurs="0" default="1.0">
+        <xsd:annotation>
+          <xsd:documentation>Koeficient.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="payVAT" type="typ:boolean" minOccurs="0" default="false">
+        <xsd:annotation>
+          <xsd:documentation>Ceny jsou uvedeny: bez DPH, včetně DPH. Výchozí hodnota se týká pouze textové položky. Pro skladové položky bude brána výchozí hodnota dle nastavení v programu POHODA.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="rateVAT" type="typ:vatRateType" minOccurs="0" default="none">
+        <xsd:annotation>
+          <xsd:documentation>Sazba DPH.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="percentVAT" type="xsd:float" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Historická sazba v procentech. Povoluje se v Globálním nastavení.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="discountPercentage" type="typ:typePercentage" minOccurs="0" default="0">
+        <xsd:annotation>
+          <xsd:documentation>Sleva v procentech. Pokud není uvedena, bere se jako hodnota slevy z priceLevel dokumentu. Pokud není definován ani priceLevel bere se jako NULOVÁ.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="homeCurrency" type="typ:typeCurrencyHomeItem" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Kč.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="note" type="typ:string90" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Poznámka.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="code" type="typ:stockIdsType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Kód.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="guarantee" type="xsd:integer" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Délka záruky.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="guaranteeType" type="typ:guaranteeTypeType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Typ záruky.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="defectDescription" type="typ:string240" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Popis závady.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="statusDeliveryDescription" type="typ:string150" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Popis stavu při převzetí.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="solutionDescription" type="typ:string240" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Navrhovaný způsob řešení.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="accessory" type="typ:string240" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Příslušenství přiložené k předmětu reklamace.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="stockItem" type="typ:stockItemType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Údaje potřebné k nalezení skladové zásoby vložené do položky. Pokud zde tento element není, jedná se o textovou položku.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="expirationDate" type="typ:dateOrNull" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Datum expirace.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="parameters" type="typ:parametersType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Volitelný parametr.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+    </xsd:all>
+  </xsd:complexType>
+
+  <!-- Stav reklamace -->
+  <xsd:complexType name="claimStatesType">
+    <xsd:sequence>
+      <xsd:element name="state" type="clm:stateType" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="stateType">
+    <xsd:all>
+      <xsd:element name="id" type="typ:idType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>ID položky stavu (jen pro export).</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="date" type="xsd:date" minOccurs="1">
+        <xsd:annotation>
+          <xsd:documentation>Datum.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="status" type="typ:refType" minOccurs="1">
+        <xsd:annotation>
+          <xsd:documentation>Stav reklamace.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <!--<xsd:element name="waySettling" type="typ:refType" minOccurs="1">
+        <xsd:annotation>
+          <xsd:documentation>Způsob vyřízení. Pouze pro export</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>-->
+      <xsd:element name="description" type="typ:string240" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Popis vyřízení reklamace.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>     
+      <xsd:element name="companyClaim" type="srv:serviceAddressType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Firma.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="forwarding" type="typ:refType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Způsob poslání.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="claimNumberSheet" type="typ:numberType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Číslo reklamačního listu.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="code" type="typ:stockIdsType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Kód.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="text" type="typ:string90" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Text položky.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="quantity" type="xsd:float" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Množství.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="unit" type="typ:unitType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Měrná jednotka.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="stockItem" type="typ:stockItemType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Údaje potřebné k nalezení skladové zásoby vložené do položky. Pokud zde tento element není, jedná se o textovou položku.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="isExecuted" type="typ:boolean" minOccurs="0" default="false">
+        <xsd:annotation>
+          <xsd:documentation>Vyřízeno.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="quantityExecuted" type="xsd:float" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Množství k vyřízení. Pouze pro export¨.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="unitExecuted" type="typ:unitType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Měrná jednotka k vyřízení. Pouze pro export</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="transffered" type="xsd:float" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Přeneseno. Pouze pro export</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="unitTransffered" type="typ:unitType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Přenesená Měrná jednotka. Pouze pro export.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="responsiblePerson" type="typ:refTypeLong" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Odpovědná osoba.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="note" type="typ:string90" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Poznámka.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+    </xsd:all>
+  </xsd:complexType>
+
+<!--Komponenty-->
+<xsd:complexType name="componentsType">
+    <xsd:sequence>
+      <xsd:element name="item" type="clm:itemType" maxOccurs="unbounded"/>
+    </xsd:sequence>
+</xsd:complexType>
+  
+<xsd:complexType name="itemType">
+    <xsd:all>
+      <xsd:element name="id" type="typ:idType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>ID položky dokladu (jen pro export).</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="code" type="typ:stockIdsType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Kód.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="text" type="typ:string90" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Text položky.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="quantity" type="xsd:float" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Množství.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="unit" type="typ:unitType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Měrná jednotka.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="coefficient" type="xsd:float" minOccurs="0" default="1.0">
+        <xsd:annotation>
+          <xsd:documentation>Koeficient.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="stockItem" type="typ:stockItemType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Údaje potřebné k nalezení skladové zásoby vložené do položky. Pokud zde tento element není, jedná se o textovou položku.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="note" type="typ:string90" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Poznámka.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>      
+    </xsd:all>
+</xsd:complexType>
+
+  <!-- RESPONSE -->
+  <xsd:element name="claimResponse" type="clm:claimResponseType">
+    <xsd:annotation>
+      <xsd:documentation>Odpověď na import reklamace. Obsahuje podrobnosti zpracování, id a číslo vytvořeného dokladu.</xsd:documentation>
+    </xsd:annotation>
+  </xsd:element>
+
+  <xsd:complexType name="claimResponseType">
+    <xsd:complexContent>
+      <xsd:extension base="rdc:documentResponseType"/>
+    </xsd:complexContent>
+  </xsd:complexType>
+</xsd:schema>

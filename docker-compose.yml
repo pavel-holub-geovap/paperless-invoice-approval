@@ -1,0 +1,171 @@
+version: "3.9"
+
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: infrastructure/postgres/Dockerfile
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 1.0
+    networks: [data_net]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.6.4
+    command: ["start", "--http-enabled=true", "--hostname-strict=false"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_HEALTH_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c \"exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    mem_limit: 1024m
+    cpus: 1.0
+    networks: [app_net, data_net]
+
+  ollama:
+    image: ollama/ollama:0.32.7
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "5m"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 4600m
+    cpus: 3.0
+    networks: [app_net]
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: [.env]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - export_data:/data/exports
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    networks: [app_net, data_net]
+
+  keycloak-provision:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "app.provision_keycloak"]
+    env_file: [.env]
+    depends_on:
+      backend:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: "no"
+    mem_limit: 256m
+    cpus: 0.5
+    networks: [app_net, data_net]
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "app.worker"]
+    env_file: [.env]
+    depends_on:
+      backend:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      keycloak-provision:
+        condition: service_completed_successfully
+    volumes:
+      - export_data:/data/exports
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://backend:8000/api/health/worker', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    networks: [app_net, data_net]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    networks: [app_net]
+
+  reverse-proxy:
+    build:
+      context: .
+      dockerfile: infrastructure/nginx/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    networks: [app_net]
+
+volumes:
+  postgres_data:
+  ollama_data:
+  export_data:
+
+networks:
+  app_net:
+    name: paperless-invoice-app
+  data_net:
+    name: paperless-invoice-data
+    internal: true

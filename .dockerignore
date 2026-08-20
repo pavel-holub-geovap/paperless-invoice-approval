@@ -1,0 +1,13 @@
+.git
+.env
+.qa-assignment
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+frontend/dist
+exports
+data
+models
+*.docx
+*.pdf
+

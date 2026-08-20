@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="Windows-1250"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+      xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd"
+      xmlns:ftr="http://www.stormware.cz/schema/version_2/filter.xsd"
+      xmlns:rdc="http://www.stormware.cz/schema/version_2/documentresponse.xsd"
+			xmlns:gps="http://www.stormware.cz/schema/version_2/GPSR.xsd"
+			xmlns="http://www.stormware.cz/schema/version_2/GPSR.xsd"
+			targetNamespace="http://www.stormware.cz/schema/version_2/GPSR.xsd"
+			elementFormDefault="qualified">
+
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/type.xsd" schemaLocation="type.xsd"/>
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/filter.xsd" schemaLocation="filter.xsd"/>
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/documentresponse.xsd"	schemaLocation="documentresponse.xsd"/>
+
+	<!-- **************************************************************************
+		Agenda Nařízení o obecné bezpečnosti výrobků GPSR
+	 ************************************************************************** -->
+
+	<!-- REQUEST -->
+	<xsd:element name="GPSR" type="gps:GPSRType"/>
+
+	<xsd:complexType name="GPSRType">
+		<xsd:sequence>
+			<xsd:element name="actionType" type="GPSRTypeType" minOccurs="0">
+				<xsd:annotation>
+					<xsd:documentation>Typ práce se záznamem. Výchozí hodnota je přidání nového záznamu.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="GPSRHeader" type="gps:GPSRHeaderType" minOccurs="0"/>
+			<xsd:element name="attachments" type="typ:attachmentsType" minOccurs="0">
+				<xsd:annotation>
+					<xsd:documentation>Záznamy ze záložky "Dokumenty".</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:sequence>
+		<xsd:attribute name="version" type="gps:GPSRVersionType" use="required"/>
+	</xsd:complexType>
+
+	<xsd:simpleType name="GPSRVersionType">
+		<xsd:annotation>
+			<xsd:documentation>Verze, které jsou dostupné k tomuto dokladu. Podrobnosti k jednotlivým verzím najdete na www.stormware.cz/xml</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="2.0"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:complexType name="GPSRHeaderType">
+		<xsd:annotation>
+			<xsd:documentation>Nařízení o obecné bezpečnosti výrobků GPSR.</xsd:documentation>
+		</xsd:annotation>
+		<xsd:all>
+			<xsd:element name="id" type="typ:idType" minOccurs="0">
+				<xsd:annotation>
+					<xsd:documentation>ID záznamu (jen pro export).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="code" type="typ:string18" minOccurs="0">
+				<xsd:annotation>
+					<xsd:documentation>Zkratka GPSR.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="text" type="typ:string64" minOccurs="0">
+				<xsd:annotation>
+					<xsd:documentation>Text popisu GPSR.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="manufacturer" type="typ:gpsrAddress" minOccurs="0">
+				<xsd:annotation>
+					<xsd:documentation>Adresa výrobce.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="euRepresentative" type="typ:gpsrAddress" minOccurs="0">
+				<xsd:annotation>
+					<xsd:documentation>Adresa EU zástupce.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="safetyInformation" type="xsd:string" minOccurs="0">
+				<xsd:annotation>
+					<xsd:documentation>Bezpečnostní informace.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="note" type="xsd:string" minOccurs="0">
+				<xsd:annotation>
+					<xsd:documentation>Poznámka.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:all>
+	</xsd:complexType>
+
+	<xsd:complexType name="GPSRTypeType">
+		<xsd:choice>
+			<xsd:element name="add" type="xsd:string">
+				<xsd:annotation>
+					<xsd:documentation>Vložení nového záznamu. Výchozí hodnota.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="update" type="ftr:requestGPSRType">
+				<xsd:annotation>
+					<xsd:documentation>Aktualizace záznamu.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="delete" type="ftr:requestGPSRType">
+				<xsd:annotation>
+					<xsd:documentation>Odstranění záznamu.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:choice>
+	</xsd:complexType>
+
+	<!-- RESPONSE -->
+	<xsd:element name="GPSRResponse" type="gps:GPSRResponseType">
+		<xsd:annotation>
+			<xsd:documentation>Odpověď na import agendy Nařízení o obecné bezpečnosti výrobků GPSR. Obsahuje podrobnosti zpracování.</xsd:documentation>
+		</xsd:annotation>
+	</xsd:element>
+
+	<xsd:complexType name="GPSRResponseType">
+		<xsd:complexContent>
+			<xsd:extension  base="rdc:documentResponseType"/>
+		</xsd:complexContent>
+	</xsd:complexType>
+</xsd:schema>

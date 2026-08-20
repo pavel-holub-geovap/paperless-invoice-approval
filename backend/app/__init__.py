@@ -1,0 +1,2 @@
+"""Paperless Invoice Approval backend."""
+

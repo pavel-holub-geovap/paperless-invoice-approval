@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="windows-1250"?>
+<xsd:schema
+	xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+	xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd"
+	xmlns:rdc="http://www.stormware.cz/schema/version_2/documentresponse.xsd"
+	xmlns:wge="http://www.stormware.cz/schema/version_2/wageElements.xsd"
+	xmlns="http://www.stormware.cz/schema/version_2/wageElements.xsd"
+	targetNamespace="http://www.stormware.cz/schema/version_2/wageElements.xsd"
+	elementFormDefault="qualified">
+
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/type.xsd" schemaLocation="type.xsd"/>
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/documentresponse.xsd" schemaLocation="documentresponse.xsd"/>
+
+	<!-- ************************************************************************** Import wages Element ************************************************************************** -->
+	<!-- ************************************************************************** Import složek mezd typu příplatek ************************************************************************** -->
+	<xsd:element name="wageElements" type="wageElementsType">
+		<xsd:annotation>
+			<xsd:documentation xml:lang="en">Import wages Element (type of Bonus).</xsd:documentation>
+			<xsd:documentation>Import složek mezd (typu příplatek).</xsd:documentation>
+		</xsd:annotation>
+	</xsd:element>
+
+	<xsd:complexType name="wageElementsType">
+		<xsd:sequence>
+			<xsd:element name="wage" type="typ:wageType">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Employment, year and month, of issued wages for which bonuses are to be imported..</xsd:documentation>
+					<xsd:documentation>Pracovní poměr, rok a měsíc, vystavených mezd, pro kterého se mají importovat příplatky.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="elements" type="elementsType">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Wage Elements (type of Bonus)</xsd:documentation>
+					<xsd:documentation>Složky mezd (typu Příplatek)..</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:sequence>
+		<xsd:attribute name="version" type="wageVersionType"/>
+	</xsd:complexType>
+
+	<xsd:simpleType name="wageVersionType">
+		<xsd:annotation>
+			<xsd:documentation xml:lang="en">Available versions. Details on individual versions can be found at www.stormware.cz/xml</xsd:documentation>
+			<xsd:documentation>Verze, které jsou dostupné k tomuto dokladu. Podrobnosti k jednotlivým verzím najdete na www.stormware.cz/xml</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="2.0"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:complexType name="elementsType">
+		<xsd:sequence>
+			<xsd:element name="element" type="elementType" maxOccurs="unbounded"/>
+		</xsd:sequence>
+	</xsd:complexType>
+
+	<xsd:complexType name="elementType">
+		<xsd:all>
+			<xsd:element name="elementType" type="elementTypeType">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Wage Elements (type of Bonus).</xsd:documentation>
+					<xsd:documentation>Složka mezd (typu Příplatek).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="hours" type="hoursType">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Count of hours on wage elements.</xsd:documentation>
+					<xsd:documentation>Počet hodin na složce.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:all>
+	</xsd:complexType>
+
+	<xsd:complexType name="elementTypeType">
+		<xsd:annotation>
+			<xsd:documentation xml:lang="en">Link to the wage element of the bonus type</xsd:documentation>
+			<xsd:documentation>Odkaz na složku Mzdy typu příplatek.</xsd:documentation>
+		</xsd:annotation>
+		<xsd:choice>
+			<xsd:element name="id" type="typ:idType"/>
+			<xsd:element name="ids" type="typ:string128">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Wage element name.</xsd:documentation>
+					<xsd:documentation>Název složky mezd.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:choice>
+	</xsd:complexType>
+
+	<xsd:simpleType name="hoursType">
+		<xsd:restriction base="xsd:float">
+			<xsd:minInclusive value="0"/>
+			<xsd:maxInclusive value="9999"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<!-- RESPONSE -->
+	<xsd:element name="wageElementsResponse" type="wageElementsResponseType"/>
+	<xsd:complexType name="wageElementsResponseType">
+		<xsd:complexContent>
+			<xsd:extension base="rdc:documentResponseType"/>
+		</xsd:complexContent>
+	</xsd:complexType>
+</xsd:schema>

@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="Windows-1250"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+      xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd"
+      xmlns:ftr="http://www.stormware.cz/schema/version_2/filter.xsd"
+      xmlns:rdc="http://www.stormware.cz/schema/version_2/documentresponse.xsd"
+			xmlns:tbe="http://www.stormware.cz/schema/version_2/tableExport.xsd"
+			xmlns="http://www.stormware.cz/schema/version_2/tableExport.xsd"
+			targetNamespace="http://www.stormware.cz/schema/version_2/tableExport.xsd"
+			elementFormDefault="qualified">
+
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/type.xsd" schemaLocation="type.xsd"/>
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/filter.xsd" schemaLocation="filter.xsd"/>
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/documentresponse.xsd"	schemaLocation="documentresponse.xsd"/>
+
+	<!-- **************************************************************************
+		Export tabulky do XML
+	 ************************************************************************** -->
+
+	<xsd:element name="tableExport" type="tableExportType"/>
+
+	<xsd:complexType name="tableExportType">
+		<xsd:sequence>
+			<xsd:any maxOccurs="unbounded" processContents="skip"/>
+		</xsd:sequence>
+		<xsd:attribute name="version" type="tableExportVersionType" use="optional"/>
+		<xsd:attribute name="table" type="xsd:string" use="required"/>
+	</xsd:complexType>
+
+	<xsd:simpleType name="tableExportVersionType">
+		<xsd:annotation>
+			<xsd:documentation>Verze, které jsou dostupné k exportu tabulek. Podrobnosti k jednotlivým verzím najdete na www.stormware.cz/xml</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="2.0"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:complexType name="requestTableExportType">
+		<xsd:sequence>
+			<xsd:group ref="ftr:groupFilterQuery">
+				<xsd:annotation>
+					<xsd:documentation>
+						SQL filtr pro výběr záznamů. Při exportu položkové tabulky se provádí spojení s hlavní tabulkou. Lze použít i sloupce hlavní tabulky.
+						Pokud je sloupec stejného názvu v obou tabulkách, je potřeba ho uvést s názvem tabulky (například AD.ID).
+					</xsd:documentation>
+				</xsd:annotation>
+			</xsd:group>
+			<xsd:element name="columns" type="columnsType">
+				<xsd:annotation>
+					<xsd:documentation>Databázové názvy sloupců, která se mají exportovat.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:sequence>
+		<xsd:attribute name="agenda" type="agendaType" use="required"/>
+		<xsd:attribute name="table" type="xsd:string" use="optional"/>
+	</xsd:complexType>
+
+	<xsd:simpleType name="agendaType">
+		<xsd:annotation>
+			<xsd:documentation>Agendy, ve kterých je podporovaný export tabulky.</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:string">
+			<!--Adresář-->
+			<xsd:enumeration value="addressBook">
+				<xsd:annotation>
+					<xsd:documentation>Adresář. Podporované tabulky AD (hlavní tabulka), ADdodaci (dodací adresy) a ADucet (účty).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Zásoby-->
+			<xsd:enumeration value="stock">
+				<xsd:annotation>
+					<xsd:documentation>
+						Zásoby. Podporované tabulky SKz (hlavní tabulka), SKzPol (Položky/Svázané položky), SkRefObraz (Záložka Internet/Obrázky), SkRefKat (Záložka Internet/Kategorie), 
+						SkRefSvazany (Záložka Internet/Související soubory), SkRefOdkazy (Záložka Internet/Související odkazy), SkzIoZbozi (Záložka Internet/Související zboží nebo Internet/Alternativní zboží), 
+						SkRefParam (Záložka Internet/Parametry) a SKzCn (ceny).
+				</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>	
+			<!--Fakturace-->
+			<xsd:enumeration value="issuedInvoice">
+				<xsd:annotation>
+					<xsd:documentation>Vydaná faktura. Podporované tabulky FA (hlavní tabulka) a FApol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="issuedAdvanceInvoice">
+				<xsd:annotation>
+					<xsd:documentation>Vydaná zálohová faktura. Podporované tabulky FA (hlavní tabulka) a FApol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="receivable">
+				<xsd:annotation>
+					<xsd:documentation>Ostatní pohledávka. Podporované tabulky FA (hlavní tabulka) a FApol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="receivedInvoice">
+				<xsd:annotation>
+					<xsd:documentation>Přijatá faktura. Podporované tabulky FA (hlavní tabulka) a FApol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="receivedAdvanceInvoice">
+				<xsd:annotation>
+					<xsd:documentation>Přijatá zálohová faktura. Podporované tabulky FA (hlavní tabulka) a FApol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="commitment">
+				<xsd:annotation>
+					<xsd:documentation>Ostatní závazek. Podporované tabulky FA (hlavní tabulka) a FApol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Interní doklady-->
+			<xsd:enumeration value="internalDocuments">
+				<xsd:annotation>
+					<xsd:documentation>Interní doklady. Podporované tabulky pINT (hlavní tabulka) a pINTpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Objednávky-->
+			<xsd:enumeration value="issuedOrder">
+				<xsd:annotation>
+					<xsd:documentation>Vydaná objednávka. Podporované tabulky OBJ (hlavní tabulka) a OBJpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="receivedOrder">
+				<xsd:annotation>
+					<xsd:documentation>Přijatá objednávka. Podporované tabulky OBJ (hlavní tabulka) a OBJpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Nabídky-->
+			<xsd:enumeration value="issuedOffer">
+				<xsd:annotation>
+					<xsd:documentation>Vydaná nabídka. Podporované tabulky NAB (hlavní tabulka) a NABpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="receivedOffer">
+				<xsd:annotation>
+					<xsd:documentation>Přijatá nabídka. Podporované tabulky NAB (hlavní tabulka) a NABpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Poptávky-->
+			<xsd:enumeration value="issuedEnquiry">
+				<xsd:annotation>
+					<xsd:documentation>Vydaná poptávka. Podporované tabulky POP (hlavní tabulka) a POPpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="receivedEnquiry">
+				<xsd:annotation>
+					<xsd:documentation>Přijatá poptávka. Podporované tabulky POP (hlavní tabulka) a POPpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Příjemka-->
+			<xsd:enumeration value="receiptVoucher">
+				<xsd:annotation>
+					<xsd:documentation>Příjemka. Podporované tabulky SKPP (hlavní tabulka) a SKPPpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Výdejka-->
+			<xsd:enumeration value="issueSlip">
+				<xsd:annotation>
+					<xsd:documentation>Výdejka. Podporované tabulky SKPV (hlavní tabulka) a SKPVpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Převod-->
+			<xsd:enumeration value="transfer">
+				<xsd:annotation>
+					<xsd:documentation>Převodka. Podporované tabulky SKMP (hlavní tabulka) a SKMPpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Výroba-->
+			<xsd:enumeration value="production">
+				<xsd:annotation>
+					<xsd:documentation>Výroba. Podporované tabulky SKMV (hlavní tabulka) a SKMVpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Výrobní požadavky.-->
+			<xsd:enumeration value="productRequirements">
+				<xsd:annotation>
+					<xsd:documentation>Výrobní požadavky. Podporované tabulky SKMV (hlavní tabulka) a SKMVpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Reklamace-->
+			<xsd:enumeration value="claims">
+				<xsd:annotation>
+					<xsd:documentation>Reklamace. Podporované tabulky Rekl (hlavní tabulka), ReklPredm (předmět reklamace), ReklStav (Stavy reklamace) a ReklKomp (komponenty reklamace).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Servis-->
+			<xsd:enumeration value="service">
+				<xsd:annotation>
+					<xsd:documentation>Servis. Podporované tabulky Serv (hlavní tabulka), ServPredm (předmět servisu), ServStav (Stavy servisu) a Servpol (položky servisu).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Prodejky-->
+			<xsd:enumeration value="salesVouchers">
+				<xsd:annotation>
+					<xsd:documentation>Prodejky. Podporované tabulky PH (hlavní tabulka), PHpol (položková tabulka) a Uhrady (úhrady prodejky).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Pokladna-->
+			<xsd:enumeration value="cashbox">
+				<xsd:annotation>
+					<xsd:documentation>Pokladna. Podporované tabulky HO (hlavní tabulka) a HOpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<!--Banka-->
+			<xsd:enumeration value="bank">
+				<xsd:annotation>
+					<xsd:documentation>Banka. Podporované tabulky BV (hlavní tabulka) a BVpol (položková tabulka).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+		</xsd:restriction>
+	</xsd:simpleType>
+	
+	<xsd:complexType name="columnsType">
+		<xsd:sequence>
+			<xsd:element name="column" type="xsd:string" minOccurs="1" maxOccurs="255">
+			</xsd:element>
+		</xsd:sequence>
+	</xsd:complexType>
+	
+</xsd:schema>

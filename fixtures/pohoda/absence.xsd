@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="windows-1250"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+						xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd" 
+						xmlns:ftr="http://www.stormware.cz/schema/version_2/filter.xsd" 
+						xmlns:rdc="http://www.stormware.cz/schema/version_2/documentresponse.xsd" 
+						xmlns:abs="http://www.stormware.cz/schema/version_2/absence.xsd" 
+						xmlns="http://www.stormware.cz/schema/version_2/absence.xsd" 
+						targetNamespace="http://www.stormware.cz/schema/version_2/absence.xsd" elementFormDefault="qualified">
+    
+		<xsd:import namespace="http://www.stormware.cz/schema/version_2/type.xsd" schemaLocation="type.xsd"/>
+    <xsd:import namespace="http://www.stormware.cz/schema/version_2/documentresponse.xsd" schemaLocation="documentresponse.xsd"/>
+	
+    <!-- ************************************************************************** Import absences ************************************************************************** -->
+    <!-- ************************************************************************** Import nepřítomností ************************************************************************** -->
+    <xsd:element name="absence" type="absenceType">
+        <xsd:annotation>
+            <xsd:documentation xml:lang="en">Import bookmarks Absence in Employments.</xsd:documentation>
+            <xsd:documentation>Import záložky Nepřítomnost agenda Pracovní poměry.</xsd:documentation>
+        </xsd:annotation>
+    </xsd:element>
+	
+  <xsd:complexType name="absenceType">
+      <xsd:all>
+          <xsd:element name="employment" type="typ:refType">
+              <xsd:annotation>
+								<xsd:documentation xml:lang="en">Employment.</xsd:documentation>
+								<xsd:documentation>Pracovní poměr.</xsd:documentation>
+              </xsd:annotation>
+          </xsd:element>
+          <xsd:element name="absences" type="absencesType">
+              <xsd:annotation>
+                  <xsd:documentation xml:lang="en">Absences to import.</xsd:documentation>
+                  <xsd:documentation>Nepřítomnosti pro import.</xsd:documentation>
+              </xsd:annotation>
+          </xsd:element>
+      </xsd:all>
+		<xsd:attribute name="version" type="absVersionType"/>
+  </xsd:complexType>
+
+	<xsd:simpleType name="absVersionType">
+		<xsd:annotation>
+			<xsd:documentation xml:lang="en">Available versions. Details on individual versions can be found at www.stormware.cz/xml</xsd:documentation>
+			<xsd:documentation>Verze, které jsou dostupné k tomuto dokladu. Podrobnosti k jednotlivým verzím najdete na www.stormware.cz/xml</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="2.0"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:complexType name="absencesType">
+        <xsd:sequence>
+            <xsd:element name="absencesItem" type="absencesItemType" maxOccurs="unbounded"/>
+        </xsd:sequence>
+    </xsd:complexType>
+    <xsd:complexType name="absencesItemType">
+        <xsd:all>
+            <xsd:element name="sort" type="sortType">
+                <xsd:annotation>
+                    <xsd:documentation xml:lang="en">Sort absence.</xsd:documentation>
+                    <xsd:documentation>Druh Absence.</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="dateFrom" type="xsd:date">
+                <xsd:annotation>
+                    <xsd:documentation xml:lang="en">Date from.</xsd:documentation>
+                    <xsd:documentation>Datum od.</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="dateTill" type="xsd:date" minOccurs="0">
+                <xsd:annotation>
+                    <xsd:documentation xml:lang="en">Date till.</xsd:documentation>
+                    <xsd:documentation>Datum do.</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="startWorked" type="workedDayType" minOccurs="0">
+                <xsd:annotation>
+                <xsd:documentation xml:lang="en">The number of units worked at the beginning of the absence.</xsd:documentation>
+                    <xsd:documentation>Počet odpracovaných jednotek na začátku nepřítomnosti.</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="endWorked" type="workedDayType" minOccurs="0">
+                <xsd:annotation>
+                <xsd:documentation xml:lang="en">The number of units worked at the end of the absence.</xsd:documentation>
+                    <xsd:documentation>Počet odpracovaných jednotek na konci nepřítomnosti.</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="decisionNumber" type="typ:string20" minOccurs="0">
+                <xsd:annotation>
+                <xsd:documentation xml:lang="en">Decision number.</xsd:documentation>
+                    <xsd:documentation>Číslo rozhodnutí</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="followsUp" type="followsUpType" minOccurs="0">
+                <xsd:annotation>
+                    <xsd:documentation xml:lang="en">Information about continued absence.</xsd:documentation>
+                     <xsd:documentation>Odkaz na typ návaznosti</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="pay" type="xsd:date" minOccurs="0">
+                <xsd:annotation>
+                <xsd:documentation xml:lang="en">The first day of the period in which the benefit is to be paid.</xsd:documentation>
+                    <xsd:documentation>První den období, ve kterém se má vyplatit dávka.</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+            <xsd:element name="rate" type="typeRate" minOccurs="0">
+                <xsd:annotation>
+                <xsd:documentation xml:lang="en">Rate %</xsd:documentation>
+                    <xsd:documentation>Sazba %</xsd:documentation>
+                </xsd:annotation>
+            </xsd:element>
+        </xsd:all>
+    </xsd:complexType>
+	
+    <xsd:simpleType name="followsUpType">
+        <xsd:annotation>
+            <xsd:documentation xml:lang="en">Information about continued absence.</xsd:documentation>
+            <xsd:documentation>Informace o trvající nepřítomnosti.</xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="continues">
+                <xsd:annotation>
+                    <xsd:documentation xml:lang="en">Continued absence.</xsd:documentation>
+                    <xsd:documentation>Navazující nepřítomnost.</xsd:documentation>
+                </xsd:annotation>
+            </xsd:enumeration>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+	<xsd:simpleType name="typeRate">
+		<xsd:annotation>
+			<xsd:documentation>Sazba v procentech.</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:float">
+			<xsd:minInclusive value="0"/>
+			<xsd:maxInclusive value="100"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:simpleType name="sortType">
+		<xsd:annotation>
+			<xsd:documentation>Types of absences.</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="holidaySchedule">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Plán dovolenky.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Holiday schedule </xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="regularHoliday">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Riadna dovolenka.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Regular holiday </xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="paidTimeOffDoctor">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Platené voľno - návšteva lekára</xsd:documentation>
+					<xsd:documentation xml:lang="en">Paid time off – visit to doctor’s.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="paidTimeOffDoctorFamilyMember">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Platené voľno – sprevadzanie RP do zdr.zariadenia.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Paid time off- accompanying family member to medical facility.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="paidTimeOffOther">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Platené voľno -ostatné.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Paid time off – other.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="compensatoryTimeOffOvertime">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Náhradné voľno – práca nadčas.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Compensatory time-off – overtime work.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="compensatoryTimeOffHoliday">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Náhradné voľno – práca sviatok.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Compensatory time-off – work on holiday.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="unpaidHolidayLegal">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Neplatené voľno – zákonné.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Unpaid holiday – legal.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="unpaidHolidayEmpRequest">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Neplatené voľno – žiadosť zamestnanca.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Unpaid holiday – employee’s request .</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="unauthorisedAbsence">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Neospravedlnená absencia.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Unauthorised absence.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="sickness">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Choroba</xsd:documentation>
+					<xsd:documentation xml:lang="en">Sickness.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="sicknessInjuryWork">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Choroba (pracovný úraz).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Sickness (injury at work).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="sicknessOccupationalDisease">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Choroba (z povolania).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Sickness ( occupational disease).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="quarantine">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Choroba (Karanténa).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Quarantine.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="sickness52Weeks">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Choroba (nad 52 týždňov).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Sickness ( over 52 weeks).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="familyMemberShortterm">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Ošetřovné (krátkodobé).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Family member care benefit – shortterm.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="longTermFamilyMember">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Ošetřovné (dlhodobé).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Long -term family member care benefit.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="maternityPaternityBenefit">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Mateřská/Otcovská dovolenka (dávka materské).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Maternity/Paternity leave (maternity benefit).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="maternityPaternity270Days">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Mateřská/Otcovská dovolenka (dávka materské -nemá 270 dní).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Maternity/Paternity leave (without maternity benefit – 270 days).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="maternityPaternitywithOutBenefit">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Mateřská/Otcovská dovolenka (bez dávky materské).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Maternity/Paternity leave (without maternity benefit).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="paternalAllowance">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Rodičovská dovolenka (rodičovský príspevok).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Parental leave (paternal allowance).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="maternityAllowance">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Rodičovská dovolenka (dávka materské).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Parental leave (maternity allowance).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="payingSocialSecurity">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Vylúčenie platiť socialne poistenie.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Exclusion from paying social security.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="businessTravel">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Pracovná cesta.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Business travel.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="legalStrike">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Zákonný štrajk.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Legal strike.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="agreementOutsideEmployment">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Bez výkonu činnosti – dohoda mimo prac.pomeru.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Without aktivity – agreement outside employment.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="obstaclesEmployerSide">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Prekážky na strane zamestnávateľa.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Obstacles from employer side.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="obstaclesEmployerSidePartTime">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Prekážky na strane zamestnávateľa – skr.práca.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Obstacles to work (employer)-part-time .</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="obstaclesEmployerP142">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Prekážky na strane zamestnávateľa - § 142 ods. 4.</xsd:documentation>
+					<xsd:documentation xml:lang="en">Obstacles to work (employer)-Art. 142 sec. 4 .</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+			<xsd:enumeration value="custodySentence">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="sk">Výkon väzby (trestu).</xsd:documentation>
+					<xsd:documentation xml:lang="en">Custody (sentence).</xsd:documentation>
+				</xsd:annotation>
+			</xsd:enumeration>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:simpleType name="workedDayType">
+		<xsd:restriction base="xsd:float">
+			<xsd:minInclusive value="0"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<!-- RESPONSE -->
+    <xsd:element name="absenceResponse" type="absenceResponseType"/>
+    <xsd:complexType name="absenceResponseType">
+        <xsd:complexContent>
+            <xsd:extension base="rdc:documentResponseType"/>
+        </xsd:complexContent>
+    </xsd:complexType>
+</xsd:schema>
