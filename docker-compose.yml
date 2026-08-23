@@ -90,7 +90,6 @@ services:
 
   paperless:
     image: ghcr.io/paperless-ngx/paperless-ngx:3.0.5
-    env_file: ["${ENV_FILE:-.env}"]
     environment:
       USERMAP_UID: ${PAPERLESS_USERMAP_UID}
       USERMAP_GID: ${PAPERLESS_USERMAP_GID}
