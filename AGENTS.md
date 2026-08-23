@@ -15,6 +15,17 @@ Podrobnosti jsou v `docs/ARCHITECTURE.md`. Doménová logika patří do `backend
 - Frontend testy: `cd frontend` a `npm run test`
 - Frontend build: `cd frontend` a `npm run build`
 
+## Integrační testovací server
+
+- Připojení: `ssh ubuntudocker`
+- Linux uživatel: `codex`
+- Projektový adresář: `/opt/paperless-invoice-approval`
+- Účel: integrační testy a testovací Docker deployment projektu
+
+Při požadavku „Nasaď a otestuj aktuální verzi“ použij tuto VM a postup z `docs/DEPLOYMENT_ENVIRONMENT.md`. Na serveru neupravuj hlavní zdrojový kód mimo Git historii. Projektový checkout aktualizuj pouze z ověřeného správného remote pomocí `git pull --ff-only`.
+
+K 2026-08-23 projektový adresář na VM neexistoval a uživatel `codex` nemohl zapisovat do `/opt`. Nevytvářej jej pomocí neřízeného `sudo`; vyžádej si souhlas s jednorázovým vytvořením a nastavením vlastníka `codex:codex`, případně pokyn k jinému adresáři. Aktuální inventura, síťová dostupnost a další blokátory jsou v `docs/DEPLOYMENT_ENVIRONMENT.md`.
+
 ## Git workflow
 
 Před prací zkontroluj `git status`, remote a branch. Pokud remote existuje, použij `git fetch` a `git pull --ff-only`. Zachovej uživatelovy rozpracované změny. Nepoužívej force push ani destruktivní reset. Po logickém celku zkontroluj diff a secrets, spusť relevantní testy, aktualizuj dokumentaci a vytvoř smysluplný commit. Push prováděj pouze do správného remote.
@@ -35,4 +46,3 @@ Před prací zkontroluj `git status`, remote a branch. Pokud remote existuje, po
 4. `RETURN` a `REJECT` vyžadují komentář; `REJECT` platí pro celou fakturu.
 5. Export je povolen jen po finálním schválení a úspěšné XSD validaci.
 6. `EXPORT_CREATED` není `IMPORTED_TO_POHODA`; druhý stav vzniká jen explicitním potvrzením správce.
-
