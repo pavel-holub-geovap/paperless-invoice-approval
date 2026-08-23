@@ -72,8 +72,10 @@ async def test_ollama_request_is_cpu_deterministic_and_delimits_prompt_injection
         body = json.loads(request.content)
         assert body["options"] == {"temperature": 0, "num_ctx": 4096, "num_gpu": 0}
         assert body["stream"] is False and body["think"] is False
+        assert body["format"] == "json"
         assert injection in body["messages"][1]["content"]
         assert "NEDŮVĚRYHODNÝ VSTUP" in body["messages"][0]["content"]
+        assert '"schema_version"' in body["messages"][0]["content"]
         return httpx.Response(200, json={"message": {"content": json.dumps(structured())}})
 
     client = OllamaClient(Settings(ollama_base_url="http://ollama.test"), httpx.MockTransport(handler))

@@ -71,6 +71,7 @@ class OllamaClient:
 
     async def extract_invoice(self, ocr_text: str) -> OllamaExtractionResult:
         schema: dict[str, Any] = InvoiceExtractionV1.model_json_schema()
+        schema_contract = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
         started = time.perf_counter()
         try:
             response = await self.client.post(
@@ -79,7 +80,10 @@ class OllamaClient:
                     "model": self.settings.ollama_model,
                     "stream": False,
                     "think": False,
-                    "format": schema,
+                    # Ollama's grammar compiler cannot parse every Pydantic construct
+                    # (notably Decimal/date unions). JSON mode plus strict Pydantic
+                    # validation preserves the boundary without accepting partial data.
+                    "format": "json",
                     "keep_alive": self.settings.ollama_keep_alive,
                     "options": {
                         "temperature": 0,
@@ -87,7 +91,10 @@ class OllamaClient:
                         "num_gpu": self.settings.ollama_num_gpu,
                     },
                     "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {
+                            "role": "system",
+                            "content": f"{SYSTEM_PROMPT}\nJSON Schema:\n{schema_contract}",
+                        },
                         {
                             "role": "user",
                             "content": (

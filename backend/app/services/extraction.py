@@ -258,9 +258,18 @@ def complete_ai_extraction(
     invoice.ai_status = AIExtractionStatus.AI_COMPLETED
 
     current = invoice.current_revision
+    prior_applied = db.scalar(
+        select(AIExtraction.id)
+        .where(
+            AIExtraction.invoice_id == invoice.id,
+            AIExtraction.id != extraction.id,
+            AIExtraction.applied.is_(True),
+        )
+        .limit(1)
+    )
     auto_apply = bool(
-        extraction.extraction_revision == 1
-        and current is not None
+        current is not None
+        and prior_applied is None
         and not any(value not in (None, "", [], {}) for value in current.data.values())
     )
     if auto_apply:

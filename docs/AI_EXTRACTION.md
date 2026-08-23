@@ -8,7 +8,7 @@
 
 1. Worker načte živý dokument a OCR pouze přes Paperless REST API.
 2. Vytvoří append-only `AIExtraction` a technický stav `AI_PENDING/AI_PROCESSING`.
-3. Ollama vrátí strict JSON; JSON parser a Pydantic ho ověří.
+3. Ollama dostane celé schema v system promptu a vrátí JSON mode výstup; JSON parser a striktní Pydantic kontrakt ho ověří. JSON mode se používá kvůli omezením Ollama grammar parseru pro Decimal/date uniony.
 4. Deterministická služba vytvoří výsledky `code`, `severity`, `field`, `message`, `expected`, `actual`.
 5. První výsledek se použije automaticky pouze tehdy, když je pracovní revize prázdná. Další výsledek je bezpečný kandidát a vyžaduje explicitní potvrzení `QUEUE_MANAGER`.
 6. Faktura zůstává v obchodním stavu `QUEUE_REVIEW`; AI selhání ho nemění.
