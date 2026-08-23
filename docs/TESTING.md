@@ -11,6 +11,7 @@ pytest
 cd ../frontend
 npm run test
 npm run build
+npm run lint
 
 cd ..
 docker compose config --quiet
@@ -47,9 +48,23 @@ docker compose run --rm --no-deps \
 
 Skript načítá testovací credentials pouze z chráněného serverového `.env`, projde Keycloak formulář a callback, ověří role, dashboard, detail, OCR, PDF a oddělení oprávnění approvera. Citlivé hodnoty netiskne.
 
+## AI integrační test (Etapa D)
+
+Po nasazení počkejte na `ollama-pull` s kódem 0 a healthy worker. Smoke test ověří skutečný tok Paperless OCR → Ollama → strict JSON → Pydantic → validace → DB/API, spustí bezpečnou re-extrakci a samostatnou reálnou prompt-injection inferenci:
+
+```text
+docker compose run --rm --no-deps \
+  -v "$PWD/scripts:/smoke:ro" \
+  -v "$PWD/fixtures/synthetic:/fixtures:ro" \
+  -e STAGE_D_GOLDEN=/fixtures/synthetic-invoice-cs-en.expected.json \
+  worker python /smoke/smoke_stage_d.py
+```
+
+Golden sada má 21 porovnávaných hodnot včetně tří polí DPH řádku. Report uvádí `correct`, `wrong`, `missing`, první/opakovaný čas inference, validační souhrn a výsledek prompt-injection testu. Současně zaznamenejte `free -h` a `docker stats --no-stream` před stažením modelu, po stažení a během inference.
+
 ## Pozdější etapy
 
-Etapa D samostatně ověří Ollama OCR → strict JSON → deterministické validace. Teprve poté se testují approvals, RETURN, REJECT, revize a POHODA export.
+Po úspěšné Etapě D se teprve samostatně testují approvals, RETURN, REJECT, revize a POHODA export.
 
 Změny tagů jsou povolené pouze v izolované testovací instanci. Reálné faktury, produkční Paperless a POHODA nejsou součástí automatických testů.
 

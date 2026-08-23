@@ -48,6 +48,7 @@ def test_paperless_snapshot_is_persisted_without_pdf(db: Session) -> None:
         "PAPERLESS_DOCUMENT_SYNCED",
         "WORKFLOW_TRANSITION",
         "WORKFLOW_TRANSITION",
+        "AI_EXTRACTION_QUEUED",
     ]
 
 

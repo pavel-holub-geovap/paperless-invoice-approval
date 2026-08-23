@@ -6,7 +6,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models import ApprovalAction, InvoiceStatus, PaperlessSyncStatus, ValidationSeverity
+from app.models import (
+    AIExtractionStatus,
+    ApprovalAction,
+    InvoiceStatus,
+    PaperlessSyncStatus,
+    ValidationSeverity,
+)
 
 
 class InvoiceData(BaseModel):
@@ -28,48 +34,76 @@ class InvoiceData(BaseModel):
 
 
 class EvidenceValue(BaseModel):
-    value: Any | None = None
-    source_text: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    value: Any | None
+    source_text: str | None
+
+    @model_validator(mode="after")
+    def provenance_for_value(self) -> EvidenceValue:
+        if self.value is not None and not (self.source_text and self.source_text.strip()):
+            raise ValueError("A non-null extracted value requires source_text provenance")
+        return self
 
 
 class TextEvidence(EvidenceValue):
-    value: str | None = None
+    value: str | None
 
 
 class DateEvidence(EvidenceValue):
-    value: date | None = None
+    value: date | None
 
 
 class DecimalEvidence(EvidenceValue):
-    value: Decimal | None = None
+    value: Decimal | None
 
 
-class VatRow(BaseModel):
-    base: Decimal
-    rate: Decimal
-    vat: Decimal
+class VatLineExtraction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    vat_rate: Decimal | None
+    taxable_base: Decimal | None
+    vat_amount: Decimal | None
+    source_text: str | None
+
+    @model_validator(mode="after")
+    def provenance_for_values(self) -> VatLineExtraction:
+        if any(value is not None for value in (self.vat_rate, self.taxable_base, self.vat_amount)) and not (
+            self.source_text and self.source_text.strip()
+        ):
+            raise ValueError("A non-empty VAT line requires source_text provenance")
+        return self
 
 
-class VatEvidence(EvidenceValue):
-    value: list[VatRow] | None = None
+class InvoiceExtractionV1(BaseModel):
+    """Strict structured output produced by the untrusted-OCR extraction boundary."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["invoice-extraction.v1"]
+    supplier_name: TextEvidence
+    supplier_ico: TextEvidence
+    supplier_dic: TextEvidence
+    supplier_address: TextEvidence
+    invoice_number: TextEvidence
+    variable_symbol: TextEvidence
+    issue_date: DateEvidence
+    taxable_supply_date: DateEvidence
+    due_date: DateEvidence
+    currency: TextEvidence
+    bank_account: TextEvidence
+    bank_code: TextEvidence
+    iban: TextEvidence
+    swift_bic: TextEvidence
+    vat_lines: list[VatLineExtraction]
+    total_without_vat: DecimalEvidence
+    total_vat: DecimalEvidence
+    total_amount: DecimalEvidence
+    description: TextEvidence
 
 
-class ExtractionPayload(BaseModel):
-    supplier_name: TextEvidence = Field(default_factory=TextEvidence)
-    ico: TextEvidence = Field(default_factory=TextEvidence)
-    dic: TextEvidence = Field(default_factory=TextEvidence)
-    address: TextEvidence = Field(default_factory=TextEvidence)
-    invoice_number: TextEvidence = Field(default_factory=TextEvidence)
-    variable_symbol: TextEvidence = Field(default_factory=TextEvidence)
-    issue_date: DateEvidence = Field(default_factory=DateEvidence)
-    taxable_supply_date: DateEvidence = Field(default_factory=DateEvidence)
-    due_date: DateEvidence = Field(default_factory=DateEvidence)
-    currency: TextEvidence = Field(default_factory=TextEvidence)
-    bank_account: TextEvidence = Field(default_factory=TextEvidence)
-    iban: TextEvidence = Field(default_factory=TextEvidence)
-    vat_breakdown: VatEvidence = Field(default_factory=VatEvidence)
-    total_amount: DecimalEvidence = Field(default_factory=DecimalEvidence)
-    description: TextEvidence = Field(default_factory=TextEvidence)
+# Compatibility name for modules outside the AI boundary; new code uses the versioned name.
+ExtractionPayload = InvoiceExtractionV1
 
 
 class InvoiceCreate(BaseModel):
@@ -79,6 +113,10 @@ class InvoiceCreate(BaseModel):
 class InvoicePatch(BaseModel):
     changes: dict[str, Any]
     comment: str | None = None
+
+
+class AIExtractionApply(BaseModel):
+    confirm_overwrite: bool = False
 
 
 class AllocationInput(BaseModel):
@@ -119,6 +157,8 @@ class ValidationOut(BaseModel):
     severity: ValidationSeverity
     field_name: str | None
     message: str
+    expected: Any | None = None
+    actual: Any | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -132,6 +172,7 @@ class InvoiceListItem(BaseModel):
     correspondent: str | None
     paperless_created_at: datetime | None
     sync_status: PaperlessSyncStatus
+    ai_status: AIExtractionStatus
     supplier_name: str | None
     invoice_number: str | None
     total_amount: Decimal | None

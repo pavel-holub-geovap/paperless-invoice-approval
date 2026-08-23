@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen3:4b"
     ollama_num_ctx: int = 4096
     ollama_timeout_seconds: int = 180
+    ollama_num_gpu: int = 0
+    ollama_keep_alive: str = "5m"
+    ai_extraction_enabled: bool = True
+    ai_extraction_max_attempts: int = 3
     worker_poll_seconds: int = 3
     paperless_sync_seconds: int = 30
     export_archive_dir: Path = Path("./exports")

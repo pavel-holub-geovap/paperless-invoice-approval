@@ -74,6 +74,13 @@ class PaperlessSyncStatus(enum.StrEnum):
     ERROR = "ERROR"
 
 
+class AIExtractionStatus(enum.StrEnum):
+    AI_PENDING = "AI_PENDING"
+    AI_PROCESSING = "AI_PROCESSING"
+    AI_COMPLETED = "AI_COMPLETED"
+    AI_FAILED = "AI_FAILED"
+
+
 class ExportBatchStatus(enum.StrEnum):
     CREATED = "CREATED"
     IMPORTED = "IMPORTED"
@@ -124,12 +131,19 @@ class Invoice(Base):
     )
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sync_error: Mapped[str | None] = mapped_column(Text)
+    ai_status: Mapped[AIExtractionStatus] = mapped_column(
+        Enum(AIExtractionStatus, native_enum=False),
+        default=AIExtractionStatus.AI_PENDING,
+        nullable=False,
+        index=True,
+    )
     status: Mapped[InvoiceStatus] = mapped_column(
         Enum(InvoiceStatus, native_enum=False), default=InvoiceStatus.NEW, index=True
     )
     current_revision_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    original_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    original_checked_by: Mapped[str | None] = mapped_column(String(255))
+    original_review_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    original_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    original_reviewed_by: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -137,6 +151,11 @@ class Invoice(Base):
         back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceRevision.number"
     )
     allocations: Mapped[list[Allocation]] = relationship(back_populates="invoice")
+    ai_extractions: Mapped[list[AIExtraction]] = relationship(
+        back_populates="invoice",
+        cascade="all, delete-orphan",
+        order_by="AIExtraction.extraction_revision",
+    )
 
     @property
     def current_revision(self) -> InvoiceRevision | None:
@@ -183,8 +202,53 @@ class ValidationResult(Base):
     )
     field_name: Mapped[str | None] = mapped_column(String(100))
     message: Mapped[str] = mapped_column(Text, nullable=False)
+    expected: Mapped[Any | None] = mapped_column(JSON)
+    actual: Mapped[Any | None] = mapped_column(JSON)
     details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AIExtraction(Base):
+    __tablename__ = "ai_extractions"
+    __table_args__ = (
+        UniqueConstraint("invoice_id", "extraction_revision", name="uq_ai_extraction_revision"),
+        Index("ix_ai_extraction_invoice_created", "invoice_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    invoice_id: Mapped[str] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True
+    )
+    invoice_revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("invoice_revisions.id", ondelete="SET NULL"), index=True
+    )
+    extraction_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[AIExtractionStatus] = mapped_column(
+        Enum(AIExtractionStatus, native_enum=False), nullable=False, index=True
+    )
+    raw_response: Mapped[str | None] = mapped_column(Text)
+    parsed_result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    validation_results_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    validation_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    applied: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_by: Mapped[str | None] = mapped_column(String(255))
+    requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    invoice: Mapped[Invoice] = relationship(back_populates="ai_extractions")
+    invoice_revision: Mapped[InvoiceRevision | None] = relationship()
 
 
 class CostCenter(Base):

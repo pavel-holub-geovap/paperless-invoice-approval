@@ -55,6 +55,7 @@ def main() -> None:
         "paperless",
         "paperless-bootstrap",
         "ollama",
+        "ollama-pull",
         "backend",
         "worker",
         "frontend",
@@ -88,10 +89,16 @@ def main() -> None:
         raise ValueError("Keycloak must use its own DB user")
     if services["backend"]["networks"] != ["app_net", "data_net"]:
         raise ValueError("Backend network isolation changed")
-    if services["ollama"].get("profiles") != ["llm"]:
-        raise ValueError("Ollama must remain opt-in until the LLM stage")
-    if "ollama" in services["worker"].get("depends_on", {}):
-        raise ValueError("Paperless-only worker must not depend on Ollama")
+    if services["ollama"].get("profiles"):
+        raise ValueError("Ollama must be part of the default Stage D stack")
+    if services["worker"].get("depends_on", {}).get("ollama", {}).get("condition") != "service_healthy":
+        raise ValueError("AI worker must wait for healthy Ollama")
+    if services["worker"].get("depends_on", {}).get("ollama-pull", {}).get("condition") != "service_completed_successfully":
+        raise ValueError("AI worker must wait for the configured model")
+    if services["ollama"]["environment"].get("OLLAMA_NUM_PARALLEL") != "1":
+        raise ValueError("Ollama parallelism must remain one")
+    if str(services["worker"]["environment"].get("OLLAMA_NUM_GPU")) != "0":
+        raise ValueError("Stage D must request CPU-only inference")
     if "approval:" not in values["DATABASE_URL"]:
         raise ValueError("Approval backend must use its dedicated database user")
     forbidden_approval_secrets = {"PAPERLESS_DB_PASSWORD", "KEYCLOAK_DB_PASSWORD"}

@@ -13,6 +13,7 @@ from app.config import Settings, get_settings
 from app.db import get_db
 from app.integrations.paperless import PaperlessClient
 from app.models import (
+    AIExtraction,
     Allocation,
     ApprovalAction,
     ApprovalAssignment,
@@ -25,6 +26,7 @@ from app.models import (
     ValidationResult,
 )
 from app.schemas import (
+    AIExtractionApply,
     AllocationSet,
     ApproverSet,
     CurrentUser,
@@ -34,6 +36,7 @@ from app.schemas import (
 )
 from app.services.allocations import allocate_by_percentages
 from app.services.audit import record_event
+from app.services.extraction import apply_ai_extraction, queue_ai_extraction
 from app.services.pohoda import generate_invoice_xml, validate_xml
 from app.services.validation import run_validations
 from app.services.workflow import (
@@ -76,6 +79,7 @@ def _invoice_or_404(db: Session, invoice_id: str, lock: bool = False) -> Invoice
         select(Invoice)
         .options(
             selectinload(Invoice.revisions),
+            selectinload(Invoice.ai_extractions),
             selectinload(Invoice.allocations).selectinload(Allocation.cost_center),
             selectinload(Invoice.allocations)
             .selectinload(Allocation.assignments)
@@ -97,6 +101,34 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
     validations = db.scalars(
         select(ValidationResult).where(ValidationResult.revision_id == revision.id)
     ).all()
+    ai_history = sorted(invoice.ai_extractions, key=lambda row: row.extraction_revision, reverse=True)
+    latest_ai = ai_history[0] if ai_history else None
+
+    def serialize_ai(row: AIExtraction, *, include_result: bool = False) -> dict[str, Any]:
+        result = {
+            "id": row.id,
+            "extraction_revision": row.extraction_revision,
+            "invoice_revision": row.invoice_revision.revision_number if row.invoice_revision else None,
+            "model": row.model,
+            "schema_version": row.schema_version,
+            "prompt_version": row.prompt_version,
+            "status": row.status,
+            "validation_summary": row.validation_summary,
+            "error_code": row.error_code,
+            "error_message": row.error_message,
+            "queued_at": row.queued_at,
+            "started_at": row.started_at,
+            "completed_at": row.completed_at,
+            "duration_ms": row.duration_ms,
+            "applied": row.applied,
+            "applied_at": row.applied_at,
+            "applied_by": row.applied_by,
+            "requires_confirmation": row.requires_confirmation,
+        }
+        if include_result:
+            result["parsed_result"] = row.parsed_result
+            result["validation_results"] = row.validation_results_json
+        return result
     return {
         "id": invoice.id,
         "paperless_document_id": invoice.paperless_document_id,
@@ -114,9 +146,15 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             "sync_error": invoice.sync_error,
         },
         "status": invoice.status,
+        "ai_status": invoice.ai_status,
+        "ai": {
+            "latest": serialize_ai(latest_ai, include_result=True) if latest_ai else None,
+            "history": [serialize_ai(row) for row in ai_history],
+        },
         "current_revision_number": invoice.current_revision_number,
-        "original_checked_at": invoice.original_checked_at,
-        "original_checked_by": invoice.original_checked_by,
+        "original_review_confirmed": invoice.original_review_confirmed,
+        "original_reviewed_at": invoice.original_reviewed_at,
+        "original_reviewed_by": invoice.original_reviewed_by,
         "data": revision.data,
         "extracted_fields": [
             {"field_name": field.field_name, "value": field.value, "source_text": field.source_text}
@@ -128,6 +166,8 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
                 "severity": result.severity,
                 "field_name": result.field_name,
                 "message": result.message,
+                "expected": result.expected,
+                "actual": result.actual,
             }
             for result in validations
         ],
@@ -228,6 +268,7 @@ def list_invoices(
                 correspondent=invoice.paperless_correspondent_name,
                 paperless_created_at=invoice.paperless_created_at,
                 sync_status=invoice.sync_status,
+                ai_status=invoice.ai_status,
                 supplier_name=data.get("supplier_name"),
                 invoice_number=data.get("invoice_number"),
                 total_amount=data.get("total_amount"),
@@ -349,6 +390,58 @@ def confirm_invoice_original(
     invoice = _invoice_or_404(db, invoice_id, lock=True)
     confirm_original(db, invoice, user.subject)
     db.commit()
+    return serialize_invoice(db, _invoice_or_404(db, invoice_id))
+
+
+@router.post("/{invoice_id}/ai-extractions", status_code=202)
+def request_ai_extraction(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_csrf),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    _manager(user)
+    invoice = _invoice_or_404(db, invoice_id, lock=True)
+    try:
+        extraction = queue_ai_extraction(
+            db,
+            invoice,
+            settings,
+            actor=user.subject,
+            reextraction=bool(invoice.ai_extractions),
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"id": extraction.id, "status": extraction.status}
+
+
+@router.post("/{invoice_id}/ai-extractions/{extraction_id}/apply")
+def apply_ai_candidate(
+    invoice_id: str,
+    extraction_id: str,
+    payload: AIExtractionApply,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_csrf),
+) -> dict[str, Any]:
+    _manager(user)
+    invoice = _invoice_or_404(db, invoice_id, lock=True)
+    extraction = db.get(AIExtraction, extraction_id)
+    if extraction is None or extraction.invoice_id != invoice.id:
+        raise HTTPException(status_code=404, detail="AI extraction not found")
+    try:
+        apply_ai_extraction(
+            db,
+            invoice,
+            extraction,
+            user.subject,
+            confirm_overwrite=payload.confirm_overwrite,
+        )
+        db.commit()
+    except (ValueError, WorkflowError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return serialize_invoice(db, _invoice_or_404(db, invoice_id))
 
 

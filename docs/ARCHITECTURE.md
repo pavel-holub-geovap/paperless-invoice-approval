@@ -4,12 +4,12 @@
 
 - `frontend`: statický React build; používá pouze backend API a serverovou OIDC session.
 - `backend`: FastAPI, autorizační kontrola, orchestrace use-cases a OpenAPI.
-- `worker`: stejný aplikační balík; v Etapách B/C periodicky synchronizuje tagged dokumenty z Paperless REST API a obsluhuje databázovou frontu stavových tagů. LLM větev je vypnutá.
+- `worker`: stejný aplikační balík; synchronizuje tagged dokumenty z Paperless REST API, obsluhuje databázovou frontu stavových tagů a sériově provádí AI extrakce.
 - `postgres`: oddělené databáze a credentials pro approval aplikaci, Keycloak a Paperless v jednom persistentním clusteru.
 - `redis`: persistentní broker/cache pouze pro izolovaný testovací Paperless; approval fronta zůstává v PostgreSQL.
 - `paperless`: izolovaná testovací autorita pro originální PDF, OCR, metadata a stavové tagy; runtime integrace probíhá výhradně přes REST API.
 - `keycloak`: centrální OIDC identita s importovaným realm konfigurací.
-- `ollama`: opt-in Compose profil `llm`; lokální CPU inference se nasazuje až v samostatné Etapě D.
+- `ollama`: lokální CPU-only inference; `ollama-pull` idempotentně připraví nakonfigurovaný model v persistentním volume před startem workeru.
 - `nginx`: jediná publikovaná vstupní vrstva pro Approval (`:80`), Paperless (`:8000`) a Keycloak (`:8081`).
 - Produkční varianta může později nahradit testovací Paperless existující externí instancí bez přímého DB propojení.
 
@@ -19,7 +19,13 @@
 
 ## Paperless snapshot
 
-Approval databáze ukládá pouze `paperless_document_id`, název, čas vytvoření, korespondenta, tagy, OCR text, původní název souboru a diagnostiku synchronizace. PDF zůstává autoritativně v Paperless a endpoint `/api/invoices/{id}/pdf` jej streamuje přes REST API bez trvalé kopie. Nový dokument prochází centralizovaně `NEW → VALIDATION → QUEUE_REVIEW`; worker v této fázi nevytváří LLM job.
+Approval databáze ukládá pouze `paperless_document_id`, název, čas vytvoření, korespondenta, tagy, OCR text, původní název souboru a diagnostiku synchronizace. PDF zůstává autoritativně v Paperless a endpoint `/api/invoices/{id}/pdf` jej streamuje přes REST API bez trvalé kopie. Nový dokument prochází centralizovaně `NEW → VALIDATION → QUEUE_REVIEW`; AI mezitím používá samostatné stavy `AI_PENDING → AI_PROCESSING → AI_COMPLETED|AI_FAILED`, takže nemění obchodní stav.
+
+## AI extrakce a validace
+
+Worker před každým během znovu načte OCR z Paperless REST API. Ollama dostane nedůvěryhodný OCR text oddělený značkami a striktní JSON schema. Pydantic odmítne chybějící nebo neznámá pole; hodnoty mohou být explicitně `null`. Každý běh ukládá model, schema/prompt verzi, raw response, parsed JSON, provenance, dobu, chybu a validační snapshot do `ai_extractions`. První běh lze aplikovat automaticky jen na prázdnou revizi; re-extrakce zůstane kandidátem do explicitního potvrzení.
+
+Deterministická validační služba používá `Decimal`, český checksum IČO, formát DIČ/VS, ISO datum a měnu, matematiku DPH a součtů, účet, IBAN mod-97 a BIC. LLM nevytváří XML/SQL, workflow stav, cost center ani approvera. Detailní kontrakt je v `docs/AI_EXTRACTION.md`.
 
 `QUEUE_MANAGER` vidí celou frontu a smí provádět správcovské změny. `APPROVER` vidí endpoint „Moje úkoly“ a detail/PDF pouze faktur s aktivním assignmentem. Role pocházejí z Keycloak tokenu a backend je kontroluje nezávisle na viditelnosti prvků ve frontendu.
 
@@ -29,7 +35,7 @@ Approval databáze ukládá pouze `paperless_document_id`, název, čas vytvoře
 
 ## Background joby
 
-PostgreSQL tabulka `processing_jobs` je approval fronta se stavem, počtem pokusů, lease a idempotency key. Worker vybírá jeden job pomocí `FOR UPDATE SKIP LOCKED`, po timeoutu může lease obnovit. Redis je oddělený a používá jej Paperless.
+PostgreSQL tabulka `processing_jobs` je approval fronta se stavem, omezeným počtem pokusů, lease a idempotency key. Worker vybírá jeden job pomocí `FOR UPDATE SKIP LOCKED`; Ollama má paralelismus 1. Stabilní chyby zahrnují `OLLAMA_UNAVAILABLE`, `OLLAMA_TIMEOUT`, `INVALID_JSON`, `SCHEMA_VALIDATION_FAILED`, `PAPERLESS_ERROR` a `EXTRACTION_FAILED`. Redis je oddělený a používá jej Paperless.
 
 ## Důvěryhodné hranice
 

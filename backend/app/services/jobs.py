@@ -16,6 +16,7 @@ def enqueue_job(
     *,
     invoice_id: str | None = None,
     payload: dict[str, Any] | None = None,
+    max_attempts: int = 3,
 ) -> ProcessingJob:
     existing = db.scalar(select(ProcessingJob).where(ProcessingJob.idempotency_key == idempotency_key))
     if existing:
@@ -25,6 +26,7 @@ def enqueue_job(
         idempotency_key=idempotency_key,
         invoice_id=invoice_id,
         payload=payload or {},
+        max_attempts=max_attempts,
     )
     db.add(job)
     db.flush()
@@ -68,4 +70,3 @@ def fail_job(job: ProcessingJob, error: Exception) -> None:
     else:
         job.status = JobStatus.PENDING
         job.available_at = datetime.now(UTC) + timedelta(seconds=min(300, 2**job.attempts))
-

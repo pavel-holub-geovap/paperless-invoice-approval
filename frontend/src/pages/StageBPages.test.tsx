@@ -15,6 +15,8 @@ const invoice: Invoice = {
   id: "invoice-1",
   paperless_document_id: 1,
   status: "QUEUE_REVIEW",
+  ai_status: "AI_COMPLETED",
+  ai: { history: [] },
   current_revision_number: 1,
   paperless: {
     title: "Synthetic Invoice CS-EN",
@@ -30,6 +32,7 @@ const invoice: Invoice = {
   extracted_fields: [],
   validations: [],
   allocations: [],
+  original_review_confirmed: false,
 };
 
 function mockEmptyApi() {

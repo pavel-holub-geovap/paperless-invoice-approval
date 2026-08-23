@@ -48,6 +48,9 @@ ALLOWED_TRANSITIONS: dict[InvoiceStatus, set[InvoiceStatus]] = {
 
 SIGNIFICANT_FIELDS = {
     "supplier_name",
+    "supplier_ico",
+    "supplier_dic",
+    "supplier_address",
     "ico",
     "dic",
     "invoice_number",
@@ -56,8 +59,13 @@ SIGNIFICANT_FIELDS = {
     "due_date",
     "currency",
     "bank_account",
+    "bank_code",
     "iban",
+    "swift_bic",
+    "vat_lines",
     "vat_breakdown",
+    "total_without_vat",
+    "total_vat",
     "total_amount",
 }
 
@@ -150,8 +158,9 @@ def update_invoice_data(
             f"Významná změna polí: {', '.join(sorted(changed))}",
             data={**current.data, **changed},
         )
-        invoice.original_checked_at = None
-        invoice.original_checked_by = None
+        invoice.original_review_confirmed = False
+        invoice.original_reviewed_at = None
+        invoice.original_reviewed_by = None
     else:
         current.data = {**current.data, **changed}
         new_revision = current
@@ -268,9 +277,10 @@ def invalidate_approvals(db: Session, invoice: Invoice, actor: str, reason: str)
 
 
 def confirm_original(db: Session, invoice: Invoice, actor: str) -> None:
-    invoice.original_checked_at = datetime.now(UTC)
-    invoice.original_checked_by = actor
-    record_event(db, "QUEUE_REVIEW_CONFIRMED", actor=actor, invoice=invoice)
+    invoice.original_review_confirmed = True
+    invoice.original_reviewed_at = datetime.now(UTC)
+    invoice.original_reviewed_by = actor
+    record_event(db, "ORIGINAL_REVIEW_CONFIRMED", actor=actor, invoice=invoice)
 
 
 def ready_for_approval(db: Session, invoice: Invoice) -> tuple[bool, list[str]]:
@@ -278,7 +288,7 @@ def ready_for_approval(db: Session, invoice: Invoice) -> tuple[bool, list[str]]:
     if revision is None:
         return False, ["Faktura nemá revizi."]
     errors: list[str] = []
-    if invoice.original_checked_at is None:
+    if not invoice.original_review_confirmed or invoice.original_reviewed_at is None:
         errors.append("Originál nebyl zkontrolován.")
     if db.scalar(
         select(ValidationResult.id).where(
@@ -399,6 +409,7 @@ def reopen(db: Session, invoice: Invoice, actor: str, comment: str | None = None
         raise WorkflowError("Only a rejected invoice can be reopened")
     old = invoice.status
     fork_revision(db, invoice, actor, "Znovuotevření zamítnuté faktury")
-    invoice.original_checked_at = None
-    invoice.original_checked_by = None
+    invoice.original_review_confirmed = False
+    invoice.original_reviewed_at = None
+    invoice.original_reviewed_by = None
     record_event(db, "REOPENED", actor=actor, invoice=invoice, old_state=old.value, new_state=invoice.status.value, comment=comment)

@@ -42,12 +42,14 @@ Nahrajte pouze syntetickou fakturu, nastavte tag `Přijatá faktura` a ověřte,
 ## Etapa D: Ollama
 
 ```text
-docker compose --profile llm up -d ollama
-docker compose exec ollama ollama pull qwen3:4b
-docker compose up -d worker
+git pull --ff-only
+docker compose config
+docker compose build
+docker compose up -d
+docker compose ps
 ```
 
-Model určuje `OLLAMA_MODEL`. Používejte jednu paralelní inferenci, sledujte `free -h` a `docker stats` a ověřte OCR → strict JSON → deterministické validace.
+Model určuje `OLLAMA_MODEL`; výchozí je `qwen3:4b`. `ollama-pull` ho stáhne do `ollama_data` a worker začne až po úspěšném dokončení. Konfigurace vynucuje jednu paralelní CPU inferenci (`OLLAMA_NUM_GPU=0`), teplotu 0 a kontext 4096. Před stažením modelu, po něm a během první inference zaznamenejte `free -h` a `docker stats`. Potom spusťte Stage D smoke test z `docs/TESTING.md` a ověřte golden accuracy i prompt injection.
 
 ## Etapy E–F: workflow a export
 

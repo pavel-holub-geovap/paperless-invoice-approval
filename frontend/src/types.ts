@@ -17,6 +17,7 @@ export type InvoiceListItem = {
   correspondent?: string;
   paperless_created_at?: string;
   sync_status: "PENDING" | "SYNCED" | "ERROR";
+  ai_status: AIStatus;
   supplier_name?: string;
   invoice_number?: string;
   total_amount?: string;
@@ -39,6 +40,33 @@ export type Validation = {
   severity: "OK" | "WARNING" | "BLOCKING_ERROR";
   field_name?: string;
   message: string;
+  expected?: unknown;
+  actual?: unknown;
+};
+
+export type AIStatus = "AI_PENDING" | "AI_PROCESSING" | "AI_COMPLETED" | "AI_FAILED";
+
+export type AIExtraction = {
+  id: string;
+  extraction_revision: number;
+  invoice_revision?: number;
+  model: string;
+  schema_version: string;
+  prompt_version: string;
+  status: AIStatus;
+  validation_summary?: { ok: number; warning: number; blocking_error: number };
+  validation_results?: Validation[];
+  parsed_result?: Record<string, unknown>;
+  error_code?: string;
+  error_message?: string;
+  queued_at: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_ms?: number;
+  applied: boolean;
+  applied_at?: string;
+  applied_by?: string;
+  requires_confirmation: boolean;
 };
 
 export type Assignment = {
@@ -60,6 +88,11 @@ export type Invoice = {
   id: string;
   paperless_document_id: number;
   status: string;
+  ai_status: AIStatus;
+  ai: {
+    latest?: AIExtraction;
+    history: AIExtraction[];
+  };
   current_revision_number: number;
   paperless: {
     title: string;
@@ -74,8 +107,9 @@ export type Invoice = {
     last_synced_at?: string;
     sync_error?: string;
   };
-  original_checked_at?: string;
-  original_checked_by?: string;
+  original_review_confirmed: boolean;
+  original_reviewed_at?: string;
+  original_reviewed_by?: string;
   data: Record<string, unknown>;
   extracted_fields: { field_name: string; value: unknown; source_text?: string }[];
   validations: Validation[];

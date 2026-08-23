@@ -28,11 +28,10 @@ export function Dashboard({ user }: { user: User }) {
   return <section>
     <div className="section-heading"><div><p className="eyebrow">Správa fronty</p><h1>Přijaté faktury</h1></div><button className="button secondary" onClick={() => void load()}>Obnovit</button></div>
     <div className="filters">
-      <label>Stav<select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Všechny</option>{["NEW","AI_PROCESSING","NEEDS_REVIEW","QUEUE_REVIEW","AWAITING_APPROVAL","RETURNED","REJECTED","APPROVED","READY_FOR_EXPORT","EXPORT_CREATED","IMPORTED_TO_POHODA"].map((s)=><option key={s}>{s}</option>)}</select></label>
+      <label>Workflow<select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Všechny</option>{["NEW","VALIDATION","QUEUE_REVIEW","READY_FOR_APPROVAL","AWAITING_APPROVAL","RETURNED","REJECTED","APPROVED","READY_FOR_EXPORT","EXPORT_CREATED","IMPORTED_TO_POHODA"].map((s)=><option key={s}>{s}</option>)}</select></label>
       <label>Dodavatel<input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Hledat…" /></label>
     </div>
     {error && <div className="alert danger">{error}</div>}
     <InvoiceTable rows={rows} onOpen={open} />
   </section>;
 }
-

@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.integrations.paperless import PaperlessDocument
-from app.models import Invoice, InvoiceStatus, PaperlessSyncStatus, utcnow
+from app.models import AIExtraction, Invoice, InvoiceStatus, PaperlessSyncStatus, utcnow
 from app.services.audit import record_event
 from app.services.workflow import transition
 
@@ -67,6 +69,14 @@ def sync_document_snapshot(
     if invoice.status == InvoiceStatus.NEW:
         transition(db, invoice, InvoiceStatus.VALIDATION, actor)
         transition(db, invoice, InvoiceStatus.QUEUE_REVIEW, actor)
+    settings = get_settings()
+    has_extraction = db.scalar(
+        select(AIExtraction.id).where(AIExtraction.invoice_id == invoice.id).limit(1)
+    )
+    if settings.ai_extraction_enabled and not has_extraction and document.content.strip():
+        from app.services.extraction import queue_ai_extraction
+
+        queue_ai_extraction(db, invoice, settings, actor)
     return changed
 
 

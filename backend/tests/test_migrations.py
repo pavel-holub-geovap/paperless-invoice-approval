@@ -28,6 +28,22 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         invoice_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(invoices)").fetchall()
         }
+        validation_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(validation_results)").fetchall()
+        }
+        ai_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(ai_extractions)").fetchall()
+        }
 
-    assert revision == ("0002",)
-    assert {"paperless_title", "paperless_ocr_text", "sync_status"} <= invoice_columns
+    assert revision == ("0003",)
+    assert {
+        "paperless_title",
+        "paperless_ocr_text",
+        "sync_status",
+        "ai_status",
+        "original_review_confirmed",
+        "original_reviewed_at",
+        "original_reviewed_by",
+    } <= invoice_columns
+    assert {"expected", "actual"} <= validation_columns
+    assert {"parsed_result", "raw_response", "extraction_revision", "duration_ms"} <= ai_columns

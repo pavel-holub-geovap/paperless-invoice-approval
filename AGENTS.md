@@ -10,8 +10,7 @@ Podrobnosti jsou v `docs/ARCHITECTURE.md`. Doménová logika patří do `backend
 
 - Kopíruj `.env.example` na `.env`; žádný secret necommituj.
 - Konfigurace: `docker-compose config`
-- Stack bez LLM: `docker-compose up -d --build`
-- Ollama až v Etapě D: `docker-compose --profile llm up -d ollama`
+- Stack Etapy D: `docker-compose up -d --build` (včetně Ollamy a idempotentního stažení modelu)
 - Backend testy: `cd backend` a `pytest`
 - Frontend testy: `cd frontend` a `npm run test`
 - Frontend build: `cd frontend` a `npm run build`
@@ -22,7 +21,7 @@ Podrobnosti jsou v `docs/ARCHITECTURE.md`. Doménová logika patří do `backend
 - Linux uživatel: `codex`
 - Projektový adresář: `/home/codex/paperless-invoice-approval`
 - Účel: integrační testy a testovací Docker deployment projektu
-- Testovací prostředí obsahuje: Paperless, Keycloak, PostgreSQL, Redis, approval backend/worker/frontend a reverse proxy. Ollama je opt-in a před Etapou D nesmí běžet.
+- Testovací prostředí obsahuje: Paperless, Keycloak, PostgreSQL, Redis, CPU-only Ollamu, approval backend/worker/frontend a reverse proxy.
 
 Při požadavku „Nasaď a otestuj aktuální verzi“ použij tuto VM a postup z `docs/DEPLOYMENT_ENVIRONMENT.md`. Na serveru neupravuj hlavní zdrojový kód mimo Git historii. Projektový checkout aktualizuj pouze z ověřeného správného remote pomocí `git pull --ff-only`.
 
@@ -37,7 +36,8 @@ Před prací zkontroluj `git status`, remote a branch. Pokud remote existuje, po
 - Nikdy necommituj `.env`, tokeny, hesla, privátní klíče, runtime databáze, modely ani originální faktury.
 - Testovací Paperless je izolovaná součást tohoto stacku. Nikdy jej nepropojuj s produkční databází, storage nebo tokenem a nikdy nevystavuj Paperless token browseru.
 - Originální PDF trvale neduplikuj; výjimkou je archivovaný exportní balíček.
-- Approval worker v Etapách B/C používá pouze Paperless REST API. Nespouštěj Ollamu ani LLM extrakci před samostatnou Etapou D.
+- Approval worker načítá dokumenty pouze přes Paperless REST API. LLM smí převádět OCR jen na striktní `InvoiceExtractionV1`; nesmí generovat XML/SQL, měnit workflow ani určovat střediska či schvalovatele.
+- Každý AI běh je append-only. Re-extrakce je pouze kandidát a pracovní data smí přepsat až po explicitním potvrzení správce.
 - Do POHODY se systém přímo nepřipojuje, nezapisuje do její databáze a neprovádí automatický import.
 - Akce, která by mohla změnit jiný než izolovaný testovací Paperless, poškodit persistentní data, zveřejnit secret nebo přímo zapsat do POHODY, vyžaduje předem potvrzení uživatele.
 - Bez výslovného souhlasu nepoužívej `docker compose down -v`, `docker system prune`, `docker volume prune`, nemaž databáze ani Paperless storage.

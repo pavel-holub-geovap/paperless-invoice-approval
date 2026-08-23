@@ -140,7 +140,7 @@ def test_reopen_rejected_invoice_invalidates_rejection_and_requires_review(db: S
     assert invoice.status == InvoiceStatus.NEEDS_REVIEW
     assert invoice.current_revision_number == 3
     assert not decision.valid
-    assert invoice.original_checked_at is None
+    assert invoice.original_reviewed_at is None
 
 
 def test_significant_change_invalidates_historical_decision(db: Session) -> None:

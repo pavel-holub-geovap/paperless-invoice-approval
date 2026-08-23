@@ -45,6 +45,40 @@
   font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+.ai-card > .button,
+.ai-card > details {
+  margin-top: 14px;
+}
+
+.candidate dl {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.5fr) 1fr;
+  margin: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.candidate dl div {
+  display: contents;
+}
+
+.candidate dt,
+.candidate dd {
+  padding: 7px 4px;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.candidate dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.validation small {
+  display: block;
+  color: var(--muted);
+}
+
 @media (max-width: 640px) {
   .metadata-grid {
     grid-template-columns: 1fr;

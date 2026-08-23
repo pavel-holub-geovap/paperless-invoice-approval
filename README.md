@@ -17,10 +17,12 @@ Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schvále
 
 1. Zkopírujte `.env.example` na `.env` a doplňte všechny hodnoty `change-me`.
 2. Spusťte `docker-compose config` a zkontrolujte výslednou konfiguraci.
-3. Postupujte po etapách podle `docs/DEPLOYMENT.md`. Výchozí Compose nyní spouští infrastrukturu a Approval aplikaci bez Ollamy.
+3. Postupujte po etapách podle `docs/DEPLOYMENT.md`. Výchozí Compose v Etapě D spouští také CPU-only Ollamu a jednorázově stáhne nakonfigurovaný model.
 4. Na testovací VM otevřete Approval na `http://172.30.172.167/`, Paperless na `http://172.30.172.167:8000/` a Keycloak na `http://172.30.172.167:8081/`.
 
-Etapy B/C synchronizují metadata, tagy a OCR text z Paperless REST API do samostatné approval databáze. Originální PDF se do ní neukládá a UI jej načítá přes autorizovanou backend proxy. Ollama je opt-in Compose profil `llm` a patří až do Etapy D.
+Etapy B/C synchronizují metadata, tagy a OCR text z Paperless REST API do samostatné approval databáze. Originální PDF se do ní neukládá a UI jej načítá přes autorizovanou backend proxy. Etapa D posílá OCR do lokální Ollamy, přijímá pouze striktní `InvoiceExtractionV1`, ukládá každý běh append-only a výsledek ověřuje deterministicky. AI technický stav nikdy nenahrazuje obchodní workflow stav.
+
+Výchozí model je konfigurovatelný přes `OLLAMA_MODEL` (`qwen3:4b`), inference běží s teplotou 0, jedním paralelním požadavkem, kontextem 4096 a `num_gpu=0`. Podrobnosti a bezpečnostní hranice jsou v [docs/AI_EXTRACTION.md](docs/AI_EXTRACTION.md).
 
 Testovací Paperless používá vlastní PostgreSQL databázi, Redis a persistentní volumes a nesmí sdílet produkční data ani tokeny. Postup je v [docs/PAPERLESS_INTEGRATION.md](docs/PAPERLESS_INTEGRATION.md) a OIDC v [docs/PAPERLESS_KEYCLOAK.md](docs/PAPERLESS_KEYCLOAK.md).
 
@@ -42,6 +44,7 @@ cd frontend
 npm ci
 npm run test
 npm run build
+npm run lint
 ```
 
 Kompletní architektura, nasazení a testovací scénáře jsou v adresáři `docs/`.

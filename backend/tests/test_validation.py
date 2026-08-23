@@ -1,5 +1,10 @@
 from app.models import ValidationSeverity
-from app.services.validation import run_validations, valid_czech_ico, validate_invoice_data
+from app.services.validation import (
+    run_validations,
+    valid_czech_ico,
+    valid_iban,
+    validate_invoice_data,
+)
 from app.services.workflow import create_invoice, update_invoice_data
 
 
@@ -51,3 +56,38 @@ def test_duplicate_supplier_number_and_amount_is_blocking(db) -> None:
     update_invoice_data(db, second, valid_data(), "manager")
     results = run_validations(db, second)
     assert any(row.code == "DUPLICATE_INVOICE" for row in results)
+
+
+def test_czech_golden_values_validate_with_decimal_math() -> None:
+    data = {
+        "supplier_name": "TESTOVACÍ DODAVATEL s.r.o.",
+        "supplier_ico": "00000019",
+        "supplier_dic": "CZ00000019",
+        "invoice_number": "TEST-2026-0001",
+        "variable_symbol": "20260001",
+        "issue_date": "2026-08-20",
+        "taxable_supply_date": "2026-08-20",
+        "due_date": "2026-09-03",
+        "currency": "CZK",
+        "bank_account": "0000000000",
+        "bank_code": "0000",
+        "vat_lines": [{"vat_rate": "21", "taxable_base": "1000.00", "vat_amount": "210.00"}],
+        "total_without_vat": "1000.00",
+        "total_vat": "210.00",
+        "total_amount": "1210.00",
+    }
+    results = validate_invoice_data(data)
+    assert not [row for row in results if row.severity == ValidationSeverity.BLOCKING_ERROR]
+    assert any(row.code == "ICO_OK" for row in results)
+    assert any(row.code == "TOTAL_MATH_OK" and row.expected == "1210.00" for row in results)
+
+
+def test_iban_mod97_and_expected_actual_diagnostics() -> None:
+    assert valid_iban("CZ6508000000192000145399")
+    assert not valid_iban("CZ6508000000192000145398")
+    data = valid_data()
+    data["currency"] = "CROWNS"
+    results = validate_invoice_data(data)
+    failure = next(row for row in results if row.code == "CURRENCY_ISO")
+    assert failure.expected == "ISO 4217"
+    assert failure.actual == "CROWNS"
