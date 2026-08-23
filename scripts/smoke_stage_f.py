@@ -167,6 +167,7 @@ def main() -> None:
             "supplier_street": "Fiktivní 123",
             "supplier_city": "Praha",
             "supplier_zip": "100 00",
+            "invoice_number": "TEST-2026-0001",
         }
         changes = {
             key: value
@@ -182,7 +183,7 @@ def main() -> None:
                     manager_user,
                     payload={
                         "changes": changes,
-                        "comment": "Přesná adresa ověřena v originálním PDF",
+                        "comment": "Přesná adresa a číslo ověřeny v originálním PDF",
                     },
                 ),
                 "structured supplier address",
