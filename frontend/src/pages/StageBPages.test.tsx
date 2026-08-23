@@ -32,6 +32,7 @@ const invoice: Invoice = {
   extracted_fields: [],
   validations: [],
   allocations: [],
+  allocation_summary: { invoice_total: "0.00", allocated: "0.00", remaining: "0.00" },
   original_review_confirmed: false,
 };
 
@@ -76,6 +77,6 @@ describe("Stage B pages", () => {
 
     render(<Approvals />);
 
-    expect(await screen.findByText("Momentálně nemáte žádný úkol ke schválení.")).toBeVisible();
+    expect(await screen.findByText("Momentálně nemáte žádný aktivní úkol ke schválení.")).toBeVisible();
   });
 });

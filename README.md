@@ -22,6 +22,8 @@ Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schvále
 
 Etapy B/C synchronizují metadata, tagy a OCR text z Paperless REST API do samostatné approval databáze. Originální PDF se do ní neukládá a UI jej načítá přes autorizovanou backend proxy. Etapa D posílá OCR do lokální Ollamy, přijímá pouze striktní `InvoiceExtractionV1`, ukládá každý běh append-only a výsledek ověřuje deterministicky. AI technický stav nikdy nenahrazuje obchodní workflow stav.
 
+Etapa E přidává konfigurovatelná střediska, Decimal rozúčtování, povinnou kontrolu originálu a paralelní assignmenty navázané na konkrétní revizi, středisko a částku. `RETURN` vrací celou fakturu správci, `REJECT` ji globálně zamítá a `REOPEN` vytváří novou auditovanou revizi. Významná změna dat, allocations nebo approverů invaliduje všechna dřívější rozhodnutí bez mazání historie. Podrobný kontrakt je v [docs/APPROVAL_WORKFLOW.md](docs/APPROVAL_WORKFLOW.md). POHODA XML je mimo rozsah Etapy E.
+
 Výchozí model je konfigurovatelný přes `OLLAMA_MODEL` (`qwen3:4b`), inference běží s teplotou 0, jedním paralelním požadavkem, kontextem 4096 a `num_gpu=0`. Podrobnosti a bezpečnostní hranice jsou v [docs/AI_EXTRACTION.md](docs/AI_EXTRACTION.md).
 
 Testovací Paperless používá vlastní PostgreSQL databázi, Redis a persistentní volumes a nesmí sdílet produkční data ani tokeny. Postup je v [docs/PAPERLESS_INTEGRATION.md](docs/PAPERLESS_INTEGRATION.md) a OIDC v [docs/PAPERLESS_KEYCLOAK.md](docs/PAPERLESS_KEYCLOAK.md).

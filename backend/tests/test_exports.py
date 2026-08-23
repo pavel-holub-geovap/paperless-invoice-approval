@@ -14,6 +14,7 @@ from app.models import (
     ApprovalAssignment,
     CostCenter,
     InvoiceStatus,
+    UserIdentity,
 )
 from app.services.exports import create_export_batch, mark_batch_imported
 from app.services.validation import run_validations
@@ -77,6 +78,8 @@ def approved_invoice(
         allocation_id=allocation.id,
         approver_subject="approver-1",
     )
+    if db.get(UserIdentity, "approver-1") is None:
+        db.add(UserIdentity(subject="approver-1", username="approver-1", roles=["APPROVER"]))
     db.add(assignment)
     db.flush()
     run_validations(db, invoice)

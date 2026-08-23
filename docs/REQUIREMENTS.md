@@ -31,7 +31,7 @@ Minimální entity: identita uživatele, faktura, revize, vytěžené pole, výs
 
 ## Validace
 
-Povinné kontroly: formát a český kontrolní součet IČO, formát DIČ, data, číslo faktury, variabilní symbol, měna, DPH a daňové součty, celková částka, povinná pole, duplicita a matematická konzistence allocations. Externí ARES je volitelný, pouze varuje a jeho nedostupnost neblokuje systém.
+Povinné kontroly: formát a český kontrolní součet IČO, formát DIČ, data, číslo faktury, variabilní symbol, měna, DPH a daňové součty, celková částka, povinná pole, duplicita a matematická konzistence allocations. Domácí český účet je platný jen jako číslo účtu společně s čtyřmístným kódem banky; neúplná dvojice je `WARNING`. IBAN se ověřuje mod-97 a může být samostatným platebním údajem, BIC/SWIFT má samostatnou syntaktickou kontrolu. Externí ARES je volitelný, pouze varuje a jeho nedostupnost neblokuje systém.
 
 ## Identita a role
 
@@ -63,6 +63,7 @@ Repozitář nesmí obsahovat skutečné faktury, secrets, produkční certifiká
 - Přesný, neúplný a přečerpaný součet, procenta a hraniční zaokrouhlení.
 - Zákaz exportu před schválením, individuální i batch export, PDF z Paperless, XSD-validní XML a oddělení export/import.
 - Append-only audit s before/after a vazbou approvals na revizi.
+- Negativní autorizace cizího assignmentu, idempotentní double-click a souběžné approvals různých assignmentů.
 - Šest E2E scénářů popsaných ve zdrojovém zadání.
 
 ## Mimo rozsah

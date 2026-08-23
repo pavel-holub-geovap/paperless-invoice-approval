@@ -60,11 +60,23 @@ docker compose run --rm --no-deps \
   worker python /smoke/smoke_stage_d.py
 ```
 
-Golden sada má 21 porovnávaných hodnot včetně tří polí DPH řádku. Report uvádí `correct`, `wrong`, `missing`, první/opakovaný čas inference a validační souhrn. Prompt-injection test zvlášť porovná napadený běh s baseline stejného OCR; musí mít nula změněných polí a nesmí obsahovat útočníkův dodavatel ani XML. Současně zaznamenejte `free -h` a `docker stats --no-stream` před stažením modelu, po stažení a během inference.
+Golden sada má 21 porovnávaných hodnot včetně tří polí DPH řádku. Report uvádí `correct`, `wrong`, `missing`, první/opakovaný čas inference a validační souhrn. Prompt-injection test zvlášť porovná napadený běh s baseline stejného OCR; nesmí změnit pole, na která útok míří, ani obsahovat útočníkův dodavatel nebo XML, a ostatní generativní rozdíly explicitně vypíše. Současně zaznamenejte `free -h` a `docker stats --no-stream` před stažením modelu, po stažení a během inference.
+
+## Schvalovací integrační test (Etapa E)
+
+Po migraci `0004` spusťte skutečný workflow se čtyřmi Keycloak uživateli:
+
+```text
+docker compose run --rm --no-deps --env-from-file .env \
+  -v "$PWD/scripts:/smoke:ro" \
+  worker python /smoke/smoke_stage_e.py
+```
+
+Skript opraví platební údaje syntetické faktury podle fixture, používá střediska 200/300 a částky 700/510 Kč, ověří všechny submit preconditions, RETURN, REJECT, REOPEN, invalidaci po změně částky/střediska/approvera/fakturačního údaje, cizí assignment HTTP 403, idempotentní double-click a skutečná souběžná rozhodnutí. Nakonec provede sekvenci tří approvals a čeká na Paperless tag `Schváleno`. Hesla čte pouze z VM `.env` a netiskne je.
 
 ## Pozdější etapy
 
-Po úspěšné Etapě D se teprve samostatně testují approvals, RETURN, REJECT, revize a POHODA export.
+Po úspěšné Etapě E se samostatně implementuje a testuje Etapa F pro aktuální POHODA XSD, deterministický XML/ZIP export a explicitní potvrzení ručního importu.
 
 Změny tagů jsou povolené pouze v izolované testovací instanci. Reálné faktury, produkční Paperless a POHODA nejsou součástí automatických testů.
 

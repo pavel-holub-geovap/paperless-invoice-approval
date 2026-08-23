@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,8 +21,8 @@ from app.models import (
     CostCenter,
     Invoice,
     InvoiceStatus,
-    UserIdentity,
     ValidationResult,
+    ValidationSeverity,
 )
 from app.schemas import (
     AIExtractionApply,
@@ -34,16 +33,15 @@ from app.schemas import (
     InvoiceListItem,
     InvoicePatch,
 )
-from app.services.allocations import allocate_by_percentages
-from app.services.audit import record_event
+from app.services.approval_setup import replace_allocations, replace_approvers
 from app.services.extraction import apply_ai_extraction, queue_ai_extraction
 from app.services.pohoda import generate_invoice_xml, validate_xml
 from app.services.validation import run_validations
 from app.services.workflow import (
     WorkflowError,
+    allocation_totals,
     confirm_original,
     create_invoice,
-    fork_revision,
     reopen,
     submit_for_approval,
     update_invoice_data,
@@ -103,6 +101,7 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
     ).all()
     ai_history = sorted(invoice.ai_extractions, key=lambda row: row.extraction_revision, reverse=True)
     latest_ai = ai_history[0] if ai_history else None
+    total, allocated, remaining = allocation_totals(db, invoice)
 
     def serialize_ai(row: AIExtraction, *, include_result: bool = False) -> dict[str, Any]:
         result = {
@@ -176,6 +175,8 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
                 "id": allocation.id,
                 "amount": allocation.amount,
                 "percentage": allocation.percentage,
+                "note": allocation.note,
+                "created_by": allocation.created_by,
                 "cost_center": {
                     "id": allocation.cost_center.id,
                     "code": allocation.cost_center.code,
@@ -187,6 +188,11 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
                         "id": assignment.id,
                         "approver_subject": assignment.approver_subject,
                         "required": assignment.required,
+                        "status": assignment.status,
+                        "assigned_by": assignment.assigned_by,
+                        "assigned_at": assignment.assigned_at,
+                        "decided_at": assignment.decided_at,
+                        "comment": assignment.comment,
                         "decision": next(
                             (
                                 decision.action
@@ -202,6 +208,11 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             }
             for allocation in allocations
         ],
+        "allocation_summary": {
+            "invoice_total": total,
+            "allocated": allocated,
+            "remaining": remaining,
+        },
         "created_at": invoice.created_at,
         "updated_at": invoice.updated_at,
     }
@@ -258,6 +269,9 @@ def list_invoices(
                 )
             ).all()
         )
+        severities = db.scalars(
+            select(ValidationResult.severity).where(ValidationResult.revision_id == revision.id)
+        ).all()
         result.append(
             InvoiceListItem(
                 id=invoice.id,
@@ -275,6 +289,10 @@ def list_invoices(
                 due_date=data.get("due_date"),
                 approvals_done=sum(row.id in approved_ids for row in assignments),
                 approvals_required=len(assignments),
+                warning_count=sum(value == ValidationSeverity.WARNING for value in severities),
+                blocking_error_count=sum(
+                    value == ValidationSeverity.BLOCKING_ERROR for value in severities
+                ),
                 updated_at=invoice.updated_at,
             )
         )
@@ -451,55 +469,15 @@ def set_allocations(
     payload: AllocationSet,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_csrf),
-    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     _manager(user)
     invoice = _invoice_or_404(db, invoice_id, lock=True)
-    revision = invoice.current_revision
-    if invoice.status in {
-        InvoiceStatus.AWAITING_APPROVAL,
-        InvoiceStatus.RETURNED,
-        InvoiceStatus.REJECTED,
-        InvoiceStatus.APPROVED,
-        InvoiceStatus.XML_READY,
-        InvoiceStatus.READY_FOR_EXPORT,
-        InvoiceStatus.EXPORT_CREATED,
-    }:
-        revision = fork_revision(db, invoice, user.subject, "Změna rozúčtování")
-    total = Decimal(str(revision.data.get("total_amount") or "0")).quantize(Decimal("0.01"))
-    percentage_mode = all(row.percentage is not None for row in payload.allocations)
-    amount_mode = all(row.amount is not None for row in payload.allocations)
-    if not (percentage_mode or amount_mode):
-        raise HTTPException(status_code=422, detail="All allocations must use the same input mode")
-    amounts = (
-        allocate_by_percentages(total, [row.percentage for row in payload.allocations])
-        if percentage_mode
-        else [row.amount.quantize(Decimal("0.01")) for row in payload.allocations]
-    )
-    if abs(sum(amounts, Decimal("0")) - total) > Decimal(settings.allocation_tolerance):
-        raise HTTPException(status_code=409, detail="Allocation total does not equal invoice total")
-    centre_ids = [row.cost_center_id for row in payload.allocations]
-    if len(centre_ids) != len(set(centre_ids)):
-        raise HTTPException(status_code=422, detail="A cost center can occur only once")
-    centres = {row.id: row for row in db.scalars(select(CostCenter).where(CostCenter.id.in_(centre_ids), CostCenter.active.is_(True))).all()}
-    if set(centre_ids) != set(centres):
-        raise HTTPException(status_code=422, detail="Unknown or inactive cost center")
-    for existing in db.scalars(select(Allocation).where(Allocation.revision_id == revision.id, Allocation.active.is_(True))).all():
-        existing.active = False
-        record_event(db, "ALLOCATION_REMOVED", actor=user.subject, invoice=invoice, old_value={"id": existing.id, "amount": str(existing.amount)})
-    for item, amount in zip(payload.allocations, amounts, strict=True):
-        allocation = Allocation(
-            invoice_id=invoice.id,
-            revision_id=revision.id,
-            cost_center_id=item.cost_center_id,
-            amount=amount,
-            percentage=item.percentage,
-        )
-        db.add(allocation)
-        db.flush()
-        record_event(db, "ALLOCATION_CREATED", actor=user.subject, invoice=invoice, new_value={"id": allocation.id, "cost_center": centres[item.cost_center_id].code, "amount": str(amount)})
-    run_validations(db, invoice, user.subject)
-    db.commit()
+    try:
+        replace_allocations(db, invoice, payload.allocations, user.subject)
+        db.commit()
+    except WorkflowError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return serialize_invoice(db, _invoice_or_404(db, invoice_id))
 
 
@@ -516,58 +494,18 @@ def set_approvers(
     allocation = db.get(Allocation, allocation_id)
     if not allocation or allocation.invoice_id != invoice.id or not allocation.active:
         raise HTTPException(status_code=404, detail="Allocation not found")
-    if invoice.status in {
-        InvoiceStatus.AWAITING_APPROVAL,
-        InvoiceStatus.RETURNED,
-        InvoiceStatus.REJECTED,
-        InvoiceStatus.APPROVED,
-        InvoiceStatus.XML_READY,
-        InvoiceStatus.READY_FOR_EXPORT,
-        InvoiceStatus.EXPORT_CREATED,
-    }:
-        old_cost_center_id = allocation.cost_center_id
-        revision = fork_revision(db, invoice, user.subject, "Změna seznamu schvalovatelů")
-        allocation = db.scalar(
-            select(Allocation).where(
-                Allocation.revision_id == revision.id,
-                Allocation.cost_center_id == old_cost_center_id,
-                Allocation.active.is_(True),
-            )
+    try:
+        replace_approvers(
+            db,
+            invoice,
+            allocation,
+            payload.approver_subjects,
+            user.subject,
         )
-    subjects = list(dict.fromkeys(payload.approver_subjects))
-    identities = {
-        row.subject: row
-        for row in db.scalars(select(UserIdentity).where(UserIdentity.subject.in_(subjects))).all()
-    }
-    invalid_subjects = [
-        subject
-        for subject in subjects
-        if subject not in identities or "APPROVER" not in identities[subject].roles
-    ]
-    if invalid_subjects:
-        raise HTTPException(status_code=422, detail="Unknown or unauthorized approver")
-    existing = db.scalars(
-        select(ApprovalAssignment).where(
-            ApprovalAssignment.allocation_id == allocation.id,
-            ApprovalAssignment.active.is_(True),
-        )
-    ).all()
-    existing_subjects = {row.approver_subject for row in existing}
-    for row in existing:
-        if row.approver_subject not in subjects:
-            row.active = False
-            record_event(db, "APPROVER_REMOVED", actor=user.subject, invoice=invoice, old_value={"allocation_id": allocation.id, "approver": row.approver_subject})
-    for subject in subjects:
-        if subject not in existing_subjects:
-            assignment = ApprovalAssignment(
-                invoice_id=invoice.id,
-                revision_id=invoice.current_revision.id,
-                allocation_id=allocation.id,
-                approver_subject=subject,
-            )
-            db.add(assignment)
-            record_event(db, "APPROVER_ADDED", actor=user.subject, invoice=invoice, new_value={"allocation_id": allocation.id, "approver": subject})
-    db.commit()
+        db.commit()
+    except WorkflowError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return serialize_invoice(db, _invoice_or_404(db, invoice_id))
 
 

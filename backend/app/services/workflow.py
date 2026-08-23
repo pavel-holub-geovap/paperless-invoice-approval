@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import select
@@ -11,10 +11,12 @@ from app.models import (
     Allocation,
     ApprovalAction,
     ApprovalAssignment,
+    ApprovalAssignmentStatus,
     ApprovalDecision,
     Invoice,
     InvoiceRevision,
     InvoiceStatus,
+    UserIdentity,
     ValidationResult,
     ValidationSeverity,
 )
@@ -24,6 +26,8 @@ from app.services.audit import record_event
 class WorkflowError(ValueError):
     pass
 
+
+ALLOCATION_TOLERANCE = Decimal("0.01")
 
 ALLOWED_TRANSITIONS: dict[InvoiceStatus, set[InvoiceStatus]] = {
     InvoiceStatus.NEW: {InvoiceStatus.AI_PROCESSING, InvoiceStatus.VALIDATION},
@@ -53,7 +57,9 @@ SIGNIFICANT_FIELDS = {
     "supplier_address",
     "ico",
     "dic",
+    "address",
     "invoice_number",
+    "variable_symbol",
     "issue_date",
     "taxable_supply_date",
     "due_date",
@@ -73,6 +79,7 @@ PAPERLESS_TAG_SETTING: dict[InvoiceStatus, str] = {
     InvoiceStatus.AI_PROCESSING: "paperless_tag_processing",
     InvoiceStatus.QUEUE_REVIEW: "paperless_tag_queue_review",
     InvoiceStatus.NEEDS_REVIEW: "paperless_tag_queue_review",
+    InvoiceStatus.RETURNED: "paperless_tag_queue_review",
     InvoiceStatus.AWAITING_APPROVAL: "paperless_tag_approval",
     InvoiceStatus.APPROVED: "paperless_tag_approved",
     InvoiceStatus.REJECTED: "paperless_tag_rejected",
@@ -83,7 +90,13 @@ PAPERLESS_TAG_SETTING: dict[InvoiceStatus, str] = {
 }
 
 
-def transition(db: Session, invoice: Invoice, target: InvoiceStatus, actor: str, comment: str | None = None) -> None:
+def transition(
+    db: Session,
+    invoice: Invoice,
+    target: InvoiceStatus,
+    actor: str,
+    comment: str | None = None,
+) -> None:
     if target == invoice.status:
         return
     if target not in ALLOWED_TRANSITIONS[invoice.status]:
@@ -128,6 +141,14 @@ def create_invoice(db: Session, paperless_document_id: int, actor: str = "system
         invoice=invoice,
         metadata={"paperless_document_id": paperless_document_id},
     )
+    record_event(
+        db,
+        "REVISION_CREATED",
+        actor=actor,
+        invoice=invoice,
+        revision_number=1,
+        comment="Počáteční revize",
+    )
     return invoice
 
 
@@ -141,7 +162,8 @@ def update_invoice_data(
     current = invoice.current_revision
     if current is None:
         raise WorkflowError("Invoice has no revision")
-    unknown = set(changes) - set(current.data) - SIGNIFICANT_FIELDS - {"address", "variable_symbol", "description"}
+    allowed = SIGNIFICANT_FIELDS | {"description"}
+    unknown = set(changes) - set(current.data) - allowed
     if unknown:
         raise WorkflowError(f"Unknown invoice fields: {', '.join(sorted(unknown))}")
     changed = {key: value for key, value in changes.items() if current.data.get(key) != value}
@@ -149,8 +171,7 @@ def update_invoice_data(
         return current
     old_values = {key: current.data.get(key) for key in changed}
 
-    has_significant_change = bool(set(changed) & SIGNIFICANT_FIELDS)
-    if has_significant_change:
+    if set(changed) & SIGNIFICANT_FIELDS:
         new_revision = fork_revision(
             db,
             invoice,
@@ -198,14 +219,25 @@ def fork_revision(
     )
     db.add(new_revision)
     db.flush()
-    _copy_allocations_and_assignments(db, invoice, current.id, new_revision)
+    _copy_allocations_and_assignments(db, invoice, current.id, new_revision, actor)
     invoice.current_revision_number = new_revision.number
-    invalidate_approvals(db, invoice, actor, reason)
+    invalidate_approvals(db, invoice, actor, reason, keep_revision_id=new_revision.id)
+    record_event(
+        db,
+        "REVISION_CREATED",
+        actor=actor,
+        invoice=invoice,
+        revision_number=new_revision.number,
+        old_value={"revision": current.number},
+        new_value={"revision": new_revision.number},
+        comment=reason,
+    )
     if invoice.status not in {
         InvoiceStatus.NEW,
         InvoiceStatus.AI_PROCESSING,
         InvoiceStatus.VALIDATION,
         InvoiceStatus.NEEDS_REVIEW,
+        InvoiceStatus.QUEUE_REVIEW,
     }:
         old = invoice.status
         invoice.status = InvoiceStatus.NEEDS_REVIEW
@@ -216,15 +248,35 @@ def fork_revision(
             invoice=invoice,
             old_state=old.value,
             new_state=invoice.status.value,
+            comment=reason,
+        )
+        from app.services.jobs import enqueue_job
+
+        enqueue_job(
+            db,
+            "SYNC_PAPERLESS_STATUS",
+            f"paperless-status:{invoice.id}:r{new_revision.number}:NEEDS_REVIEW",
+            invoice_id=invoice.id,
+            payload={
+                "target_status": InvoiceStatus.NEEDS_REVIEW.value,
+                "tag_setting": "paperless_tag_queue_review",
+            },
         )
     return new_revision
 
 
 def _copy_allocations_and_assignments(
-    db: Session, invoice: Invoice, old_revision_id: str, new_revision: InvoiceRevision
+    db: Session,
+    invoice: Invoice,
+    old_revision_id: str,
+    new_revision: InvoiceRevision,
+    actor: str,
 ) -> None:
     old_allocations = db.scalars(
-        select(Allocation).where(Allocation.revision_id == old_revision_id, Allocation.active.is_(True))
+        select(Allocation).where(
+            Allocation.revision_id == old_revision_id,
+            Allocation.active.is_(True),
+        )
     ).all()
     for old in old_allocations:
         new = Allocation(
@@ -233,12 +285,15 @@ def _copy_allocations_and_assignments(
             cost_center_id=old.cost_center_id,
             amount=old.amount,
             percentage=old.percentage,
+            note=old.note,
+            created_by=actor,
         )
         db.add(new)
         db.flush()
         assignments = db.scalars(
             select(ApprovalAssignment).where(
-                ApprovalAssignment.allocation_id == old.id, ApprovalAssignment.active.is_(True)
+                ApprovalAssignment.allocation_id == old.id,
+                ApprovalAssignment.active.is_(True),
             )
         ).all()
         for assignment in assignments:
@@ -249,29 +304,57 @@ def _copy_allocations_and_assignments(
                     allocation_id=new.id,
                     approver_subject=assignment.approver_subject,
                     required=assignment.required,
+                    assigned_by=actor,
                 )
             )
 
 
-def invalidate_approvals(db: Session, invoice: Invoice, actor: str, reason: str) -> int:
-    decisions = db.scalars(
+def invalidate_approvals(
+    db: Session,
+    invoice: Invoice,
+    actor: str,
+    reason: str,
+    *,
+    keep_revision_id: str | None = None,
+) -> int:
+    decision_query = (
         select(ApprovalDecision)
         .join(ApprovalAssignment)
-        .where(ApprovalAssignment.invoice_id == invoice.id, ApprovalDecision.valid.is_(True))
-    ).all()
+        .where(
+            ApprovalAssignment.invoice_id == invoice.id,
+            ApprovalDecision.valid.is_(True),
+        )
+    )
+    assignment_query = select(ApprovalAssignment).where(
+        ApprovalAssignment.invoice_id == invoice.id,
+        ApprovalAssignment.active.is_(True),
+    )
+    if keep_revision_id:
+        decision_query = decision_query.where(ApprovalAssignment.revision_id != keep_revision_id)
+        assignment_query = assignment_query.where(ApprovalAssignment.revision_id != keep_revision_id)
+    decisions = db.scalars(decision_query).all()
+    assignments = db.scalars(assignment_query).all()
     now = datetime.now(UTC)
     for decision in decisions:
         decision.valid = False
         decision.invalidated_at = now
         decision.invalidation_reason = reason
-    if decisions:
+    for assignment in assignments:
+        assignment.active = False
+        assignment.status = ApprovalAssignmentStatus.INVALIDATED
+        assignment.invalidated_at = now
+        assignment.invalidation_reason = reason
+    if decisions or assignments:
         record_event(
             db,
             "APPROVAL_INVALIDATED",
             actor=actor,
             invoice=invoice,
             comment=reason,
-            metadata={"decision_ids": [decision.id for decision in decisions]},
+            metadata={
+                "decision_ids": [decision.id for decision in decisions],
+                "assignment_ids": [assignment.id for assignment in assignments],
+            },
         )
     return len(decisions)
 
@@ -283,70 +366,133 @@ def confirm_original(db: Session, invoice: Invoice, actor: str) -> None:
     record_event(db, "ORIGINAL_REVIEW_CONFIRMED", actor=actor, invoice=invoice)
 
 
+def allocation_totals(db: Session, invoice: Invoice) -> tuple[Decimal, Decimal, Decimal]:
+    revision = invoice.current_revision
+    if revision is None:
+        return Decimal("0"), Decimal("0"), Decimal("0")
+    try:
+        total = Decimal(str(revision.data.get("total_amount") or "0")).quantize(Decimal("0.01"))
+    except InvalidOperation:
+        total = Decimal("0")
+    allocated = sum(
+        db.scalars(
+            select(Allocation.amount).where(
+                Allocation.revision_id == revision.id,
+                Allocation.active.is_(True),
+            )
+        ).all(),
+        Decimal("0"),
+    ).quantize(Decimal("0.01"))
+    return total, allocated, (total - allocated).quantize(Decimal("0.01"))
+
+
 def ready_for_approval(db: Session, invoice: Invoice) -> tuple[bool, list[str]]:
     revision = invoice.current_revision
     if revision is None:
         return False, ["Faktura nemá revizi."]
     errors: list[str] = []
+    if not revision.data:
+        errors.append("Faktura nemá vytěžená ani ručně doplněná data.")
     if not invoice.original_review_confirmed or invoice.original_reviewed_at is None:
         errors.append("Originál nebyl zkontrolován.")
     if db.scalar(
-        select(ValidationResult.id).where(
+        select(ValidationResult.id)
+        .where(
             ValidationResult.revision_id == revision.id,
             ValidationResult.severity == ValidationSeverity.BLOCKING_ERROR,
-        ).limit(1)
+        )
+        .limit(1)
     ):
         errors.append("Faktura má blokující validační chyby.")
     allocations = db.scalars(
-        select(Allocation).where(Allocation.revision_id == revision.id, Allocation.active.is_(True))
+        select(Allocation).where(
+            Allocation.revision_id == revision.id,
+            Allocation.active.is_(True),
+        )
     ).all()
-    total = Decimal(str(revision.data.get("total_amount") or "0"))
+    total, allocated, _ = allocation_totals(db, invoice)
     if not allocations:
         errors.append("Faktura nemá rozúčtování.")
-    elif abs(sum((row.amount for row in allocations), Decimal("0")) - total) > Decimal("0.01"):
+    elif abs(allocated - total) > ALLOCATION_TOLERANCE:
         errors.append("Rozúčtování neodpovídá částce faktury.")
     for allocation in allocations:
-        assigned = db.scalar(
-            select(ApprovalAssignment.id).where(
+        assignments = db.scalars(
+            select(ApprovalAssignment).where(
                 ApprovalAssignment.allocation_id == allocation.id,
                 ApprovalAssignment.revision_id == revision.id,
                 ApprovalAssignment.active.is_(True),
                 ApprovalAssignment.required.is_(True),
-            ).limit(1)
-        )
-        if not assigned:
+            )
+        ).all()
+        if not assignments:
             errors.append(f"Středisko {allocation.cost_center_id} nemá schvalovatele.")
+            continue
+        subjects = {assignment.approver_subject for assignment in assignments}
+        valid_users = {
+            user.subject
+            for user in db.scalars(
+                select(UserIdentity).where(
+                    UserIdentity.subject.in_(subjects),
+                    UserIdentity.active.is_(True),
+                )
+            ).all()
+            if "APPROVER" in user.roles
+        }
+        if subjects != valid_users:
+            errors.append(
+                f"Středisko {allocation.cost_center_id} obsahuje neaktivního nebo neoprávněného schvalovatele."
+            )
     return not errors, errors
 
 
 def submit_for_approval(db: Session, invoice: Invoice, actor: str) -> None:
     if invoice.status == InvoiceStatus.RETURNED:
         fork_revision(db, invoice, actor, "Opětovné předání po RETURN")
-        from app.services.validation import run_validations
+    from app.services.validation import run_validations
 
-        run_validations(db, invoice, actor)
+    run_validations(db, invoice, actor)
+    db.flush()
     ok, errors = ready_for_approval(db, invoice)
     if not ok:
         raise WorkflowError(" ".join(errors))
-    if invoice.status not in {InvoiceStatus.QUEUE_REVIEW, InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.RETURNED, InvoiceStatus.READY_FOR_APPROVAL}:
+    if invoice.status not in {
+        InvoiceStatus.QUEUE_REVIEW,
+        InvoiceStatus.NEEDS_REVIEW,
+        InvoiceStatus.RETURNED,
+        InvoiceStatus.READY_FOR_APPROVAL,
+    }:
         raise WorkflowError(f"Invoice cannot be submitted from {invoice.status.value}")
     if invoice.status != InvoiceStatus.READY_FOR_APPROVAL:
-        old = invoice.status
-        invoice.status = InvoiceStatus.READY_FOR_APPROVAL
-        record_event(db, "WORKFLOW_TRANSITION", actor=actor, invoice=invoice, old_state=old.value, new_state=invoice.status.value)
+        transition(db, invoice, InvoiceStatus.READY_FOR_APPROVAL, actor)
     transition(db, invoice, InvoiceStatus.AWAITING_APPROVAL, actor)
+    record_event(
+        db,
+        "SENT_FOR_APPROVAL",
+        actor=actor,
+        invoice=invoice,
+        new_state=InvoiceStatus.AWAITING_APPROVAL.value,
+    )
 
 
-def decide(db: Session, assignment: ApprovalAssignment, action: ApprovalAction, actor: str, comment: str | None) -> ApprovalDecision:
+def decide(
+    db: Session,
+    assignment: ApprovalAssignment,
+    action: ApprovalAction,
+    actor: str,
+    comment: str | None,
+) -> ApprovalDecision:
     if actor != assignment.approver_subject:
         raise WorkflowError("Only the assigned approver may decide this task")
-    invoice = db.get(Invoice, assignment.invoice_id)
-    if invoice is None or invoice.status != InvoiceStatus.AWAITING_APPROVAL:
-        raise WorkflowError("Invoice is not awaiting approval")
-    if assignment.revision_id != invoice.current_revision.id or not assignment.active:
-        raise WorkflowError("Approval assignment does not belong to the current revision")
-    if action in {ApprovalAction.RETURN, ApprovalAction.REJECT} and not (comment and comment.strip()):
-        raise WorkflowError("RETURN and REJECT require a comment")
+    invoice = db.scalar(select(Invoice).where(Invoice.id == assignment.invoice_id).with_for_update())
+    if invoice is None:
+        raise WorkflowError("Invoice does not exist")
+    assignment = db.scalar(
+        select(ApprovalAssignment)
+        .where(ApprovalAssignment.id == assignment.id)
+        .with_for_update()
+    )
+    if assignment is None or actor != assignment.approver_subject:
+        raise WorkflowError("Approval assignment is not available to this approver")
     existing = db.scalar(
         select(ApprovalDecision).where(
             ApprovalDecision.assignment_id == assignment.id,
@@ -354,8 +500,20 @@ def decide(db: Session, assignment: ApprovalAssignment, action: ApprovalAction, 
         )
     )
     if existing:
+        if existing.action == action and existing.actor_subject == actor:
+            return existing
         raise WorkflowError("This assignment already has a valid decision")
+    if invoice.status != InvoiceStatus.AWAITING_APPROVAL:
+        raise WorkflowError("Invoice is not awaiting approval")
+    revision = invoice.current_revision
+    if revision is None or assignment.revision_id != revision.id or not assignment.active:
+        raise WorkflowError("Approval assignment does not belong to the current revision")
+    if assignment.status != ApprovalAssignmentStatus.PENDING:
+        raise WorkflowError("Approval assignment is no longer pending")
+    if action in {ApprovalAction.RETURN, ApprovalAction.REJECT} and not (comment and comment.strip()):
+        raise WorkflowError("RETURN and REJECT require a comment")
 
+    now = datetime.now(UTC)
     decision = ApprovalDecision(
         assignment_id=assignment.id,
         revision_id=assignment.revision_id,
@@ -363,9 +521,23 @@ def decide(db: Session, assignment: ApprovalAssignment, action: ApprovalAction, 
         actor_subject=actor,
         comment=comment,
     )
+    assignment.status = {
+        ApprovalAction.APPROVE: ApprovalAssignmentStatus.APPROVED,
+        ApprovalAction.RETURN: ApprovalAssignmentStatus.RETURNED,
+        ApprovalAction.REJECT: ApprovalAssignmentStatus.REJECTED,
+    }[action]
+    assignment.decided_at = now
+    assignment.comment = comment
     db.add(decision)
     db.flush()
-    record_event(db, action.value if action != ApprovalAction.APPROVE else "APPROVED", actor=actor, invoice=invoice, comment=comment, metadata={"assignment_id": assignment.id, "allocation_id": assignment.allocation_id})
+    record_event(
+        db,
+        action.value if action != ApprovalAction.APPROVE else "APPROVED",
+        actor=actor,
+        invoice=invoice,
+        comment=comment,
+        metadata={"assignment_id": assignment.id, "allocation_id": assignment.allocation_id},
+    )
 
     if action == ApprovalAction.RETURN:
         transition(db, invoice, InvoiceStatus.RETURNED, actor, comment)
@@ -390,18 +562,7 @@ def all_required_approved(db: Session, invoice: Invoice) -> bool:
     ).all()
     if not assignments:
         return False
-    for assignment in assignments:
-        approved = db.scalar(
-            select(ApprovalDecision.id).where(
-                ApprovalDecision.assignment_id == assignment.id,
-                ApprovalDecision.revision_id == revision.id,
-                ApprovalDecision.action == ApprovalAction.APPROVE,
-                ApprovalDecision.valid.is_(True),
-            ).limit(1)
-        )
-        if not approved:
-            return False
-    return True
+    return all(assignment.status == ApprovalAssignmentStatus.APPROVED for assignment in assignments)
 
 
 def reopen(db: Session, invoice: Invoice, actor: str, comment: str | None = None) -> None:
@@ -412,4 +573,12 @@ def reopen(db: Session, invoice: Invoice, actor: str, comment: str | None = None
     invoice.original_review_confirmed = False
     invoice.original_reviewed_at = None
     invoice.original_reviewed_by = None
-    record_event(db, "REOPENED", actor=actor, invoice=invoice, old_state=old.value, new_state=invoice.status.value, comment=comment)
+    record_event(
+        db,
+        "REOPENED",
+        actor=actor,
+        invoice=invoice,
+        old_state=old.value,
+        new_state=invoice.status.value,
+        comment=comment,
+    )

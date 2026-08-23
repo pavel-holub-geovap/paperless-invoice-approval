@@ -24,6 +24,8 @@ export type InvoiceListItem = {
   due_date?: string;
   approvals_done: number;
   approvals_required: number;
+  warning_count: number;
+  blocking_error_count: number;
   updated_at: string;
 };
 
@@ -33,6 +35,8 @@ export type CostCenter = {
   name: string;
   pohoda_code: string;
   active: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Validation = {
@@ -73,6 +77,11 @@ export type Assignment = {
   id: string;
   approver_subject: string;
   required: boolean;
+  status: string;
+  assigned_by: string;
+  assigned_at: string;
+  decided_at?: string;
+  comment?: string;
   decision?: string;
 };
 
@@ -80,6 +89,8 @@ export type Allocation = {
   id: string;
   amount: string;
   percentage?: string;
+  note?: string;
+  created_by: string;
   cost_center: CostCenter;
   assignments: Assignment[];
 };
@@ -114,6 +125,11 @@ export type Invoice = {
   extracted_fields: { field_name: string; value: unknown; source_text?: string }[];
   validations: Validation[];
   allocations: Allocation[];
+  allocation_summary: {
+    invoice_total: string;
+    allocated: string;
+    remaining: string;
+  };
 };
 
 export type ApprovalTask = {
@@ -127,9 +143,27 @@ export type ApprovalTask = {
   currency?: string;
   cost_center: string;
   allocation_amount: string;
+  allocation_percentage?: string;
+  allocation_note?: string;
+  invoice_data: Record<string, unknown>;
+  assignment_status: string;
   decision?: string;
   comment?: string;
   current: boolean;
+};
+
+export type AuditEvent = {
+  id: string;
+  timestamp: string;
+  actor: string;
+  revision?: number;
+  event_type: string;
+  old_state?: string;
+  new_state?: string;
+  old_value?: unknown;
+  new_value?: unknown;
+  comment?: string;
+  metadata: Record<string, unknown>;
 };
 
 export type ExportBatch = {

@@ -412,6 +412,17 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
 
     account = str(_value(data, "bank_account") or "").replace(" ", "")
     bank_code = str(_value(data, "bank_code") or "").replace(" ", "")
+    if bool(account) != bool(bank_code):
+        results.append(
+            _result(
+                "DOMESTIC_ACCOUNT_INCOMPLETE",
+                ValidationSeverity.WARNING,
+                "Český domácí účet musí obsahovat číslo účtu i čtyřmístný kód banky.",
+                "bank_account" if account else "bank_code",
+                expected="[prefix-]account / bank code",
+                actual={"bank_account": account or None, "bank_code": bank_code or None},
+            )
+        )
     if account and not BANK_ACCOUNT_RE.fullmatch(account):
         results.append(
             _result(
@@ -420,9 +431,16 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                 expected="[prefix-]account", actual=account
             )
         )
-    elif account:
+    elif account and bank_code and BANK_CODE_RE.fullmatch(bank_code):
         results.append(
-            _result("BANK_ACCOUNT_OK", ValidationSeverity.OK, "Číslo účtu má platný základní formát.")
+            _result(
+                "DOMESTIC_ACCOUNT_OK",
+                ValidationSeverity.OK,
+                "Český domácí účet má platný základní formát.",
+                "bank_account",
+                expected="[prefix-]account / 4 digit bank code",
+                actual=f"{account}/{bank_code}",
+            )
         )
     if bank_code and not BANK_CODE_RE.fullmatch(bank_code):
         results.append(
@@ -449,6 +467,32 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
             _result(
                 "BIC_FORMAT", ValidationSeverity.WARNING, "SWIFT/BIC nemá platný formát.",
                 "swift_bic", expected="8 or 11 alphanumeric characters", actual=bic
+            )
+        )
+    elif bic:
+        results.append(
+            _result("BIC_OK", ValidationSeverity.OK, "SWIFT/BIC má platný formát.")
+        )
+    if bic and not iban:
+        results.append(
+            _result(
+                "BIC_WITHOUT_IBAN",
+                ValidationSeverity.WARNING,
+                "SWIFT/BIC je uveden bez IBAN; platební údaj je potřeba ručně ověřit.",
+                "swift_bic",
+                expected="IBAN with BIC",
+                actual=bic,
+            )
+        )
+    if not account and not bank_code and not iban:
+        results.append(
+            _result(
+                "PAYMENT_DETAILS_MISSING",
+                ValidationSeverity.WARNING,
+                "Není uveden domácí účet ani IBAN; správce musí platební údaje ověřit v originálu.",
+                "bank_account",
+                expected="complete domestic account or valid IBAN",
+                actual=None,
             )
         )
 
@@ -503,7 +547,7 @@ def run_validations(
         if abs(allocated - total) > Decimal("0.01"):
             results.append(
                 _result(
-                    "ALLOCATION_TOTAL", ValidationSeverity.BLOCKING_ERROR,
+                    "ALLOCATION_TOTAL_MISMATCH", ValidationSeverity.BLOCKING_ERROR,
                     "Součet rozúčtování neodpovídá částce faktury.",
                     expected=str(total), actual=str(allocated)
                 )
@@ -511,7 +555,7 @@ def run_validations(
         else:
             results.append(
                 _result(
-                    "ALLOCATION_TOTAL", ValidationSeverity.OK,
+                    "ALLOCATION_TOTAL_OK", ValidationSeverity.OK,
                     "Součet rozúčtování odpovídá faktuře.",
                     expected=str(total), actual=str(allocated)
                 )

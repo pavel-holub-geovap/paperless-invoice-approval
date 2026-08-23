@@ -6,9 +6,9 @@ from app.db import SessionLocal
 from app.models import CostCenter
 
 SEED_CENTRES = (
-    ("IT", "Informační technologie", "IT"),
-    ("GIS", "Geografické informační systémy", "GIS"),
-    ("PROVOZ", "Provoz", "PROVOZ"),
+    ("100", "Správa", "100"),
+    ("200", "Vývoj", "200"),
+    ("300", "Obchod", "300"),
 )
 
 
@@ -21,4 +21,3 @@ def seed() -> None:
 
 if __name__ == "__main__":
     seed()
-

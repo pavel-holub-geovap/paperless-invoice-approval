@@ -10,7 +10,7 @@ Podrobnosti jsou v `docs/ARCHITECTURE.md`. Doménová logika patří do `backend
 
 - Kopíruj `.env.example` na `.env`; žádný secret necommituj.
 - Konfigurace: `docker-compose config`
-- Stack Etapy D: `docker-compose up -d --build` (včetně Ollamy a idempotentního stažení modelu)
+- Stack Etapy E: `docker-compose up -d --build` (včetně Ollamy a idempotentního stažení modelu)
 - Backend testy: `cd backend` a `pytest`
 - Frontend testy: `cd frontend` a `npm run test`
 - Frontend build: `cd frontend` a `npm run build`
@@ -48,5 +48,6 @@ Před prací zkontroluj `git status`, remote a branch. Pokud remote existuje, po
 2. Approval assignment náleží allocation a revizi; všechny povinné assignments musí schválit.
 3. Významná změna dat, allocations nebo schvalovatelů vytvoří novou revizi a invaliduje dřívější schválení, ale nemaže je.
 4. `RETURN` a `REJECT` vyžadují komentář; `REJECT` platí pro celou fakturu.
-5. Export je povolen jen po finálním schválení a úspěšné XSD validaci.
-6. `EXPORT_CREATED` není `IMPORTED_TO_POHODA`; druhý stav vzniká jen explicitním potvrzením správce.
+5. Rozhodovací transakce zamyká fakturu a assignment; jeden assignment smí mít nejvýše jedno platné rozhodnutí.
+6. Export je povolen jen po finálním schválení a úspěšné XSD validaci.
+7. `EXPORT_CREATED` není `IMPORTED_TO_POHODA`; druhý stav vzniká jen explicitním potvrzením správce.

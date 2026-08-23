@@ -9,6 +9,8 @@ from app.auth import ROLE_QUEUE_MANAGER, require_csrf, require_roles
 from app.db import get_db
 from app.models import CostCenter
 from app.schemas import CostCenterIn, CostCenterOut, CurrentUser
+from app.services.cost_centers import create_cost_center as create_row
+from app.services.cost_centers import update_cost_center as update_row
 
 router = APIRouter(prefix="/cost-centers", tags=["cost-centers"])
 
@@ -33,9 +35,8 @@ def create_cost_center(
 ) -> CostCenter:
     if "QUEUE_MANAGER" not in user.roles:
         raise HTTPException(status_code=403, detail="QUEUE_MANAGER role required")
-    row = CostCenter(**payload.model_dump())
-    db.add(row)
     try:
+        row = create_row(db, payload.model_dump(), user.subject)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -56,9 +57,8 @@ def update_cost_center(
     row = db.get(CostCenter, cost_center_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Cost center not found")
-    for key, value in payload.model_dump().items():
-        setattr(row, key, value)
     try:
+        update_row(db, row, payload.model_dump(), user.subject)
         db.commit()
     except IntegrityError as exc:
         db.rollback()

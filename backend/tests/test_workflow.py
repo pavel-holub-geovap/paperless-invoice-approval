@@ -13,6 +13,7 @@ from app.models import (
     ApprovalDecision,
     CostCenter,
     InvoiceStatus,
+    UserIdentity,
 )
 from app.services.validation import run_validations
 from app.services.workflow import (
@@ -63,6 +64,7 @@ def prepared_invoice(db: Session, approvers: tuple[str, ...] = ("approver-1",)):
     db.flush()
     assignments = []
     for subject in approvers:
+        db.add(UserIdentity(subject=subject, username=subject, roles=["APPROVER"], active=True))
         assignment = ApprovalAssignment(
             invoice_id=invoice.id,
             revision_id=invoice.current_revision.id,
@@ -192,6 +194,14 @@ def test_three_cost_centres_are_approved_in_parallel(db: Session) -> None:
             revision_id=invoice.current_revision.id,
             allocation_id=allocation.id,
             approver_subject=f"approver-{index}",
+        )
+        db.add(
+            UserIdentity(
+                subject=f"approver-{index}",
+                username=f"approver-{index}",
+                roles=["APPROVER"],
+                active=True,
+            )
         )
         db.add(assignment)
         assignments.append(assignment)

@@ -35,3 +35,11 @@ Kvůli spolehlivým OIDC issuer a callback URL přes IP adresu nepoužíváme UR
 ## ADR-009: Oddělené OIDC clients a runtime Paperless token
 
 Keycloak provisioning vytváří clients `approval-app` a `paperless` s různými secrets, realm roles i skupinami `QUEUE_MANAGER` a `APPROVER`. Paperless provisioning vytváří testovací skupiny/tagy a uloží API token do samostatného Docker volume; token není v browseru ani Gitu. Testovací service account má kvůli objektovým oprávněním široký přístup pouze v izolovaném tenantovi; produkce musí použít nejmenší nutná oprávnění.
+
+## ADR-010: Bezpečná invalidace celé faktury
+
+Po zahájení schvalování změna významného fakturačního pole, allocation, střediska nebo seznamu approverů vytváří novou revizi a invaliduje všechna starší platná rozhodnutí i assignmenty faktury. Nezachováváme ani zdánlivě nedotčená schválení; jednoznačnost a auditovatelnost mají přednost před optimalizací.
+
+## ADR-011: Paralelní approvals s řádkovým zámkem
+
+Schvalovatelé nemají pořadí. Každé rozhodnutí zamkne fakturu a assignment v jednotném pořadí a databáze má částečný unikátní index na platné rozhodnutí assignmentu. Opakovaný shodný `APPROVE` vrací původní rozhodnutí, konfliktní nebo zastaralý požadavek je odmítnut.

@@ -123,6 +123,7 @@ class AllocationInput(BaseModel):
     cost_center_id: str
     amount: Decimal | None = Field(default=None, ge=0)
     percentage: Decimal | None = Field(default=None, ge=0, le=100)
+    note: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def one_mode(self) -> AllocationInput:
@@ -179,6 +180,8 @@ class InvoiceListItem(BaseModel):
     due_date: str | None
     approvals_done: int = 0
     approvals_required: int = 0
+    warning_count: int = 0
+    blocking_error_count: int = 0
     updated_at: datetime
 
 
@@ -191,6 +194,8 @@ class CostCenterIn(BaseModel):
 
 class CostCenterOut(CostCenterIn):
     id: str
+    created_at: datetime
+    updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 

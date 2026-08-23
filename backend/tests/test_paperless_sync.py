@@ -45,6 +45,7 @@ def test_paperless_snapshot_is_persisted_without_pdf(db: Session) -> None:
     )
     assert [event.event_type for event in events] == [
         "DOCUMENT_DISCOVERED",
+        "REVISION_CREATED",
         "PAPERLESS_DOCUMENT_SYNCED",
         "WORKFLOW_TRANSITION",
         "WORKFLOW_TRANSITION",

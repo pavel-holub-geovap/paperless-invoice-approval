@@ -31,7 +31,9 @@ Deterministická validační služba používá `Decimal`, český checksum IČO
 
 ## Revize a approvals
 
-`Invoice.current_revision` ukazuje aktivní snapshot. Approval assignment obsahuje `invoice_revision_id` a `allocation_id`. Významná změna vytvoří novou revizi/snapshot, označí aktivní decisions jako invalidní, uchová jejich auditní stopu a vrátí fakturu do přípravy nebo `AWAITING_APPROVAL` podle fáze.
+`Invoice.current_revision` ukazuje aktivní snapshot. Allocation ukládá `NUMERIC(18,2)`, volitelné procento, středisko, poznámku a autora. Approval assignment obsahuje fakturu, revizi, allocation, approvera, lifecycle stav a časy přiřazení/rozhodnutí/invalidace. Významná změna vytvoří novou revizi, zkopíruje aktuální návrh allocations a approverů, invaliduje staré assignmenty i decisions, uchová auditní stopu a vrátí fakturu do `NEEDS_REVIEW`.
+
+Rozhodovací transakce nejprve zamkne řádek faktury a potom assignment. Částečný unikátní index dovoluje nejvýše jedno platné rozhodnutí na assignment. Tím jsou double-click i souběžná rozhodnutí deterministická. Finální `APPROVED` vzniká až po kontrole všech aktivních povinných assignmentů aktuální revize. Detailní state machine je v `docs/APPROVAL_WORKFLOW.md`.
 
 ## Background joby
 

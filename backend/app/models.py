@@ -18,6 +18,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,6 +60,14 @@ class ApprovalAction(enum.StrEnum):
     APPROVE = "APPROVE"
     RETURN = "RETURN"
     REJECT = "REJECT"
+
+
+class ApprovalAssignmentStatus(enum.StrEnum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    RETURNED = "RETURNED"
+    REJECTED = "REJECTED"
+    INVALIDATED = "INVALIDATED"
 
 
 class JobStatus(enum.StrEnum):
@@ -259,12 +268,21 @@ class CostCenter(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     pohoda_code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class Allocation(Base):
     __tablename__ = "allocations"
     __table_args__ = (
-        UniqueConstraint("revision_id", "cost_center_id", name="uq_revision_cost_center"),
+        Index(
+            "uq_active_revision_cost_center",
+            "revision_id",
+            "cost_center_id",
+            unique=True,
+            postgresql_where=text("active"),
+            sqlite_where=text("active = 1"),
+        ),
         Index("ix_allocation_invoice_revision", "invoice_id", "revision_id"),
     )
 
@@ -274,7 +292,11 @@ class Allocation(Base):
     cost_center_id: Mapped[str] = mapped_column(ForeignKey("cost_centers.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     percentage: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(255), default="system", nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     invoice: Mapped[Invoice] = relationship(back_populates="allocations")
     cost_center: Mapped[CostCenter] = relationship()
@@ -295,7 +317,19 @@ class ApprovalAssignment(Base):
     allocation_id: Mapped[str] = mapped_column(ForeignKey("allocations.id", ondelete="CASCADE"), index=True)
     approver_subject: Mapped[str] = mapped_column(String(255), index=True)
     required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    status: Mapped[ApprovalAssignmentStatus] = mapped_column(
+        Enum(ApprovalAssignmentStatus, native_enum=False),
+        default=ApprovalAssignmentStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    assigned_by: Mapped[str] = mapped_column(String(255), default="system", nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    comment: Mapped[str | None] = mapped_column(Text)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    invalidation_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     allocation: Mapped[Allocation] = relationship(back_populates="assignments")
@@ -304,6 +338,15 @@ class ApprovalAssignment(Base):
 
 class ApprovalDecision(Base):
     __tablename__ = "approval_decisions"
+    __table_args__ = (
+        Index(
+            "uq_approval_decision_valid_assignment",
+            "assignment_id",
+            unique=True,
+            postgresql_where=text("valid"),
+            sqlite_where=text("valid = 1"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     assignment_id: Mapped[str] = mapped_column(ForeignKey("approval_assignments.id"), index=True)
