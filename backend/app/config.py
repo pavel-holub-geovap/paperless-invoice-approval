@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://ollama:11434"
     ollama_model: str = "qwen3:4b"
     ollama_num_ctx: int = 4096
-    ollama_timeout_seconds: int = 180
+    ollama_timeout_seconds: int = 300
     ollama_num_gpu: int = 0
     ollama_keep_alive: str = "5m"
     ai_extraction_enabled: bool = True

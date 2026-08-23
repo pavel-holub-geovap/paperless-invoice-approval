@@ -86,7 +86,7 @@ def accuracy(expected: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]
 
 
 def wait_for_ai(client, base_url: str, invoice_id: str, after_revision: int = 0) -> dict[str, Any]:
-    deadline = time.monotonic() + 300
+    deadline = time.monotonic() + 600
     while time.monotonic() < deadline:
         detail = response_json(client.get(f"{base_url}/api/invoices/{invoice_id}"), "AI poll")
         latest = detail["ai"]["latest"]
@@ -96,7 +96,7 @@ def wait_for_ai(client, base_url: str, invoice_id: str, after_revision: int = 0)
             if latest["status"] == "AI_FAILED":
                 raise RuntimeError(f"AI extraction failed: {latest['error_code']}")
         time.sleep(2)
-    raise RuntimeError("AI extraction did not finish within 300 seconds")
+    raise RuntimeError("AI extraction did not finish within 600 seconds")
 
 
 async def injection_test(ocr: str, expected: dict[str, Any]) -> dict[str, Any]:

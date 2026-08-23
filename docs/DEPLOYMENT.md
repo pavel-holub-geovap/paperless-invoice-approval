@@ -49,7 +49,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Model určuje `OLLAMA_MODEL`; výchozí je `qwen3:4b`. `ollama-pull` ho stáhne do `ollama_data` a worker začne až po úspěšném dokončení. Konfigurace vynucuje jednu paralelní CPU inferenci (`OLLAMA_NUM_GPU=0`), teplotu 0 a kontext 4096. Před stažením modelu, po něm a během první inference zaznamenejte `free -h` a `docker stats`. Potom spusťte Stage D smoke test z `docs/TESTING.md` a ověřte golden accuracy i prompt injection.
+Model určuje `OLLAMA_MODEL`; výchozí je `qwen3:4b`. `ollama-pull` ho stáhne do `ollama_data` a worker začne až po úspěšném dokončení. Konfigurace vynucuje jednu paralelní CPU inferenci (`OLLAMA_NUM_GPU=0`), teplotu 0, kontext 4096 a timeout 300 s. Před stažením modelu, po něm a během první inference zaznamenejte `free -h` a `docker stats`. Potom spusťte Stage D smoke test z `docs/TESTING.md` a ověřte golden accuracy i prompt injection.
 
 ## Etapy E–F: workflow a export
 
