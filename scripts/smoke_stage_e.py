@@ -268,6 +268,7 @@ def main() -> None:
         returned = detail(manager, base_url, invoice_id)
         require(returned["status"] == "RETURNED", "RETURN did not return the whole invoice")
         return_tag = wait_for_tag(manager, base_url, invoice_id, "Kontrola správce")
+        require(return_tag, "Paperless did not confirm the returned status tag")
         returned_revision = returned["current_revision_number"]
         resubmitted = response_json(
             api(manager, "POST", f"{base_url}/api/invoices/{invoice_id}/submit", manager_user),
@@ -284,6 +285,7 @@ def main() -> None:
         rejected = detail(manager, base_url, invoice_id)
         require(rejected["status"] == "REJECTED", "REJECT did not reject the invoice")
         reject_tag = wait_for_tag(manager, base_url, invoice_id, "Zamítnuto")
+        require(reject_tag, "Paperless did not confirm the rejected status tag")
         stale_task = tasks(clients["approver1"], base_url)
         require(not stale_task, "Approver still sees a task after REJECT")
         decide(clients["approver1"], base_url, users["approver1"], first_task["id"], "APPROVE", expected=409)
@@ -415,6 +417,7 @@ def main() -> None:
         flow.append(final_detail["status"])
         require(flow == ["AWAITING_APPROVAL", "AWAITING_APPROVAL", "AWAITING_APPROVAL", "APPROVED"], "Final approval state sequence is invalid")
         approved_tag = wait_for_tag(manager, base_url, invoice_id, "Schváleno")
+        require(approved_tag, "Paperless did not confirm the approved status tag")
 
         # Authorization: foreign assignment and manager API remain protected.
         foreign_http = decide(
@@ -424,6 +427,10 @@ def main() -> None:
         require(manager_list_http == 403, "Approver can access manager invoice list")
 
         final_audit = audit(manager, base_url, invoice_id)
+        audit_types = {event["event_type"] for event in final_audit}
+        require("RETURNED" in audit_types, "RETURNED audit event is missing")
+        require("REJECTED" in audit_types, "REJECTED audit event is missing")
+        subject_names = {subject: name for name, subject in subjects.items()}
         print(json.dumps({
             "app_url": base_url,
             "paperless_document_id": document_id,
@@ -438,7 +445,11 @@ def main() -> None:
             "allocated_total": str(final_detail["allocation_summary"]["allocated"]),
             "remaining": str(final_detail["allocation_summary"]["remaining"]),
             "assignments": [
-                {"approver": row["approver_subject"], "cost_center": row["cost_center"], "amount": str(row["amount"])}
+                {
+                    "approver": subject_names.get(row["approver_subject"], row["approver_subject"]),
+                    "cost_center": row["cost_center"],
+                    "amount": str(row["amount"]),
+                }
                 for row in final_assignments
             ],
             "original_review_confirmed": final_detail["original_review_confirmed"],
@@ -454,7 +465,7 @@ def main() -> None:
             "paperless_tags": {"returned": return_tag, "rejected": reject_tag, "approved": approved_tag},
             "final_status": final_detail["status"],
             "audit_events": len(final_audit),
-            "audit_types": sorted({event["event_type"] for event in final_audit}),
+            "audit_types": sorted(audit_types),
         }, ensure_ascii=False, indent=2))
     finally:
         for client in clients.values():

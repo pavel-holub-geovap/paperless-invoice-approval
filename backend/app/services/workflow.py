@@ -532,7 +532,11 @@ def decide(
     db.flush()
     record_event(
         db,
-        action.value if action != ApprovalAction.APPROVE else "APPROVED",
+        {
+            ApprovalAction.APPROVE: "APPROVED",
+            ApprovalAction.RETURN: "RETURNED",
+            ApprovalAction.REJECT: "REJECTED",
+        }[action],
         actor=actor,
         invoice=invoice,
         comment=comment,

@@ -209,6 +209,12 @@ def test_return_reject_comments_and_reopen_history(db) -> None:
 
     reject = decide(db, assignments[0], ApprovalAction.REJECT, "approver-1", "Plnění odmítnuto")
     assert invoice.status == InvoiceStatus.REJECTED
+    assert db.scalar(
+        select(AuditEvent.id).where(
+            AuditEvent.invoice_id == invoice.id,
+            AuditEvent.event_type == "REJECTED",
+        )
+    )
     with pytest.raises(WorkflowError, match="not awaiting"):
         decide(db, assignments[1], ApprovalAction.APPROVE, "approver-2", None)
     rejected_revision = invoice.current_revision_number

@@ -122,8 +122,14 @@ async def process_one(paperless: PaperlessClient, ollama: OllamaClient | None) -
                 tag_name = getattr(get_settings(), str(sync_job.payload["tag_setting"]))
                 paperless_id = invoice.paperless_document_id
             await paperless.set_managed_status_tag(paperless_id, tag_name)
+            document = await paperless.get_document(paperless_id)
             with SessionLocal.begin() as db:
-                complete_job(db.get(ProcessingJob, job_id))
+                sync_job = db.get(ProcessingJob, job_id)
+                invoice = db.get(Invoice, invoice_id)
+                if sync_job is None or invoice is None:
+                    raise ValueError("Invoice or status job no longer exists")
+                sync_document_snapshot(db, invoice, document)
+                complete_job(sync_job)
             return True
         if job_type == AI_JOB_TYPE:
             if ollama is None:
