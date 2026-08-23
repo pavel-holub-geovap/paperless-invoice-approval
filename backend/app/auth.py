@@ -109,10 +109,12 @@ async def exchange_and_validate_code(
 def roles_from_claims(claims: dict[str, object], client_id: str) -> list[str]:
     realm_access = claims.get("realm_access") or {}
     resource_access = claims.get("resource_access") or {}
+    groups = claims.get("groups") or []
     realm_roles = realm_access.get("roles", []) if isinstance(realm_access, dict) else []
     client = resource_access.get(client_id, {}) if isinstance(resource_access, dict) else {}
     client_roles = client.get("roles", []) if isinstance(client, dict) else []
-    return sorted({str(role) for role in [*realm_roles, *client_roles]})
+    group_roles = [str(group).removeprefix("/") for group in groups] if isinstance(groups, list) else []
+    return sorted({str(role) for role in [*realm_roles, *client_roles, *group_roles]})
 
 
 def get_current_user(

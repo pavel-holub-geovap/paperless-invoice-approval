@@ -331,7 +331,7 @@ def provision() -> None:
                 f"/admin/realms/{realm}/users/{user_id}/groups/{group_representations[role]['id']}",
             )
 
-        # The approval client consumes realm roles from the standard realm_access claim.
+        # Approval consumes signed realm/client roles and the managed groups claim.
         ensure_group_mapper(client, realm, approval_client["id"])
 
 
