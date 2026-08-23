@@ -16,7 +16,7 @@ Synchronizace je idempotentní: unikátní index a idempotency key zabrání dup
 
 ## OCR a persistence
 
-Výchozí OCR je `ces+eng`; image obsahuje dodatečné balíky `ces` a `slk`. `PAPERLESS_OCR_MODE=skip` zachová textovou vrstvu born-digital PDF a OCR provede pro obrazové dokumenty. Povinný smoke test používá image-only fixture, takže skutečně prověří OCR.
+Výchozí OCR je `ces+eng`; image obsahuje dodatečné balíky `ces` a `slk`. `PAPERLESS_OCR_MODE=auto` zachová použitelnou textovou vrstvu born-digital PDF a OCR provede pro obrazové dokumenty. Povinný smoke test používá image-only fixture, takže skutečně prověří OCR.
 
 Upload probíhá přes UI nebo `/api/documents/post_document/`. Stav zpracování se sleduje přes `/api/tasks/?task_id=...`; po dokončení musí `/api/documents/{id}/` vrátit neprázdný `content` a download endpoint původní PDF.
 
