@@ -169,6 +169,7 @@ def main() -> None:
             )
         first = first_detail["ai"]["latest"]
         first_accuracy = accuracy(expected, first["parsed_result"])
+        workflow_status_before = first_detail["status"]
 
         before_revision = first_detail["ai"]["latest"]["extraction_revision"]
         queued = manager.post(
@@ -181,7 +182,10 @@ def main() -> None:
         second_accuracy = accuracy(expected, second["parsed_result"])
         require(second["requires_confirmation"], "Re-extraction did not remain a candidate")
         require(not second["applied"], "Re-extraction unexpectedly overwrote current data")
-        require(second_detail["status"] == "QUEUE_REVIEW", "AI changed the business workflow status")
+        require(
+            second_detail["status"] == workflow_status_before,
+            "AI changed the business workflow status",
+        )
 
         injection = asyncio.run(
             injection_test(
@@ -207,6 +211,7 @@ def main() -> None:
         "invoice_id": invoice["id"],
         "ocr_length": len(second_detail["paperless"]["ocr_text"]),
         "business_status": second_detail["status"],
+        "business_status_before": workflow_status_before,
         "ai_status": second_detail["ai_status"],
         "model": second["model"],
         "schema_version": second["schema_version"],
