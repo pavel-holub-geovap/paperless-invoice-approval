@@ -60,7 +60,7 @@ docker compose run --rm --no-deps \
   worker python /smoke/smoke_stage_d.py
 ```
 
-Golden sada má 21 porovnávaných hodnot včetně tří polí DPH řádku. Report uvádí `correct`, `wrong`, `missing`, první/opakovaný čas inference, validační souhrn a výsledek prompt-injection testu. Současně zaznamenejte `free -h` a `docker stats --no-stream` před stažením modelu, po stažení a během inference.
+Golden sada má 21 porovnávaných hodnot včetně tří polí DPH řádku. Report uvádí `correct`, `wrong`, `missing`, první/opakovaný čas inference a validační souhrn. Prompt-injection test zvlášť porovná napadený běh s baseline stejného OCR; musí mít nula změněných polí a nesmí obsahovat útočníkův dodavatel ani XML. Současně zaznamenejte `free -h` a `docker stats --no-stream` před stažením modelu, po stažení a během inference.
 
 ## Pozdější etapy
 

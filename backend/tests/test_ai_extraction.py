@@ -75,6 +75,7 @@ async def test_ollama_request_is_cpu_deterministic_and_delimits_prompt_injection
         assert body["stream"] is False and body["think"] is False
         assert body["format"] == "json"
         assert injection in body["messages"][1]["content"]
+        assert body["messages"][1]["content"].endswith("JSON podle schématu.")
         assert "NEDŮVĚRYHODNÝ VSTUP" in body["messages"][0]["content"]
         assert '"schema_version"' in body["messages"][0]["content"]
         return httpx.Response(200, json={"message": {"content": json.dumps(structured())}})
