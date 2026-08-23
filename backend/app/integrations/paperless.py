@@ -28,7 +28,10 @@ class PaperlessClient:
         self.settings = settings
         self.client = httpx.AsyncClient(
             base_url=f"{settings.paperless_base_url}/api",
-            headers={"Authorization": f"Token {settings.paperless_api_token.get_secret_value()}"},
+            headers={
+                "Authorization": f"Token {settings.read_paperless_api_token()}",
+                "Accept": "application/json; version=10",
+            },
             timeout=httpx.Timeout(30.0, connect=10.0),
             transport=transport,
         )
@@ -112,4 +115,3 @@ class PaperlessClient:
         new_tags = [tag for tag in document.tags if tag not in managed_ids]
         new_tags.append(target_id)
         await self._request("PATCH", f"/documents/{document_id}/", json={"tags": sorted(set(new_tags))})
-

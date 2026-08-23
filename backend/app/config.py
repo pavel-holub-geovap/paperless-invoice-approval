@@ -21,17 +21,18 @@ class Settings(BaseSettings):
     keycloak_client_id: str = "paperless-invoice-app"
     keycloak_client_secret: SecretStr = SecretStr("change-me")
 
-    paperless_base_url: str = "https://paperless.example.invalid"
-    paperless_api_token: SecretStr = SecretStr("change-me")
-    paperless_inbox_tag: str = "invoice-received"
-    paperless_tag_processing: str = "invoice-processing"
-    paperless_tag_queue_review: str = "invoice-queue-review"
-    paperless_tag_approval: str = "invoice-approval"
-    paperless_tag_approved: str = "invoice-approved"
-    paperless_tag_rejected: str = "invoice-rejected"
-    paperless_tag_pohoda_ready: str = "pohoda-ready"
-    paperless_tag_exported: str = "pohoda-exported"
-    paperless_tag_imported: str = "pohoda-imported"
+    paperless_base_url: str = "http://paperless:8000"
+    paperless_api_token: SecretStr | None = None
+    paperless_api_token_file: Path | None = None
+    paperless_inbox_tag: str = "Přijatá faktura"
+    paperless_tag_processing: str = "AI zpracování"
+    paperless_tag_queue_review: str = "Kontrola správce"
+    paperless_tag_approval: str = "Ke schválení"
+    paperless_tag_approved: str = "Schváleno"
+    paperless_tag_rejected: str = "Zamítnuto"
+    paperless_tag_pohoda_ready: str = "Připraveno pro Pohodu"
+    paperless_tag_exported: str = "Exportováno"
+    paperless_tag_imported: str = "Importováno do Pohody"
 
     ollama_base_url: str = "http://ollama:11434"
     ollama_model: str = "qwen3:4b"
@@ -60,6 +61,20 @@ class Settings(BaseSettings):
     @property
     def oidc_issuer_public(self) -> str:
         return f"{self.keycloak_public_url}/realms/{self.keycloak_realm}"
+
+    def read_paperless_api_token(self) -> str:
+        if self.paperless_api_token_file is not None:
+            try:
+                token = self.paperless_api_token_file.read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise RuntimeError("Paperless API token file is not readable") from exc
+            if token:
+                return token
+        if self.paperless_api_token is not None:
+            token = self.paperless_api_token.get_secret_value().strip()
+            if token and token != "change-me":
+                return token
+        raise RuntimeError("Paperless API token is not configured")
 
 
 @lru_cache

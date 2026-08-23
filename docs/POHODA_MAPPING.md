@@ -2,6 +2,8 @@
 
 Generátor vytváří přijatou fakturu deterministicky ze schválené revize. `CostCenter.pohoda_code` se propisuje do účetních částí. Decimal částky a DPH se nepřepočítávají pomocí LLM.
 
+Ani kompletní testovací stack se k POHODĚ nepřipojuje. Výstupem je pouze PDF + XSD-validní XML/ZIP; stav `IMPORTED_TO_POHODA` vzniká až po explicitním ručním potvrzení správce.
+
 Konkrétní namespace, pořadí elementů a způsob rozdělení středisek odpovídají sadě XSD uložené ve `fixtures/pohoda`. Každý export prochází validátorem celého `dataPack`; při chybě se stav `XML_READY` nenastaví.
 
 ## Použitá sada XSD

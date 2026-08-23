@@ -5,11 +5,13 @@
 - `frontend`: statický React build; používá pouze backend API a serverovou OIDC session.
 - `backend`: FastAPI, autorizační kontrola, orchestrace use-cases a OpenAPI.
 - `worker`: stejný aplikační balík, databázová fronta, sekvenční Paperless/LLM úlohy.
-- `postgres`: oddělené databáze aplikace a Keycloak v jednom persistentním clusteru.
+- `postgres`: oddělené databáze a credentials pro approval aplikaci, Keycloak a Paperless v jednom persistentním clusteru.
+- `redis`: persistentní broker/cache pouze pro izolovaný testovací Paperless; approval fronta zůstává v PostgreSQL.
+- `paperless`: izolovaná testovací autorita pro originální PDF, OCR, metadata a stavové tagy; runtime integrace probíhá výhradně přes REST API.
 - `keycloak`: centrální OIDC identita s importovaným realm konfigurací.
 - `ollama`: lokální, CPU-kompatibilní inference; model se stahuje mimo image a je persistentní.
-- `nginx`: jeden vstup pro statické UI a `/api` proxy.
-- externí `Paperless`: autorita pro PDF/OCR a hrubé stavové tagy.
+- `nginx`: jediná publikovaná vstupní vrstva pro Approval (`:80`), Paperless (`:8000`) a Keycloak (`:8081`).
+- Produkční varianta může později nahradit testovací Paperless existující externí instancí bez přímého DB propojení.
 
 ## Vrstvy backendu
 
@@ -21,9 +23,8 @@
 
 ## Background joby
 
-PostgreSQL tabulka `processing_jobs` je fronta se stavem, počtem pokusů, lease a idempotency key. Worker vybírá jeden job pomocí `FOR UPDATE SKIP LOCKED`, po timeoutu může lease obnovit. To splňuje provoz na 8GB VM bez Redis.
+PostgreSQL tabulka `processing_jobs` je approval fronta se stavem, počtem pokusů, lease a idempotency key. Worker vybírá jeden job pomocí `FOR UPDATE SKIP LOCKED`, po timeoutu může lease obnovit. Redis je oddělený a používá jej Paperless.
 
 ## Důvěryhodné hranice
 
 Browser nikdy nevidí Paperless token ani client secret. Backend drží náhodné opaque session ID v `HttpOnly`, `Secure` (v produkci) a `SameSite=Lax` cookie. Změnové endpointy kontrolují roli a CSRF origin. Exportní archiv je přístupný jen autorizovaným endpointem.
-

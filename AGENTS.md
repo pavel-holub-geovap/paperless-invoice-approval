@@ -2,7 +2,7 @@
 
 ## Účel a architektura
 
-Projekt zpracovává přijaté faktury uložené v externím Paperless. FastAPI backend a databázový worker používají PostgreSQL; Ollama provádí pouze strukturované vytěžení; Keycloak je jediný OIDC provider; React UI obsluhuje správce fronty a schvalovatele; Nginx je vstupní vrstva. POHODA XML vzniká deterministicky a importuje se ručně.
+Projekt zpracovává přijaté faktury uložené v Paperless. Kompletní testovací stack obsahuje izolovaný Paperless-ngx, PostgreSQL, Redis, Keycloak, Ollama, FastAPI backend, worker, React UI a Nginx. Produkční varianta může později použít existující externí Paperless. POHODA XML vzniká deterministicky a importuje se ručně.
 
 Podrobnosti jsou v `docs/ARCHITECTURE.md`. Doménová logika patří do `backend/app/services`, ne do route handlerů. Stav faktury mění jen workflow služba. Auditní záznamy jsou append-only.
 
@@ -19,12 +19,13 @@ Podrobnosti jsou v `docs/ARCHITECTURE.md`. Doménová logika patří do `backend
 
 - Připojení: `ssh ubuntudocker`
 - Linux uživatel: `codex`
-- Projektový adresář: `/opt/paperless-invoice-approval`
+- Projektový adresář: `/home/codex/paperless-invoice-approval`
 - Účel: integrační testy a testovací Docker deployment projektu
+- Testovací prostředí obsahuje: Paperless, Keycloak, PostgreSQL, Redis, Ollama, approval backend/worker/frontend a reverse proxy
 
 Při požadavku „Nasaď a otestuj aktuální verzi“ použij tuto VM a postup z `docs/DEPLOYMENT_ENVIRONMENT.md`. Na serveru neupravuj hlavní zdrojový kód mimo Git historii. Projektový checkout aktualizuj pouze z ověřeného správného remote pomocí `git pull --ff-only`.
 
-K 2026-08-23 projektový adresář na VM neexistoval a uživatel `codex` nemohl zapisovat do `/opt`. Nevytvářej jej pomocí neřízeného `sudo`; vyžádej si souhlas s jednorázovým vytvořením a nastavením vlastníka `codex:codex`, případně pokyn k jinému adresáři. Aktuální inventura, síťová dostupnost a další blokátory jsou v `docs/DEPLOYMENT_ENVIRONMENT.md`.
+Nepoužívej původně plánovaný `/opt`; běžný deployment nesmí vyžadovat administrátorský zásah. Aktuální inventura, síťová dostupnost a blokátory jsou v `docs/DEPLOYMENT_ENVIRONMENT.md`.
 
 ## Git workflow
 
@@ -33,10 +34,11 @@ Před prací zkontroluj `git status`, remote a branch. Pokud remote existuje, po
 ## Bezpečnost a hranice
 
 - Nikdy necommituj `.env`, tokeny, hesla, privátní klíče, runtime databáze, modely ani originální faktury.
-- Paperless je externí. Neměň jeho konfiguraci naslepo a nikdy nevystavuj Paperless token browseru.
+- Testovací Paperless je izolovaná součást tohoto stacku. Nikdy jej nepropojuj s produkční databází, storage nebo tokenem a nikdy nevystavuj Paperless token browseru.
 - Originální PDF trvale neduplikuj; výjimkou je archivovaný exportní balíček.
 - Do POHODY se systém přímo nepřipojuje, nezapisuje do její databáze a neprovádí automatický import.
-- Akce, která by mohla změnit externí Paperless, poškodit data, zveřejnit secret nebo přímo zapsat do POHODY, vyžaduje předem potvrzení uživatele.
+- Akce, která by mohla změnit jiný než izolovaný testovací Paperless, poškodit persistentní data, zveřejnit secret nebo přímo zapsat do POHODY, vyžaduje předem potvrzení uživatele.
+- Bez výslovného souhlasu nepoužívej `docker compose down -v`, `docker system prune`, `docker volume prune`, nemaž databáze ani Paperless storage.
 
 ## Workflow invarianty
 

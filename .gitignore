@@ -35,6 +35,7 @@ exports/
 models/
 *.log
 .qa-assignment/
+tmp/
 
 # Real accounting documents must never be committed.
 *.pdf

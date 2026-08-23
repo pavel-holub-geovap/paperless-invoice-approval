@@ -1,4 +1,4 @@
-version: "3.9"
+name: paperless-invoice-approval
 
 services:
   postgres:
@@ -10,16 +10,40 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      PAPERLESS_DB_PASSWORD: ${PAPERLESS_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} &&
+          pg_isready -U keycloak -d keycloak &&
+          pg_isready -U paperless -d paperless
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
+      start_period: 20s
     restart: unless-stopped
-    mem_limit: 768m
+    mem_limit: 640m
     cpus: 1.0
+    networks: [data_net]
+
+  redis:
+    image: redis:8.10.0-alpine
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
     networks: [data_net]
 
   keycloak:
@@ -36,8 +60,6 @@ services:
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-    ports:
-      - "8081:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,10 +68,108 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+      start_period: 30s
     restart: unless-stopped
-    mem_limit: 1024m
+    mem_limit: 768m
     cpus: 1.0
     networks: [app_net, data_net]
+
+  keycloak-provision:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "app.provision_keycloak"]
+    env_file: ["${ENV_FILE:-.env}"]
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    restart: "no"
+    mem_limit: 256m
+    cpus: 0.5
+    networks: [app_net]
+
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:3.0.5
+    env_file: ["${ENV_FILE:-.env}"]
+    environment:
+      USERMAP_UID: ${PAPERLESS_USERMAP_UID}
+      USERMAP_GID: ${PAPERLESS_USERMAP_GID}
+      PAPERLESS_URL: ${PAPERLESS_PUBLIC_URL}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY}
+      PAPERLESS_TIME_ZONE: ${PAPERLESS_TIME_ZONE}
+      PAPERLESS_REDIS: redis://:${REDIS_PASSWORD}@redis:6379/0
+      PAPERLESS_REDIS_PREFIX: paperless-test
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBHOST: postgres
+      PAPERLESS_DBPORT: "5432"
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD}
+      PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE}
+      PAPERLESS_OCR_LANGUAGES: ${PAPERLESS_OCR_LANGUAGES}
+      PAPERLESS_OCR_MODE: ${PAPERLESS_OCR_MODE}
+      PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER}
+      PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD}
+      PAPERLESS_ADMIN_MAIL: ${PAPERLESS_ADMIN_MAIL}
+      PAPERLESS_APPS: allauth.socialaccount.providers.openid_connect
+      PAPERLESS_SOCIALACCOUNT_PROVIDERS: >-
+        {"openid_connect":{"SCOPE":["openid","profile","email","groups"],"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"${PAPERLESS_OIDC_CLIENT_ID}","secret":"${PAPERLESS_OIDC_CLIENT_SECRET}","settings":{"server_url":"${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}/.well-known/openid-configuration","token_auth_method":"client_secret_basic"}}]}}
+      PAPERLESS_SOCIAL_AUTO_SIGNUP: "true"
+      PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS: "true"
+      PAPERLESS_SOCIAL_ACCOUNT_SYNC_GROUPS: "true"
+      PAPERLESS_SOCIAL_ACCOUNT_SYNC_GROUPS_CLAIM: groups
+      PAPERLESS_ACCOUNT_EMAIL_VERIFICATION: none
+      PAPERLESS_ACCOUNT_DEFAULT_HTTP_PROTOCOL: http
+      PAPERLESS_DISABLE_REGULAR_LOGIN: "false"
+      PAPERLESS_REDIRECT_LOGIN_TO_SSO: "false"
+    volumes:
+      - paperless_data:/usr/src/paperless/data
+      - paperless_media:/usr/src/paperless/media
+      - paperless_consume:/usr/src/paperless/consume
+      - paperless_export:/usr/src/paperless/export
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-L", "--max-time", "5", "http://127.0.0.1:8000/"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+    restart: unless-stopped
+    mem_limit: 1280m
+    cpus: 2.0
+    networks: [app_net, data_net]
+
+  paperless-bootstrap:
+    image: ghcr.io/paperless-ngx/paperless-ngx:3.0.5
+    entrypoint: ["/bin/bash", "-c"]
+    command: ["cd /usr/src/paperless/src && python manage.py shell < /bootstrap/paperless_bootstrap.py"]
+    env_file: ["${ENV_FILE:-.env}"]
+    environment:
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBHOST: postgres
+      PAPERLESS_DBPORT: "5432"
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD}
+      PAPERLESS_REDIS: redis://:${REDIS_PASSWORD}@redis:6379/0
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY}
+      PAPERLESS_API_TOKEN_PATH: /run/paperless-approval/api-token
+    volumes:
+      - ./scripts/paperless_bootstrap.py:/bootstrap/paperless_bootstrap.py:ro
+      - paperless_api_secret:/run/paperless-approval
+    depends_on:
+      paperless:
+        condition: service_healthy
+      keycloak-provision:
+        condition: service_completed_successfully
+    restart: "no"
+    mem_limit: 256m
+    cpus: 0.5
+    networks: [data_net]
 
   ollama:
     image: ollama/ollama:0.32.7
@@ -65,7 +185,7 @@ services:
       timeout: 10s
       retries: 20
     restart: unless-stopped
-    mem_limit: 4600m
+    mem_limit: 3600m
     cpus: 3.0
     networks: [app_net]
 
@@ -73,36 +193,25 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    env_file: [.env]
+    env_file: ["${ENV_FILE:-.env}"]
     depends_on:
       postgres:
         condition: service_healthy
+      keycloak-provision:
+        condition: service_completed_successfully
+      paperless-bootstrap:
+        condition: service_completed_successfully
     volumes:
       - export_data:/data/exports
+      - paperless_api_secret:/run/paperless-approval:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 20
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 384m
     cpus: 1.0
-    networks: [app_net, data_net]
-
-  keycloak-provision:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    command: ["python", "-m", "app.provision_keycloak"]
-    env_file: [.env]
-    depends_on:
-      backend:
-        condition: service_healthy
-      keycloak:
-        condition: service_healthy
-    restart: "no"
-    mem_limit: 256m
-    cpus: 0.5
     networks: [app_net, data_net]
 
   worker:
@@ -110,23 +219,22 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     command: ["python", "-m", "app.worker"]
-    env_file: [.env]
+    env_file: ["${ENV_FILE:-.env}"]
     depends_on:
       backend:
         condition: service_healthy
       ollama:
         condition: service_healthy
-      keycloak-provision:
-        condition: service_completed_successfully
     volumes:
       - export_data:/data/exports
+      - paperless_api_secret:/run/paperless-approval:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://backend:8000/api/health/worker', timeout=3)"]
       interval: 20s
       timeout: 5s
       retries: 10
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 384m
     cpus: 1.0
     networks: [app_net, data_net]
 
@@ -138,7 +246,7 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: 96m
     cpus: 0.5
     networks: [app_net]
 
@@ -147,19 +255,27 @@ services:
       context: .
       dockerfile: infrastructure/nginx/Dockerfile
     ports:
-      - "8080:80"
+      - "80:80"
+      - "8000:8000"
+      - "8081:8081"
     depends_on:
-      frontend:
+      keycloak:
         condition: service_healthy
-      backend:
+      paperless:
         condition: service_healthy
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: 96m
     cpus: 0.5
     networks: [app_net]
 
 volumes:
   postgres_data:
+  redis_data:
+  paperless_data:
+  paperless_media:
+  paperless_consume:
+  paperless_export:
+  paperless_api_secret:
   ollama_data:
   export_data:
 

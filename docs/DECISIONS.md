@@ -24,3 +24,14 @@ Používáme doporučený React + TypeScript + Vite a produkční statický buil
 
 ARES není v základní vertikále povinný. Rozhraní externích validátorů je připravené, ale jeho výpadek nikdy nesmí být blokující.
 
+## ADR-007: Kompletní izolovaný testovací Paperless
+
+Testovací VM obsahuje vlastní Paperless-ngx 3.0.5, databázi `paperless`, Redis a samostatná persistentní volumes. Tato instalace nesmí používat produkční storage, databázi ani token. Produkční topologie může později používat externí Paperless, ale REST API a `paperless_document_id` zůstávají integrační hranicí.
+
+## ADR-008: Jedna reverse proxy, tři porty
+
+Kvůli spolehlivým OIDC issuer a callback URL přes IP adresu nepoužíváme URL subpath. Jediný Nginx publikuje Approval na `:80`, Paperless na `:8000` a Keycloak na `:8081`; cílové kontejnery své porty hostiteli nepublikují. Oddělené porty jsou pro testovací IP technicky čistší než přepisování cest a statických URL Paperless/Keycloak.
+
+## ADR-009: Oddělené OIDC clients a runtime Paperless token
+
+Keycloak provisioning vytváří clients `approval-app` a `paperless` s různými secrets, realm roles i skupinami `QUEUE_MANAGER` a `APPROVER`. Paperless provisioning vytváří testovací skupiny/tagy a uloží API token do samostatného Docker volume; token není v browseru ani Gitu. Testovací service account má kvůli objektovým oprávněním široký přístup pouze v izolovaném tenantovi; produkce musí použít nejmenší nutná oprávnění.

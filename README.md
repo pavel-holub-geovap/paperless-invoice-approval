@@ -1,6 +1,6 @@
 # Paperless Invoice Approval
 
-Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schválení a manuální export přijatých faktur z externího Paperless do POHODY.
+Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schválení a manuální export přijatých faktur z Paperless do POHODY. Kompletní testovací stack obsahuje vlastní izolovaný Paperless-ngx; pozdější produkční architektura může použít existující externí Paperless.
 
 ## Nejdůležitější invarianty
 
@@ -17,10 +17,10 @@ Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schvále
 
 1. Zkopírujte `.env.example` na `.env` a doplňte všechny hodnoty `change-me`.
 2. Spusťte `docker-compose config` a zkontrolujte výslednou konfiguraci.
-3. Spusťte stack: `docker-compose up -d --build`.
-4. Otevřete aplikaci na `http://localhost:8080` a Keycloak na `http://localhost:8081`.
+3. Pro první diagnostiku spusťte Etapu A podle `docs/DEPLOYMENT.md`; celý stack spouštějte až po jejím smoke testu.
+4. Na testovací VM otevřete Approval na `http://172.30.172.167/`, Paperless na `http://172.30.172.167:8000/` a Keycloak na `http://172.30.172.167:8081/`.
 
-Paperless je externí a není součástí stacku. Postup jeho propojení je v [docs/PAPERLESS_INTEGRATION.md](docs/PAPERLESS_INTEGRATION.md) a přihlášení přes Keycloak v [docs/PAPERLESS_KEYCLOAK.md](docs/PAPERLESS_KEYCLOAK.md).
+Testovací Paperless používá vlastní PostgreSQL databázi, Redis a persistentní volumes a nesmí sdílet produkční data ani tokeny. Postup je v [docs/PAPERLESS_INTEGRATION.md](docs/PAPERLESS_INTEGRATION.md) a OIDC v [docs/PAPERLESS_KEYCLOAK.md](docs/PAPERLESS_KEYCLOAK.md).
 
 ## Vývoj
 
@@ -43,4 +43,3 @@ npm run build
 ```
 
 Kompletní architektura, nasazení a testovací scénáře jsou v adresáři `docs/`.
-

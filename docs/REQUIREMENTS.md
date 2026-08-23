@@ -35,7 +35,7 @@ Povinné kontroly: formát a český kontrolní součet IČO, formát DIČ, data
 
 ## Identita a role
 
-Keycloak je společný OIDC provider pro aplikaci a existující Paperless. Aplikace používá bezpečný serverový session model s HttpOnly cookie; Paperless token není v browseru. Počáteční role jsou `QUEUE_MANAGER` a `APPROVER`, model umožňuje doplnit `SYSTEM_ADMIN`, `ACCOUNTANT`, `AUDITOR` a `VIEWER`. Testovací hesla přicházejí pouze z prostředí/secrets.
+Keycloak je společný OIDC provider pro aplikaci a izolovaný testovací Paperless. Každá aplikace má samostatný confidential client a samostatný secret. Aplikace používá bezpečný serverový session model s HttpOnly cookie; Paperless token není v browseru. Počáteční role/skupiny jsou `QUEUE_MANAGER` a `APPROVER`, model umožňuje doplnit `SYSTEM_ADMIN`, `ACCOUNTANT`, `AUDITOR` a `VIEWER`. Testovací hesla přicházejí pouze z prostředí/secrets.
 
 ## UI
 
@@ -43,10 +43,11 @@ Responzivní React/TypeScript/Vite UI funguje na desktopu, tabletu i telefonu. S
 
 ## Integrace a provoz
 
-- Externí Paperless REST API: timeout, retry, idempotence a konfigurovatelné tagy.
+- Paperless REST API: jediný runtime integrační kanál, timeout, retry, idempotence a konfigurovatelné tagy; approval backend nesmí znát Paperless DB credentials.
 - Ollama a model jsou konfigurovatelné; výchozí model `qwen3:4b`, CPU, sekvenční inference a konzervativní kontext.
-- Background joby jsou v PostgreSQL, obnovitelné a idempotentní; Redis není nutný.
-- Jeden `docker-compose` stack obsahuje PostgreSQL, Keycloak, Ollama, backend, worker, statický frontend a reverse proxy. Paperless v něm není.
+- Background joby approval aplikace jsou v PostgreSQL, obnovitelné a idempotentní. Redis je vyhrazen Paperless službám a approval worker jej zatím nepoužívá.
+- Jeden testovací `docker-compose` stack obsahuje PostgreSQL se třemi oddělenými databázemi/uživateli, Redis, Paperless-ngx, Keycloak, Ollama, backend, worker, statický frontend a reverse proxy.
+- Paperless data, media, consume, export, Redis, PostgreSQL, Ollama a approval export mají samostatné persistentní volumes.
 - Persistent volumes, healthchecks, restart policies a rozumné limity musí zachovat workflow, audit i exporty po restartu.
 - Logy nesou invoice/paperless/job/transition/actor kontext, ale nikdy secrets, Authorization hlavičky ani celý dokument.
 
@@ -67,4 +68,3 @@ Repozitář nesmí obsahovat skutečné faktury, secrets, produkční certifiká
 ## Mimo rozsah
 
 Bez dalšího zadání se neimplementuje přímý import či zápis do POHODY, automatické zaúčtování, e-mailové/Teams notifikace, sekvenční approval chains, zastupování, částkové limity ani účetní předkontace.
-

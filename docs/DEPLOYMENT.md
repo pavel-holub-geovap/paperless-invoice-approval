@@ -1,14 +1,60 @@
-# Nasazení testovacího stacku
+# Nasazení kompletního testovacího stacku
 
-Požadavky: Linux VM, Docker Engine, `docker-compose`, alespoň 8 GB RAM a dostupný externí Paperless. GPU není nutné.
+Testovací checkout patří do `/home/codex/paperless-invoice-approval` na VM `ssh ubuntudocker`. Přenos zdrojového kódu probíhá pouze přes správný GitHub remote; nekopírujte pracovní strom na server bokem.
 
-1. Zkopírujte `.env.example` na `.env` a vytvořte silné náhodné hodnoty.
-2. Ověřte DNS/HTTPS veřejných URL Keycloak, aplikace a Paperless.
-3. Spusťte `docker-compose config` a zkontrolujte, že žádný placeholder nezůstal.
-4. Spusťte `docker-compose up -d --build`.
-5. Ověřte healthchecky backendu, workeru, PostgreSQL, Keycloak a Ollama.
-6. Stáhněte nakonfigurovaný Ollama model do persistentního volume.
-7. Proveďte seed testovacích středisek a přihlaste se uživateli provisionovanými z environment secrets.
+## Předpoklady
 
-Zálohujte PostgreSQL a exportní volume. Aktualizaci provádějte přes image tagy a databázovou migraci `alembic upgrade head`. Rollback aplikace nikdy nesmí mazat novější data. Paperless a POHODA nejsou součástí stacku.
+1. Lokální i serverový checkout mají správný remote a čistou větev `main`.
+2. Serverová `.env` vznikla z `.env.example`; všechny hodnoty `change-me` byly nahrazeny nezávislými náhodnými secrets.
+3. `APP_BASE_URL`, `PAPERLESS_PUBLIC_URL` a `KEYCLOAK_PUBLIC_URL` odpovídají skutečné IP/hostname VM.
+4. `free -h` potvrzuje přibližně 8 GiB RAM a 4 GiB swap; průběžně se sleduje `docker stats`.
+5. Neexistuje žádné napojení na produkční Paperless ani POHODU.
 
+Před každou etapou spusťte `docker compose config --quiet`. Nikdy nepoužívejte `down -v`, prune příkazy ani nemažte databáze/storage bez výslovného souhlasu.
+
+## Etapa A: infrastruktura, identita a Paperless
+
+```text
+docker compose up -d --build postgres redis keycloak keycloak-provision paperless paperless-bootstrap reverse-proxy
+docker compose ps
+```
+
+Ověřte health PostgreSQL, Redis, Keycloak, Paperless a Nginx. `keycloak-provision` a `paperless-bootstrap` mají skončit kódem 0; jde o idempotentní jednorázové úlohy. Otevřete:
+
+- Paperless: `http://172.30.172.167:8000/`
+- Keycloak: `http://172.30.172.167:8081/`
+
+Ověřte přihlášení queue managera přes Keycloak, upload syntetické fixture, dokončení OCR, OCR text a API. Běžný Paperless login zatím nevypínejte.
+
+## Etapa B: Approval aplikace
+
+```text
+docker compose up -d --build backend frontend worker
+docker compose ps
+```
+
+Backend při startu spustí `alembic upgrade head` a seed středisek. Ověřte `http://172.30.172.167/api/health`, UI a přihlášení všech rolí přes Keycloak.
+
+## Etapa C: Paperless REST API → Approval
+
+Nahrajte pouze syntetickou fakturu, nastavte tag `Přijatá faktura` a ověřte, že worker přes REST API vytvoří právě jednu fakturu s autoritativním `paperless_document_id`. Ověřte originální PDF v Approval UI a přechod do `QUEUE_REVIEW` nebo diagnostikovatelnou chybu extrakce.
+
+## Etapa D: Ollama
+
+```text
+docker compose up -d ollama
+docker compose exec ollama ollama pull qwen3:4b
+docker compose up -d worker
+```
+
+Model určuje `OLLAMA_MODEL`. Používejte jednu paralelní inferenci, sledujte `free -h` a `docker stats` a ověřte OCR → strict JSON → deterministické validace.
+
+## Etapy E–F: workflow a export
+
+Projděte paralelní approvals, RETURN, REJECT a invalidaci revize. Nakonec ověřte APPROVED → POHODA XML → XSD → PDF + XML ZIP → `EXPORT_CREATED`. POHODA import zůstává ruční a `IMPORTED_TO_POHODA` vyžaduje explicitní potvrzení.
+
+## Persistence a diagnostika
+
+Persistentní volumes: PostgreSQL, Redis, Paperless data/media/consume/export, runtime API token, Ollama modely a approval export. Restart kontejneru je nesmí odstranit.
+
+Při chybě nejdřív použijte `docker compose ps` a `docker compose logs --tail=200 <service>`. Změnu zdrojů proveďte lokálně, otestujte, commitněte, pushněte a na VM použijte `git pull --ff-only`.

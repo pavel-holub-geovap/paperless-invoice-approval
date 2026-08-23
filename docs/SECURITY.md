@@ -6,3 +6,6 @@ OIDC používá Authorization Code flow; aplikace drží session serverově a po
 
 Změnové operace vyžadují autentizaci, roli, kontrolu původu a audit. Exportní názvy jsou normalizované a cesty se neskládají z neupraveného uživatelského vstupu. XML parser zakazuje externí entity. Externí volání používají TLS, timeouty a omezené retry.
 
+Testovací Paperless má vlastní databázi, Redis a volumes. Žádná jeho služba nesmí dostat produkční Paperless credentials nebo mount. Approval backend používá pouze REST API token z runtime Docker volume a nemá Paperless DB heslo. Paperless OIDC client secret je jiný než secret Approval aplikace.
+
+Na testovací HTTP/IP topologii zůstává běžné Paperless přihlášení zapnuté jako nouzová cesta, dokud není OIDC prakticky ověřeno. Prostředí nesmí být vystaveno do nedůvěryhodné sítě. Před produkčním použitím jsou povinné TLS, bezpečné hostname, rotace všech testovacích secrets a least-privileged Paperless service account.

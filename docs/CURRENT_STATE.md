@@ -1,12 +1,13 @@
 # Aktuální stav
 
-- Datum: 2026-08-20
-- Branch: `main` (lokální repozitář bez nakonfigurovaného remote)
-- Commit: úvodní předávací commit obsahuje kompletní první implementaci podle zadání; přesný hash vrátí `git rev-parse HEAD`.
-- Implementováno: FastAPI backend, PostgreSQL datový model a migrace, stavový automat s revizemi a paralelním schvalováním, append-only audit, Paperless REST klient, Keycloak OIDC BFF, Ollama extrakce, fronta úloh, POHODA XML/XSD export, React/Vite frontend a Docker Compose infrastruktura.
-- Otestováno: Ruff; 20 backendových testů; Alembic migrace na izolované databázi; kompilace OpenAPI; oficiální POHODA XSD graf; frontendový Vitest, TypeScript a produkční Vite build; syntaktické načtení Compose YAML.
-- Neověřeno v tomto prostředí: `docker-compose config/build/up`, kompletní browser E2E a komunikace s reálným Paperless, Keycloak, Ollama a POHODOU. Docker ani LibreOffice zde nejsou dostupné a vestavěný prohlížeč se nepodařilo spustit kvůli lokálnímu oprávnění `EPERM`.
-- Externí mutace: nebyly provedeny žádné zápisy do skutečného Paperless ani POHODY.
-- Známá omezení: POHODA import zůstává záměrně ruční; aplikace pouze vytvoří a XSD-validuje export a následně umožní explicitní potvrzení importu. Vizuální kontrola zdrojového DOCX nebyla kvůli chybějícímu LibreOffice provedena, celý text dokumentu však byl strojově načten.
-- Potřebná konfigurace: zkopírovat `.env.example` na `.env`, nahradit všechny hodnoty `change-me`, doplnit URL/token testovacího Paperless a stáhnout požadovaný Ollama model.
-- Doporučený další krok: na hostiteli s Dockerem spustit Compose stack, provést seed testovacích dat a projít scénáře z `docs/TESTING.md` proti odděleným testovacím službám.
+- Datum: 2026-08-23
+- Branch: `main`
+- Git remote: není nakonfigurovaný; push ani serverový checkout nejsou možné bez přesné GitHub SSH URL.
+- Implementováno: kompletní Compose návrh s izolovaným Paperless-ngx, Redis, třemi PostgreSQL databázemi/uživateli, dvěma Keycloak OIDC clients, provisioningem rolí/skupin/tagů a runtime Paperless API tokenu, persistence, healthchecky a tříportovou Nginx vstupní vrstvou.
+- Testovací dokument: image-only syntetická česko-anglická faktura bez reálných údajů, určená pro upload/OCR smoke test.
+- Otestováno: Ruff; 23 backendových testů; frontendový Vitest, TypeScript a produkční Vite build; statická kontrola 11 služeb/9 volumes; image-only PDF kontrola; skutečný `docker compose -f - config --quiet` na Linux VM skončil kódem 0.
+- Nenasazeno: žádný nový kontejner nebyl na VM spuštěn; PostgreSQL, Redis, Keycloak, Paperless ani další služby nelze označit za funkční.
+- VM/RAM: SSH je znovu dostupné; aktuálně 11 GiB RAM, přibližně 11 GiB available a 4 GiB nepoužitého swapu. Na VM se nic nenasadilo.
+- Blokátory: chybí přesná GitHub SSH URL/remote a serverová `.env` se skutečnými secrets.
+- POHODA: přímé připojení ani automatický import se neimplementují.
+- Doporučený další krok: získat GitHub SSH URL, obnovit SSH dostupnost VM, připravit serverovou `.env`, znovu ověřit `free -h` a teprve poté spustit Etapu A z `docs/DEPLOYMENT.md`.
