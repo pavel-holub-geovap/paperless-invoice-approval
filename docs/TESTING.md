@@ -37,6 +37,16 @@ Použijte pouze `fixtures/synthetic/synthetic-invoice-cs-en.pdf`:
 6. Queue manager vidí dashboard/detail/PDF; approver se přihlásí a vidí sekci „Moje úkoly“, ale nedostane celou frontu.
 7. Ověřte `/api/invoices/{id}/pdf` jako PDF a současně absenci PDF bytes v approval databázi.
 
+Na nasazené VM lze skutečný OIDC/API/PDF smoke test spustit bez vypsání hesel:
+
+```text
+docker compose run --rm --no-deps \
+  -v "$PWD/scripts/smoke_stage_b.py:/smoke_stage_b.py:ro" \
+  keycloak-provision python /smoke_stage_b.py
+```
+
+Skript načítá testovací credentials pouze z chráněného serverového `.env`, projde Keycloak formulář a callback, ověří role, dashboard, detail, OCR, PDF a oddělení oprávnění approvera. Citlivé hodnoty netiskne.
+
 ## Pozdější etapy
 
 Etapa D samostatně ověří Ollama OCR → strict JSON → deterministické validace. Teprve poté se testují approvals, RETURN, REJECT, revize a POHODA export.
