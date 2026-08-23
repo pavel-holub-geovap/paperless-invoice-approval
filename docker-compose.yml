@@ -171,7 +171,7 @@ services:
     networks: [data_net]
 
   ollama:
-    image: ollama/ollama:0.32.7
+    image: ollama/ollama:0.32.14
     environment:
       OLLAMA_NUM_PARALLEL: "1"
       OLLAMA_MAX_LOADED_MODELS: "1"
@@ -190,7 +190,7 @@ services:
     networks: [app_net]
 
   ollama-pull:
-    image: ollama/ollama:0.32.7
+    image: ollama/ollama:0.32.14
     command: ["pull", "${OLLAMA_MODEL}"]
     environment:
       OLLAMA_HOST: http://ollama:11434
