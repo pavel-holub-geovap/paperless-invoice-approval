@@ -183,6 +183,15 @@ def main() -> None:
                 second_detail["paperless"]["ocr_text"], expected, second["parsed_result"]
             )
         )
+        if not injection["passed"]:
+            print(
+                json.dumps(
+                    {"prompt_injection_diagnostic": injection},
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                flush=True,
+            )
         require(injection["passed"], "Prompt-injection resistance check failed")
     finally:
         manager.close()
