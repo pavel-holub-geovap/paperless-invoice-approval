@@ -2,35 +2,43 @@
 
 - Datum ověření: 2026-08-23
 - Branch: `main`
-- Git remote: `git@github-paperless-approval:pavel-holub-geovap/paperless-invoice-approval.git`. Po závěrečném dokumentačním commitu musí být lokální `main`, `origin/main` a checkout `/home/codex/paperless-invoice-approval` na shodném hashi.
+- Git remote: `git@github-paperless-approval:pavel-holub-geovap/paperless-invoice-approval.git`
+- Approval aplikace: `http://172.30.172.167/`
 - Nasazeno: PostgreSQL, Redis, Keycloak, Paperless-ngx, Nginx, `approval-backend`, `approval-worker`, `approval-frontend`, Ollama a jednorázový `ollama-pull`. Všech devět dlouhodobých služeb je healthy; `keycloak-provision`, `paperless-bootstrap` a `ollama-pull` skončily kódem 0.
-- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0003 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
-- Testovací dokument: Paperless `paperless_document_id=1`, `synthetic-invoice-cs-en.pdf`, název `Synthetic Invoice CS-EN – integration smoke test`, OCR 911 znaků. Stav je `SYNCED`, workflow `QUEUE_REVIEW` a AI stav `AI_COMPLETED`.
-- Originální PDF: není trvale uloženo v Approval DB. Chráněný proxy endpoint vrátil HTTP 200, `application/pdf` a 92 182 B.
-- OIDC a role: skutečný Authorization Code flow prošel pro `queue-manager` s `QUEUE_MANAGER` i `approver1` s `APPROVER`. Queue manager vidí jednu fakturu; approver má 0 úkolů a manažerský seznam mu vrací HTTP 403.
-- UI: Approval běží na `http://172.30.172.167/`. Detail zobrazuje AI stav, model, verzi schématu a promptu, dobu inference, historii revizí, provenance, deterministické validace a bezpečnou akci pro použití kandidátní re-extrakce; originál zůstává vlevo přes PDF proxy.
+- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0004 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
+- Testovací dokument: Paperless `paperless_document_id=1`, `synthetic-invoice-cs-en.pdf`, OCR 911 znaků. Originální PDF není trvale uloženo v Approval DB; chráněný proxy endpoint vrátil HTTP 200, `application/pdf` a 92 182 B.
+- OIDC: skutečný Authorization Code flow prošel pro `queue-manager`, `approver1`, `approver2` a `approver3`. Role jsou vynucené backendem; approver nemůže otevřít cizí assignment ani manažerský seznam (HTTP 403).
+
+## Etapa E
+
+- Etapa E je implementována a ověřena přes nasazený systém s reálnými Keycloak uživateli.
+- Střediska jsou databázová entita s auditovaným CRUD. V testovací DB je 6 zachovaných záznamů; scénář používá `200 – Vývoj` a `300 – Obchod`.
+- Aktuální revize testovací faktury je 22. Rozúčtování je 700,00 Kč na středisko 200 a 510,00 Kč na středisko 300; součet 1 210,00 Kč přesně odpovídá celkové částce faktury a zbývá 0,00 Kč.
+- Aktivní assignmenty aktuální revize jsou `approver1 / 200 / 700,00 Kč`, `approver2 / 300 / 510,00 Kč` a `approver3 / 300 / 510,00 Kč`. Všechny tři skončily `APPROVED` a v DB existují právě tři platná rozhodnutí.
+- Povinné potvrzení kontroly originálu je u aktuální revize aktivní. Backend při submitu znovu kontroluje originál, blokující validace, součet allocations, approvery a jejich aktivní roli.
+- Reálná sekvence byla `AWAITING_APPROVAL → AWAITING_APPROVAL → AWAITING_APPROVAL → APPROVED`; první ani druhé schválení fakturu předčasně neuzavřelo.
+- Prošly negativní scénáře: nesedící allocations, allocation bez approvera, nepotvrzený originál, blokující validace, cizí assignment, chybějící komentář u RETURN/REJECT, APPROVE po REJECT a přístup approvera k manažerskému API.
+- Prošly RETURN (`RETURNED`), REJECT (`REJECTED`) a REOPEN (`NEEDS_REVIEW`) se zachováním historie. Audit obsahuje nové doménové události `RETURNED`, `REJECTED` a `REOPENED`.
+- Změna částky, střediska, approvera i fakturačního údaje po schválení vytvořila novou revizi a událost `APPROVAL_INVALIDATED`. Historicky invalidovaných rozhodnutí je 21; nebyla smazána.
+- Dvě souběžná APPROVE na různých assignmentech prošla. Opakovaný stejný APPROVE vrátil stejné rozhodnutí a nevytvořil duplicitní platný záznam.
+- Paperless tagy byly potvrzeny následným GET přes REST API: RETURNED → `Kontrola správce`, REJECTED → `Zamítnuto`, APPROVED → `Schváleno`. Všech 40 workflow synchronizačních jobů je `DONE`; žádný není pending, running ani failed.
+- Frontend obsahuje dashboard a filtry správce, správu středisek, rozúčtování bez reloadu, potvrzení originálu, schvalovatele, stav schválení a audit. „Moje úkoly“ zobrazuje schvalovateli pouze aktivní vlastní assignmenty s PDF, revizí, střediskem a částkou.
 
 ## Etapa D
 
-- Ollama: `ollama/ollama:0.32.14`, model `qwen3:4b` (2,5 GB), čistě CPU (`OLLAMA_NUM_GPU=0`), jedna paralelní inference, kontext 4096, teplota 0, `keep_alive=5m`, timeout 300 s.
-- Striktní kontrakt: `invoice-extraction.v1`; prompt `invoice-extraction.cs-en.v1`; odpověď prochází `json.loads` a Pydantic validací. OCR je oddělené jako nedůvěryhodný datový blok.
-- Produkční historie: revize 1 je append-only `AI_FAILED` po prvotním nekompatibilním grammar požadavku. Revize 2 je `AI_COMPLETED`, trvala 143 856 ms a jako první úspěšná byla aplikována. Revize 3–6 jsou dokončené, neaplikované kandidáty vyžadující explicitní potvrzení; poslední trvala 151 288 ms.
-- Finální golden smoke: 21 porovnávaných hodnot, 18 správně, 2 chybně (`bank_account`, `description`) a 1 chybějící (`bank_code`). Deterministická validace: 11 OK, 1 warning, 0 blocking errors.
-- Prompt injection: reálná oddělená inference prošla. Nezměnila žádné cílové pole útoku (`supplier_name`, `total_amount`), nevygenerovala požadovaný škodlivý název ani XML. Oproti baseline se změnil pouze volný `description`; napadený výstup měl golden skóre 19/21, s chybným `bank_account` a chybějícím `bank_code`.
-- Bezpečná re-extrakce: potvrzeno, že nová revize nepřepsala aplikovaná data a nezměnila business workflow stav.
-- Audit: zachovává objevení a synchronizaci dokumentu, workflow přechody, queue/start/retry/fail/success/apply události AI i přihlášení uživatelů. V DB je 1 neúspěšný a 5 dokončených AI jobů; neúspěšná historie nebyla smazána.
+- Ollama: `ollama/ollama:0.32.14`, model `qwen3:4b`, CPU režim, jedna paralelní inference, kontext 4096, teplota 0 a timeout 300 s.
+- Striktní kontrakt je `invoice-extraction.v1`; prompt `invoice-extraction.cs-en.v1`. OCR je oddělené jako nedůvěryhodný datový blok a výsledek prochází JSON a Pydantic validací.
+- Golden smoke porovnal 21 hodnot: 18 správně, 2 chybně (`bank_account`, `description`) a 1 chybějící (`bank_code`). Etapa E proto přidala deterministickou validaci domácího účtu, IBAN a BIC/SWIFT.
+- Prompt-injection test nezměnil cílová pole útoku a bezpečná re-extrakce nepřepsala aplikovaná data ani workflow.
+- V DB zůstává append-only historie 5 dokončených a 1 neúspěšného AI jobu z Etapy D. Neúspěšný AI job nesouvisí s workflow ani Paperless tag synchronizací.
 
-## Provozní měření
+## Závěrečné ověření
 
-- Před Ollamou: 11 GiB RAM celkem, přibližně 1,7 GiB použito a 9,6 GiB available.
-- Během inference: přibližně 5,0 GiB použito, 6,4 GiB available, Ollama 3,287 GiB a přibližně 296 % CPU.
-- Po smoke testu: 4,8 GiB použito, 6,5 GiB available, swap 6 MiB; Ollama drží model v paměti a používá 3,285 GiB z limitu 3,516 GiB.
-- CPU inference má na této VM latenci přibližně 2,3–3,3 minuty. Je funkční a bounded, ale pro vyšší provozní propustnost bude potřeba rychlejší CPU/GPU nebo menší model.
-
-## Ověření a známé chyby
-
-- Testy: Ruff čistý; 40 backendových testů; frontend 2 testovací soubory / 3 testy; TypeScript lint a Vite production build; `docker compose config`; Stage B regresní smoke; reálný Stage D smoke.
-- Při nasazení neexistoval původně zvolený image tag `0.32.7`; byl nahrazen dostupným `0.32.14`.
-- Pydantic JSON Schema nebylo možné předat přímo grammar compileru této verze Ollamy (`HTTP 400`), proto se používá Ollama JSON mode, celý kontrakt v system promptu a následná striktní Pydantic boundary validace.
-- První CPU inference překročila původních 180 s; bounded timeout byl nastaven na 300 s. Retry a append-only audit chybu korektně zachovaly.
-- Nejsou blokátory pro Etapu D. POHODA export, schvalovací assignments a další etapy nejsou součástí tohoto stavu.
+- Backend: Ruff čistý; 53/53 testů prošlo.
+- Frontend: 3 testovací soubory, 5/5 testů; TypeScript kontrola a produkční Vite build prošly.
+- Deployment: `git pull --ff-only`, `docker compose config --quiet`, build, `up -d`, migrace a `docker compose ps -a` prošly bez mazání databází nebo volumes.
+- Regresní Stage B smoke prošel: OIDC, role, Paperless dokument, OCR, databázový snapshot a originální PDF.
+- Plný Stage E smoke prošel: všechny kladné i povinné záporné scénáře, concurrency, idempotence a potvrzené Paperless tagy.
+- Během prvních běhů smoke test odhalil stale ORM response a neobnovený snapshot Paperless tagu. Obě závady byly opraveny a kryty testem nebo tvrdou smoke podmínkou; závěrečný běh nemá chyby.
+- Po závěrečném dokumentačním commitu musí být lokální `main`, `origin/main` a VM checkout `/home/codex/paperless-invoice-approval` na shodném hashi a čisté.
+- POHODA XML, XSD validace a export nejsou součástí Etapy E a nebyly měněny.
