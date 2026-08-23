@@ -435,7 +435,7 @@ def main() -> None:
             "app_url": base_url,
             "paperless_document_id": document_id,
             "invoice_id": invoice_id,
-            "migration_expected": "0004",
+            "migration_expected": "0005",
             "cost_centers": len(centre_rows),
             "test_allocations": [
                 {"cost_center": row["cost_center"]["code"], "amount": str(row["amount"])}
