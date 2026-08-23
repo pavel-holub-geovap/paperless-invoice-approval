@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import select
 
+from app.api.routes.invoices import serialize_invoice
 from app.config import Settings
 from app.integrations.ollama import InvalidJSON, OllamaClient, OllamaExtractionResult
 from app.models import AIExtractionStatus, AuditEvent, InvoiceStatus
@@ -129,3 +130,13 @@ def test_extraction_history_never_overwrites_without_confirmation(db) -> None:
     events = db.scalars(select(AuditEvent.event_type).where(AuditEvent.invoice_id == invoice.id)).all()
     assert events.count("AI_EXTRACTION_APPLIED") == 2
     assert "AI_REEXTRACTION_REQUESTED" in events
+
+
+def test_invoice_detail_serializes_ai_invoice_revision(db) -> None:
+    invoice = create_invoice(db, 77)
+    invoice.paperless_ocr_text = "OCR"
+    queue_ai_extraction(db, invoice, Settings())
+    db.flush()
+    detail = serialize_invoice(db, invoice)
+    assert detail["ai"]["latest"]["invoice_revision"] == 1
+    assert detail["ai_status"] == AIExtractionStatus.AI_PENDING

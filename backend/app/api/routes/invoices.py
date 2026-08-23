@@ -108,7 +108,7 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
         result = {
             "id": row.id,
             "extraction_revision": row.extraction_revision,
-            "invoice_revision": row.invoice_revision.revision_number if row.invoice_revision else None,
+            "invoice_revision": row.invoice_revision.number if row.invoice_revision else None,
             "model": row.model,
             "schema_version": row.schema_version,
             "prompt_version": row.prompt_version,
