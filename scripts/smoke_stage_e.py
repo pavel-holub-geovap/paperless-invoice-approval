@@ -182,22 +182,25 @@ def main() -> None:
         require({"100", "200", "300"} <= set(centres), "Synthetic cost centers are missing")
 
         current = detail(manager, base_url, invoice_id)
-        changes: dict[str, Any] = {}
+        base_number = str(current["data"].get("invoice_number") or "TEST-2026-0001")
+        changes: dict[str, Any] = {
+            "invoice_number": f"{base_number[:70]}-S{int(time.time())}",
+        }
         if current["data"].get("bank_account") != "0000000000":
             changes["bank_account"] = "0000000000"
         if current["data"].get("bank_code") != "0000":
             changes["bank_code"] = "0000"
-        if changes:
-            current = response_json(
-                api(
-                    manager,
-                    "PATCH",
-                    f"{base_url}/api/invoices/{invoice_id}",
-                    manager_user,
-                    {"changes": changes, "comment": "Ruční kontrola platebních údajů podle PDF"},
-                ),
-                "correct bank details",
-            )
+        current = response_json(
+            api(
+                manager,
+                "PATCH",
+                f"{base_url}/api/invoices/{invoice_id}",
+                manager_user,
+                {"changes": changes, "comment": "Nová revize a ruční kontrola podle PDF"},
+            ),
+            "prepare repeatable Stage E revision",
+        )
+        require(not current["original_review_confirmed"], "New revision did not reset original review")
         require(Decimal(str(current["data"]["total_amount"])) == Decimal("1210.00"), "Unexpected invoice total")
 
         # Missing original review and missing approver are independently rejected.
