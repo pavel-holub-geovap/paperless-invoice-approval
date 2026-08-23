@@ -171,6 +171,7 @@ services:
     networks: [data_net]
 
   ollama:
+    profiles: ["llm"]
     image: ollama/ollama:0.32.7
     environment:
       OLLAMA_NUM_PARALLEL: "1"
@@ -192,7 +193,30 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    env_file: ["${ENV_FILE:-.env}"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      APP_BASE_URL: ${APP_BASE_URL}
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      DATABASE_URL: ${DATABASE_URL}
+      KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL}
+      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      PAPERLESS_BASE_URL: ${PAPERLESS_BASE_URL}
+      PAPERLESS_API_TOKEN_FILE: ${PAPERLESS_API_TOKEN_FILE}
+      PAPERLESS_INBOX_TAG: ${PAPERLESS_INBOX_TAG}
+      PAPERLESS_TAG_PROCESSING: ${PAPERLESS_TAG_PROCESSING}
+      PAPERLESS_TAG_QUEUE_REVIEW: ${PAPERLESS_TAG_QUEUE_REVIEW}
+      PAPERLESS_TAG_APPROVAL: ${PAPERLESS_TAG_APPROVAL}
+      PAPERLESS_TAG_APPROVED: ${PAPERLESS_TAG_APPROVED}
+      PAPERLESS_TAG_REJECTED: ${PAPERLESS_TAG_REJECTED}
+      PAPERLESS_TAG_POHODA_READY: ${PAPERLESS_TAG_POHODA_READY}
+      PAPERLESS_TAG_EXPORTED: ${PAPERLESS_TAG_EXPORTED}
+      PAPERLESS_TAG_IMPORTED: ${PAPERLESS_TAG_IMPORTED}
+      EXPORT_ARCHIVE_DIR: ${EXPORT_ARCHIVE_DIR}
+      POHODA_XSD_PATH: ${POHODA_XSD_PATH}
+      ALLOCATION_TOLERANCE: ${ALLOCATION_TOLERANCE}
     depends_on:
       postgres:
         condition: service_healthy
@@ -218,11 +242,24 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     command: ["python", "-m", "app.worker"]
-    env_file: ["${ENV_FILE:-.env}"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      PAPERLESS_BASE_URL: ${PAPERLESS_BASE_URL}
+      PAPERLESS_API_TOKEN_FILE: ${PAPERLESS_API_TOKEN_FILE}
+      PAPERLESS_INBOX_TAG: ${PAPERLESS_INBOX_TAG}
+      PAPERLESS_TAG_PROCESSING: ${PAPERLESS_TAG_PROCESSING}
+      PAPERLESS_TAG_QUEUE_REVIEW: ${PAPERLESS_TAG_QUEUE_REVIEW}
+      PAPERLESS_TAG_APPROVAL: ${PAPERLESS_TAG_APPROVAL}
+      PAPERLESS_TAG_APPROVED: ${PAPERLESS_TAG_APPROVED}
+      PAPERLESS_TAG_REJECTED: ${PAPERLESS_TAG_REJECTED}
+      PAPERLESS_TAG_POHODA_READY: ${PAPERLESS_TAG_POHODA_READY}
+      PAPERLESS_TAG_EXPORTED: ${PAPERLESS_TAG_EXPORTED}
+      PAPERLESS_TAG_IMPORTED: ${PAPERLESS_TAG_IMPORTED}
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS}
+      PAPERLESS_SYNC_SECONDS: ${PAPERLESS_SYNC_SECONDS}
     depends_on:
       backend:
-        condition: service_healthy
-      ollama:
         condition: service_healthy
     volumes:
       - export_data:/data/exports
@@ -244,6 +281,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
     mem_limit: 96m
     cpus: 0.5

@@ -37,12 +37,12 @@ Backend při startu spustí `alembic upgrade head` a seed středisek. Ověřte `
 
 ## Etapa C: Paperless REST API → Approval
 
-Nahrajte pouze syntetickou fakturu, nastavte tag `Přijatá faktura` a ověřte, že worker přes REST API vytvoří právě jednu fakturu s autoritativním `paperless_document_id`. Ověřte originální PDF v Approval UI a přechod do `QUEUE_REVIEW` nebo diagnostikovatelnou chybu extrakce.
+Nahrajte pouze syntetickou fakturu, nastavte tag `Přijatá faktura` a ověřte, že worker přes REST API vytvoří právě jednu fakturu s autoritativním `paperless_document_id`. Ověřte snapshot metadat/OCR, audit, originální PDF v Approval UI a přechod `NEW → VALIDATION → QUEUE_REVIEW`. V této etapě nevzniká LLM job.
 
 ## Etapa D: Ollama
 
 ```text
-docker compose up -d ollama
+docker compose --profile llm up -d ollama
 docker compose exec ollama ollama pull qwen3:4b
 docker compose up -d worker
 ```

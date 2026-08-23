@@ -24,6 +24,7 @@ from app.config import Settings, get_settings
 from app.db import get_db
 from app.models import OidcSession, UserIdentity
 from app.schemas import CurrentUser
+from app.services.audit import record_event
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -87,6 +88,12 @@ async def callback(
             csrf_token=secrets.token_urlsafe(24),
         )
     )
+    record_event(
+        db,
+        "USER_LOGIN",
+        actor=subject,
+        metadata={"username": user.username, "roles": roles},
+    )
     db.commit()
     response = RedirectResponse("/", status_code=302)
     response.delete_cookie(STATE_COOKIE, path="/api/auth/callback")
@@ -112,12 +119,18 @@ def logout(
     response: Response,
     request: Request,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(require_csrf),
+    user: CurrentUser = Depends(require_csrf),
 ) -> None:
     session_id = request.cookies.get(SESSION_COOKIE)
     if session_id:
         session = db.get(OidcSession, session_id)
         if session:
             db.delete(session)
+            record_event(
+                db,
+                "USER_LOGOUT",
+                actor=user.subject,
+                metadata={"username": user.username},
+            )
             db.commit()
     response.delete_cookie(SESSION_COOKIE, path="/")

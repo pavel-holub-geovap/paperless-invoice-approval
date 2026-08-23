@@ -8,9 +8,11 @@ const tone: Record<string, string> = {
   IMPORTED_TO_POHODA: "success",
   OK: "success",
   AWAITING_APPROVAL: "info",
+  SYNCED: "success",
+  PENDING: "warning",
+  ERROR: "danger",
 };
 
 export function StatusBadge({ value }: { value: string }) {
   return <span className={`badge badge-${tone[value] ?? "neutral"}`}>{value.replaceAll("_", " ")}</span>;
 }
-

@@ -2,18 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.integrations.ollama import OllamaClient
 from app.integrations.paperless import PaperlessClient
-from app.models import Invoice, InvoiceStatus, ProcessingJob, SystemHeartbeat, utcnow
-from app.services.audit import record_event
-from app.services.extraction import apply_extraction
-from app.services.jobs import complete_job, enqueue_job, fail_job, lease_next_job
-from app.services.workflow import create_invoice, transition
+from app.models import Invoice, ProcessingJob, SystemHeartbeat, utcnow
+from app.services.jobs import complete_job, fail_job, lease_next_job
+from app.services.paperless_sync import mark_sync_error, sync_document_snapshot
+from app.services.workflow import create_invoice
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("worker")
@@ -22,18 +21,21 @@ logger = logging.getLogger("worker")
 async def discover_documents(paperless: PaperlessClient) -> None:
     settings = get_settings()
     async for document in paperless.iter_documents_with_tag(settings.paperless_inbox_tag):
-        with SessionLocal.begin() as db:
-            invoice = create_invoice(db, document.id)
-            enqueue_job(
-                db,
-                "EXTRACT_INVOICE",
-                f"extract:{invoice.id}:r{invoice.current_revision_number}",
-                invoice_id=invoice.id,
-                payload={"paperless_document_id": document.id},
-            )
+        try:
+            with SessionLocal.begin() as db:
+                invoice = create_invoice(db, document.id)
+                sync_document_snapshot(db, invoice, document)
+        except Exception as exc:
+            logger.exception("paperless_document_sync_failed document_id=%s", document.id)
+            with SessionLocal.begin() as db:
+                invoice = db.scalar(
+                    select(Invoice).where(Invoice.paperless_document_id == document.id)
+                )
+                if invoice is not None:
+                    mark_sync_error(db, invoice, exc)
 
 
-async def process_one(paperless: PaperlessClient, ollama: OllamaClient) -> bool:
+async def process_one(paperless: PaperlessClient) -> bool:
     with SessionLocal.begin() as db:
         job = lease_next_job(db)
         if not job:
@@ -57,25 +59,7 @@ async def process_one(paperless: PaperlessClient, ollama: OllamaClient) -> bool:
             with SessionLocal.begin() as db:
                 complete_job(db.get(ProcessingJob, job_id))
             return True
-        if job_type != "EXTRACT_INVOICE":
-            raise ValueError(f"Unsupported job type {job_type}")
-        with SessionLocal.begin() as db:
-            invoice = db.scalar(select(Invoice).where(Invoice.id == invoice_id).with_for_update())
-            if invoice is None:
-                raise ValueError("Invoice no longer exists")
-            if invoice.status == InvoiceStatus.NEW:
-                transition(db, invoice, InvoiceStatus.AI_PROCESSING, "system")
-                record_event(db, "AI_EXTRACTION_STARTED", invoice=invoice, metadata={"job_id": job_id})
-            paperless_id = invoice.paperless_document_id
-        document = await paperless.get_document(paperless_id)
-        payload = await ollama.extract_invoice(document.content)
-        with SessionLocal.begin() as db:
-            invoice = db.get(Invoice, invoice_id)
-            if invoice is None:
-                raise ValueError("Invoice no longer exists")
-            apply_extraction(db, invoice, payload)
-            complete_job(db.get(ProcessingJob, job_id))
-        return True
+        raise ValueError(f"Unsupported job type in Paperless-only worker: {job_type}")
     except Exception as exc:
         logger.exception("job_failed job_id=%s invoice_id=%s", job_id, invoice_id)
         with SessionLocal.begin() as db:
@@ -88,26 +72,32 @@ async def process_one(paperless: PaperlessClient, ollama: OllamaClient) -> bool:
 async def run() -> None:
     settings = get_settings()
     paperless = PaperlessClient(settings)
-    ollama = OllamaClient(settings)
+    next_discovery = 0.0
     try:
         while True:
             with SessionLocal.begin() as db:
                 heartbeat = db.get(SystemHeartbeat, "worker")
                 if heartbeat is None:
-                    db.add(SystemHeartbeat(name="worker", details={"status": "running"}))
+                    db.add(
+                        SystemHeartbeat(
+                            name="worker",
+                            details={"status": "running", "mode": "paperless-sync"},
+                        )
+                    )
                 else:
                     heartbeat.updated_at = utcnow()
-                    heartbeat.details = {"status": "running"}
-            try:
-                await discover_documents(paperless)
-            except Exception:
-                logger.exception("paperless_discovery_failed")
-            processed = await process_one(paperless, ollama)
+                    heartbeat.details = {"status": "running", "mode": "paperless-sync"}
+            if time.monotonic() >= next_discovery:
+                try:
+                    await discover_documents(paperless)
+                except Exception:
+                    logger.exception("paperless_discovery_failed")
+                next_discovery = time.monotonic() + settings.paperless_sync_seconds
+            processed = await process_one(paperless)
             if not processed:
                 await asyncio.sleep(settings.worker_poll_seconds)
     finally:
         await paperless.close()
-        await ollama.close()
 
 
 if __name__ == "__main__":

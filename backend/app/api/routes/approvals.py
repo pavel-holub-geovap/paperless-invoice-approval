@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth import require_csrf
+from app.auth import ROLE_APPROVER, require_csrf_roles, require_roles
 from app.db import get_db
 from app.models import Allocation, ApprovalAssignment, Invoice
 from app.schemas import ApprovalRequest, CurrentUser
@@ -18,10 +18,8 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 @router.get("/mine")
 def my_approvals(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_csrf),
+    user: CurrentUser = Depends(require_roles(ROLE_APPROVER)),
 ) -> list[dict[str, Any]]:
-    if "APPROVER" not in user.roles:
-        raise HTTPException(status_code=403, detail="APPROVER role required")
     assignments = db.scalars(
         select(ApprovalAssignment)
         .options(
@@ -64,10 +62,8 @@ def make_decision(
     assignment_id: str,
     payload: ApprovalRequest,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_csrf),
+    user: CurrentUser = Depends(require_csrf_roles(ROLE_APPROVER)),
 ) -> dict[str, Any]:
-    if "APPROVER" not in user.roles:
-        raise HTTPException(status_code=403, detail="APPROVER role required")
     assignment = db.scalar(
         select(ApprovalAssignment).where(ApprovalAssignment.id == assignment_id).with_for_update()
     )
@@ -86,4 +82,3 @@ def make_decision(
         "comment": decision.comment,
         "created_at": decision.created_at,
     }
-

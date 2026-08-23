@@ -13,6 +13,10 @@ export type InvoiceListItem = {
   paperless_document_id: number;
   status: string;
   current_revision_number: number;
+  title: string;
+  correspondent?: string;
+  paperless_created_at?: string;
+  sync_status: "PENDING" | "SYNCED" | "ERROR";
   supplier_name?: string;
   invoice_number?: string;
   total_amount?: string;
@@ -57,6 +61,19 @@ export type Invoice = {
   paperless_document_id: number;
   status: string;
   current_revision_number: number;
+  paperless: {
+    title: string;
+    created_at?: string;
+    correspondent_id?: number;
+    correspondent?: string;
+    tag_ids: number[];
+    tags: string[];
+    ocr_text: string;
+    original_filename?: string;
+    sync_status: "PENDING" | "SYNCED" | "ERROR";
+    last_synced_at?: string;
+    sync_error?: string;
+  };
   original_checked_at?: string;
   original_checked_by?: string;
   data: Record<string, unknown>;

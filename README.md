@@ -17,8 +17,10 @@ Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schvále
 
 1. Zkopírujte `.env.example` na `.env` a doplňte všechny hodnoty `change-me`.
 2. Spusťte `docker-compose config` a zkontrolujte výslednou konfiguraci.
-3. Pro první diagnostiku spusťte Etapu A podle `docs/DEPLOYMENT.md`; celý stack spouštějte až po jejím smoke testu.
+3. Postupujte po etapách podle `docs/DEPLOYMENT.md`. Výchozí Compose nyní spouští infrastrukturu a Approval aplikaci bez Ollamy.
 4. Na testovací VM otevřete Approval na `http://172.30.172.167/`, Paperless na `http://172.30.172.167:8000/` a Keycloak na `http://172.30.172.167:8081/`.
+
+Etapy B/C synchronizují metadata, tagy a OCR text z Paperless REST API do samostatné approval databáze. Originální PDF se do ní neukládá a UI jej načítá přes autorizovanou backend proxy. Ollama je opt-in Compose profil `llm` a patří až do Etapy D.
 
 Testovací Paperless používá vlastní PostgreSQL databázi, Redis a persistentní volumes a nesmí sdílet produkční data ani tokeny. Postup je v [docs/PAPERLESS_INTEGRATION.md](docs/PAPERLESS_INTEGRATION.md) a OIDC v [docs/PAPERLESS_KEYCLOAK.md](docs/PAPERLESS_KEYCLOAK.md).
 

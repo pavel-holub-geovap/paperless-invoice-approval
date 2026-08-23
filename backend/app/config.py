@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     ollama_num_ctx: int = 4096
     ollama_timeout_seconds: int = 180
     worker_poll_seconds: int = 3
+    paperless_sync_seconds: int = 30
     export_archive_dir: Path = Path("./exports")
     pohoda_xsd_path: Path = Path("../fixtures/pohoda/data.xsd")
     allocation_tolerance: str = "0.01"

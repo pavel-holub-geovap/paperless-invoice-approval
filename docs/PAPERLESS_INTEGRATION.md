@@ -12,12 +12,14 @@ Approval backend nikdy nepřistupuje do Paperless databáze. Používá výhradn
 
 Výchozí tagy jsou `Přijatá faktura`, `AI zpracování`, `Kontrola správce`, `Ke schválení`, `Schváleno`, `Zamítnuto`, `Připraveno pro Pohodu`, `Exportováno` a `Importováno do Pohody`. Názvy jsou v `.env`, nikoli rozptýlené v kódu.
 
-Synchronizace je idempotentní: unikátní index a idempotency key zabrání duplicitní faktuře i jobu. Klient před změnou načte dokument a nahrazuje pouze spravované stavové tagy; ostatní tagy zachová.
+Synchronizace je idempotentní: unikátní index zabrání duplicitní faktuře a beze změny snapshotu nevzniká další datový audit. Worker hledá dokumenty s `PAPERLESS_INBOX_TAG`, přes API dohledá názvy tagů a korespondenta, uloží metadata a OCR a centralizovaně přejde do `QUEUE_REVIEW`. Stav synchronizace je `PENDING`, `SYNCED` nebo `ERROR`. Klient před změnou načte dokument a nahrazuje pouze spravované stavové tagy; ostatní tagy zachová.
 
 ## OCR a persistence
 
 Výchozí OCR je `ces+eng`; image obsahuje dodatečné balíky `ces` a `slk`. `PAPERLESS_OCR_MODE=auto` zachová použitelnou textovou vrstvu born-digital PDF a OCR provede pro obrazové dokumenty. Povinný smoke test používá image-only fixture, takže skutečně prověří OCR.
 
 Upload probíhá přes UI nebo `/api/documents/post_document/`. Stav zpracování se sleduje přes `/api/tasks/?task_id=...`; po dokončení musí `/api/documents/{id}/` vrátit neprázdný `content` a download endpoint původní PDF.
+
+Approval databáze ukládá OCR text, ale nikdy PDF bytes. Autorizovaný PDF proxy endpoint vždy volá Paperless download REST endpoint; browser Paperless token nezná. Etapy B/C nespouštějí Ollamu ani nevytvářejí extrakční job.
 
 Timeout, omezený exponential backoff a job error chrání approval worker před výpadkem Paperless. Testovací service account má záměrně široký přístup jen v izolovaném tenantovi; produkční nasazení musí použít least-privileged účet.

@@ -54,6 +54,23 @@ def _manager(user: CurrentUser) -> None:
         raise HTTPException(status_code=403, detail="QUEUE_MANAGER role required")
 
 
+def _viewer(db: Session, invoice: Invoice, user: CurrentUser) -> None:
+    if "QUEUE_MANAGER" in user.roles:
+        return
+    if "APPROVER" in user.roles and db.scalar(
+        select(ApprovalAssignment.id)
+        .where(
+            ApprovalAssignment.invoice_id == invoice.id,
+            ApprovalAssignment.revision_id == invoice.current_revision.id,
+            ApprovalAssignment.approver_subject == user.subject,
+            ApprovalAssignment.active.is_(True),
+        )
+        .limit(1)
+    ):
+        return
+    raise HTTPException(status_code=403, detail="Invoice is not available to this user")
+
+
 def _invoice_or_404(db: Session, invoice_id: str, lock: bool = False) -> Invoice:
     query = (
         select(Invoice)
@@ -83,6 +100,19 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
     return {
         "id": invoice.id,
         "paperless_document_id": invoice.paperless_document_id,
+        "paperless": {
+            "title": invoice.paperless_title,
+            "created_at": invoice.paperless_created_at,
+            "correspondent_id": invoice.paperless_correspondent_id,
+            "correspondent": invoice.paperless_correspondent_name,
+            "tag_ids": invoice.paperless_tag_ids,
+            "tags": invoice.paperless_tags,
+            "ocr_text": invoice.paperless_ocr_text,
+            "original_filename": invoice.paperless_original_filename,
+            "sync_status": invoice.sync_status,
+            "last_synced_at": invoice.last_synced_at,
+            "sync_error": invoice.sync_error,
+        },
         "status": invoice.status,
         "current_revision_number": invoice.current_revision_number,
         "original_checked_at": invoice.original_checked_at,
@@ -144,8 +174,9 @@ def list_invoices(
     approver: str | None = None,
     cost_center: str | None = None,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> list[InvoiceListItem]:
+    _manager(user)
     query = select(Invoice).options(selectinload(Invoice.revisions)).order_by(Invoice.updated_at.desc())
     if status_filter:
         query = query.where(Invoice.status == status_filter)
@@ -193,6 +224,10 @@ def list_invoices(
                 paperless_document_id=invoice.paperless_document_id,
                 status=invoice.status,
                 current_revision_number=invoice.current_revision_number,
+                title=invoice.paperless_title,
+                correspondent=invoice.paperless_correspondent_name,
+                paperless_created_at=invoice.paperless_created_at,
+                sync_status=invoice.sync_status,
                 supplier_name=data.get("supplier_name"),
                 invoice_number=data.get("invoice_number"),
                 total_amount=data.get("total_amount"),
@@ -221,19 +256,22 @@ def manually_register_invoice(
 def get_invoice(
     invoice_id: str,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, Any]:
-    return serialize_invoice(db, _invoice_or_404(db, invoice_id))
+    invoice = _invoice_or_404(db, invoice_id)
+    _viewer(db, invoice, user)
+    return serialize_invoice(db, invoice)
 
 
 @router.get("/{invoice_id}/pdf")
 async def proxy_pdf(
     invoice_id: str,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ) -> Response:
     invoice = _invoice_or_404(db, invoice_id)
+    _viewer(db, invoice, user)
     client = PaperlessClient(settings)
     try:
         pdf = await client.download_pdf(invoice.paperless_document_id)
@@ -478,9 +516,10 @@ def reopen_invoice(
 def invoice_audit(
     invoice_id: str,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    _invoice_or_404(db, invoice_id)
+    invoice = _invoice_or_404(db, invoice_id)
+    _viewer(db, invoice, user)
     events = db.scalars(select(AuditEvent).where(AuditEvent.invoice_id == invoice_id).order_by(AuditEvent.created_at)).all()
     return [
         {

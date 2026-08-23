@@ -39,7 +39,8 @@ def interpolate(raw: str, values: dict[str, str]) -> str:
 
 def main() -> None:
     source = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    rendered = interpolate(source, load_example_environment())
+    values = load_example_environment()
+    rendered = interpolate(source, values)
     if "${" in rendered:
         raise ValueError("Unresolved Compose interpolation remains")
     compose = yaml.safe_load(rendered)
@@ -87,6 +88,19 @@ def main() -> None:
         raise ValueError("Keycloak must use its own DB user")
     if services["backend"]["networks"] != ["app_net", "data_net"]:
         raise ValueError("Backend network isolation changed")
+    if services["ollama"].get("profiles") != ["llm"]:
+        raise ValueError("Ollama must remain opt-in until the LLM stage")
+    if "ollama" in services["worker"].get("depends_on", {}):
+        raise ValueError("Paperless-only worker must not depend on Ollama")
+    if "approval:" not in values["DATABASE_URL"]:
+        raise ValueError("Approval backend must use its dedicated database user")
+    forbidden_approval_secrets = {"PAPERLESS_DB_PASSWORD", "KEYCLOAK_DB_PASSWORD"}
+    for service_name in ("backend", "worker"):
+        exposed = forbidden_approval_secrets.intersection(
+            services[service_name].get("environment", {})
+        )
+        if exposed:
+            raise ValueError(f"{service_name} receives foreign DB secrets: {sorted(exposed)}")
 
     images = {
         name: service["image"]

@@ -21,6 +21,8 @@ from app.schemas import CurrentUser
 
 SESSION_COOKIE = "pia_session"
 STATE_COOKIE = "pia_oidc_state"
+ROLE_QUEUE_MANAGER = "QUEUE_MANAGER"
+ROLE_APPROVER = "APPROVER"
 
 
 def _b64(data: bytes) -> str:
@@ -143,6 +145,15 @@ def require_roles(*roles: str):
     return dependency
 
 
+def require_csrf_roles(*roles: str):
+    def dependency(user: CurrentUser = Depends(require_csrf)) -> CurrentUser:
+        if not set(roles).intersection(user.roles):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+        return user
+
+    return dependency
+
+
 def require_csrf(
     request: Request,
     csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -156,4 +167,3 @@ def require_csrf(
 
 def new_session_id() -> str:
     return secrets.token_urlsafe(32)
-

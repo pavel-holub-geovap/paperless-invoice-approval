@@ -113,7 +113,13 @@ def create_invoice(db: Session, paperless_document_id: int, actor: str = "system
     invoice.revisions.append(revision)
     db.add(invoice)
     db.flush()
-    record_event(db, "DOCUMENT_DISCOVERED", actor=actor, invoice=invoice)
+    record_event(
+        db,
+        "DOCUMENT_DISCOVERED",
+        actor=actor,
+        invoice=invoice,
+        metadata={"paperless_document_id": paperless_document_id},
+    )
     return invoice
 
 

@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models import ApprovalAction, InvoiceStatus, ValidationSeverity
+from app.models import ApprovalAction, InvoiceStatus, PaperlessSyncStatus, ValidationSeverity
 
 
 class InvoiceData(BaseModel):
@@ -128,6 +128,10 @@ class InvoiceListItem(BaseModel):
     paperless_document_id: int
     status: InvoiceStatus
     current_revision_number: int
+    title: str
+    correspondent: str | None
+    paperless_created_at: datetime | None
+    sync_status: PaperlessSyncStatus
     supplier_name: str | None
     invoice_number: str | None
     total_amount: Decimal | None

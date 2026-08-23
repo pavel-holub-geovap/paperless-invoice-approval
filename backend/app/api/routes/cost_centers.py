@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user, require_csrf
+from app.auth import ROLE_QUEUE_MANAGER, require_csrf, require_roles
 from app.db import get_db
 from app.models import CostCenter
 from app.schemas import CostCenterIn, CostCenterOut, CurrentUser
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/cost-centers", tags=["cost-centers"])
 def list_cost_centers(
     include_inactive: bool = False,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(get_current_user),
+    _: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER)),
 ) -> list[CostCenter]:
     query = select(CostCenter).order_by(CostCenter.code)
     if not include_inactive:
@@ -65,4 +65,3 @@ def update_cost_center(
         raise HTTPException(status_code=409, detail="Cost center code or POHODA code already exists") from exc
     db.refresh(row)
     return row
-

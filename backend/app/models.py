@@ -68,6 +68,12 @@ class JobStatus(enum.StrEnum):
     FAILED = "FAILED"
 
 
+class PaperlessSyncStatus(enum.StrEnum):
+    PENDING = "PENDING"
+    SYNCED = "SYNCED"
+    ERROR = "ERROR"
+
+
 class ExportBatchStatus(enum.StrEnum):
     CREATED = "CREATED"
     IMPORTED = "IMPORTED"
@@ -102,6 +108,22 @@ class Invoice(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     paperless_document_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    paperless_title: Mapped[str] = mapped_column(String(512), default="", nullable=False)
+    paperless_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paperless_correspondent_id: Mapped[int | None] = mapped_column(Integer)
+    paperless_correspondent_name: Mapped[str | None] = mapped_column(String(255))
+    paperless_tag_ids: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    paperless_tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    paperless_ocr_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    paperless_original_filename: Mapped[str | None] = mapped_column(String(255))
+    sync_status: Mapped[PaperlessSyncStatus] = mapped_column(
+        Enum(PaperlessSyncStatus, native_enum=False),
+        default=PaperlessSyncStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sync_error: Mapped[str | None] = mapped_column(Text)
     status: Mapped[InvoiceStatus] = mapped_column(
         Enum(InvoiceStatus, native_enum=False), default=InvoiceStatus.NEW, index=True
     )

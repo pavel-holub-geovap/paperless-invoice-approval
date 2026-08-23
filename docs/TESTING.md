@@ -27,14 +27,19 @@ Použijte pouze `fixtures/synthetic/synthetic-invoice-cs-en.pdf`:
 5. Nastavte tag `Přijatá faktura` a ověřte jeho načtení přes API.
 6. Restartujte Paperless, Redis a PostgreSQL jednotlivě a ověřte, že dokument, OCR i tag přežily. Volumes nemažte.
 
-## Approval integrační test (Etapy B–F)
+## Approval integrační test (Etapy B/C)
 
 1. Approval login přes stejnou Keycloak identitu.
 2. Worker objeví Paperless dokument právě jednou přes REST API.
 3. Approval UI zobrazí originální PDF a uloží `paperless_document_id`.
-4. Ollama vrátí strict JSON, následují deterministické validace a `QUEUE_REVIEW`.
-5. Projděte paralelní approval, RETURN, REJECT, invalidaci revize a znovuschválení.
-6. Ověřte XSD-validní POHODA XML, PDF + XML ZIP, `EXPORT_CREATED` a oddělené ruční potvrzení `IMPORTED_TO_POHODA`.
+4. DB snapshot obsahuje název, created timestamp, korespondenta, tagy, OCR text, `SYNCED` a audit objevení/synchronizace/přechodů.
+5. Worker přejde bez LLM přes `NEW → VALIDATION → QUEUE_REVIEW` a nastaví Paperless stavový tag.
+6. Queue manager vidí dashboard/detail/PDF; approver se přihlásí a vidí sekci „Moje úkoly“, ale nedostane celou frontu.
+7. Ověřte `/api/invoices/{id}/pdf` jako PDF a současně absenci PDF bytes v approval databázi.
+
+## Pozdější etapy
+
+Etapa D samostatně ověří Ollama OCR → strict JSON → deterministické validace. Teprve poté se testují approvals, RETURN, REJECT, revize a POHODA export.
 
 Změny tagů jsou povolené pouze v izolované testovací instanci. Reálné faktury, produkční Paperless a POHODA nejsou součástí automatických testů.
 
