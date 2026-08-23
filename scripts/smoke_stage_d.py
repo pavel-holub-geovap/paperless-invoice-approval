@@ -132,12 +132,23 @@ def main() -> None:
         invoices = response_json(manager.get(f"{base_url}/api/invoices"), "invoice dashboard")
         invoice = next((row for row in invoices if row["paperless_document_id"] == document_id), None)
         require(invoice is not None, f"Paperless document {document_id} is not on the dashboard")
-        first_detail = wait_for_ai(manager, base_url, invoice["id"])
-        first = next(
-            (run for run in first_detail["ai"]["history"] if run["extraction_revision"] == 1),
-            first_detail["ai"]["latest"],
+        first_detail = response_json(
+            manager.get(f"{base_url}/api/invoices/{invoice['id']}"), "initial AI detail"
         )
-        first_accuracy = accuracy(expected, first_detail["ai"]["latest"]["parsed_result"])
+        initial = first_detail["ai"]["latest"]
+        if initial is None or initial["status"] == "AI_FAILED":
+            failed_revision = initial["extraction_revision"] if initial else 0
+            queued = manager.post(
+                f"{base_url}/api/invoices/{invoice['id']}/ai-extractions", headers=headers
+            )
+            require(queued.status_code == 202, f"Recovery extraction returned HTTP {queued.status_code}")
+            first_detail = wait_for_ai(manager, base_url, invoice["id"], failed_revision)
+        elif initial["status"] != "AI_COMPLETED":
+            first_detail = wait_for_ai(
+                manager, base_url, invoice["id"], initial["extraction_revision"] - 1
+            )
+        first = first_detail["ai"]["latest"]
+        first_accuracy = accuracy(expected, first["parsed_result"])
 
         before_revision = first_detail["ai"]["latest"]["extraction_revision"]
         queued = manager.post(
