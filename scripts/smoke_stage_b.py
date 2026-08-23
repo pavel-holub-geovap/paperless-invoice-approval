@@ -51,11 +51,12 @@ def main() -> None:
     base_url = os.environ["APP_BASE_URL"].rstrip("/")
     document_id = int(os.environ.get("SMOKE_PAPERLESS_DOCUMENT_ID", "1"))
 
-    with login(
+    manager = login(
         base_url,
         "queue-manager",
         os.environ["TEST_QUEUE_MANAGER_PASSWORD"],
-    ) as manager:
+    )
+    try:
         manager_user = response_json(manager.get(f"{base_url}/api/auth/me"), "queue-manager /me")
         require("QUEUE_MANAGER" in manager_user["roles"], "queue-manager role is missing")
         invoices = response_json(manager.get(f"{base_url}/api/invoices"), "invoice dashboard")
@@ -72,17 +73,22 @@ def main() -> None:
         require(pdf.status_code == 200, f"PDF proxy returned HTTP {pdf.status_code}")
         require(pdf.headers.get("content-type", "").startswith("application/pdf"), "PDF MIME type is invalid")
         require(pdf.content.startswith(b"%PDF"), "PDF proxy did not return the original PDF")
+    finally:
+        manager.close()
 
-    with login(
+    approver = login(
         base_url,
         "approver1",
         os.environ["TEST_APPROVER_1_PASSWORD"],
-    ) as approver:
+    )
+    try:
         approver_user = response_json(approver.get(f"{base_url}/api/auth/me"), "approver1 /me")
         require("APPROVER" in approver_user["roles"], "approver1 role is missing")
         tasks = response_json(approver.get(f"{base_url}/api/approvals/mine"), "approver1 tasks")
         invoice_list_status = approver.get(f"{base_url}/api/invoices").status_code
         require(invoice_list_status == 403, "approver1 unexpectedly sees the manager invoice list")
+    finally:
+        approver.close()
 
     print(
         json.dumps(
