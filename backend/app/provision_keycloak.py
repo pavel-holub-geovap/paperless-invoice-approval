@@ -236,12 +236,40 @@ def provision() -> None:
             group_representations[role] = group
 
         users = (
-            ("queue-manager", "queue-manager@example.test", "TEST_QUEUE_MANAGER_PASSWORD", "QUEUE_MANAGER"),
-            ("approver1", "approver1@example.test", "TEST_APPROVER_1_PASSWORD", "APPROVER"),
-            ("approver2", "approver2@example.test", "TEST_APPROVER_2_PASSWORD", "APPROVER"),
-            ("approver3", "approver3@example.test", "TEST_APPROVER_3_PASSWORD", "APPROVER"),
+            (
+                "queue-manager",
+                "queue-manager@example.test",
+                "Queue",
+                "Manager",
+                "TEST_QUEUE_MANAGER_PASSWORD",
+                "QUEUE_MANAGER",
+            ),
+            (
+                "approver1",
+                "approver1@example.test",
+                "Approver",
+                "One",
+                "TEST_APPROVER_1_PASSWORD",
+                "APPROVER",
+            ),
+            (
+                "approver2",
+                "approver2@example.test",
+                "Approver",
+                "Two",
+                "TEST_APPROVER_2_PASSWORD",
+                "APPROVER",
+            ),
+            (
+                "approver3",
+                "approver3@example.test",
+                "Approver",
+                "Three",
+                "TEST_APPROVER_3_PASSWORD",
+                "APPROVER",
+            ),
         )
-        for username, email, password_env, role in users:
+        for username, email, first_name, last_name, password_env, role in users:
             password = required(password_env)
             matches = request(
                 client,
@@ -257,8 +285,11 @@ def provision() -> None:
                     json={
                         "username": username,
                         "email": email,
+                        "firstName": first_name,
+                        "lastName": last_name,
                         "enabled": True,
                         "emailVerified": True,
+                        "requiredActions": [],
                     },
                 )
                 matches = request(
@@ -272,7 +303,15 @@ def provision() -> None:
                 client,
                 "PUT",
                 f"/admin/realms/{realm}/users/{user_id}",
-                json={**matches[0], "email": email, "emailVerified": True, "enabled": True},
+                json={
+                    **matches[0],
+                    "email": email,
+                    "firstName": first_name,
+                    "lastName": last_name,
+                    "emailVerified": True,
+                    "enabled": True,
+                    "requiredActions": [],
+                },
             )
             request(
                 client,
