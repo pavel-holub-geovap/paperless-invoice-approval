@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="Windows-1250"?>
+
+<dat:dataPack id="fa002" ico="12345678" application="StwTest" version = "2.0" note="Import FA"        
+xmlns:dat="http://www.stormware.cz/schema/version_2/data.xsd"        
+xmlns:inv="http://www.stormware.cz/schema/version_2/invoice.xsd"        
+xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd" >
+
+<dat:dataPackItem id="POL001" version="2.0">
+<!-- faktura bez adresy s textovou a skladovou polozkou-->
+		<inv:invoice version="2.0">
+			<inv:invoiceHeader>
+				<inv:invoiceType>issuedInvoice</inv:invoiceType>
+				<inv:number>
+					<typ:numberRequested>2005111114</typ:numberRequested>
+				</inv:number>
+				<inv:date>2019-10-14</inv:date>
+				<inv:accounting>
+					<typ:ids>3Fv</typ:ids>
+				</inv:accounting>
+				<inv:classificationVAT>
+					<typ:ids>UD</typ:ids>
+				</inv:classificationVAT>
+				<inv:text>Faktura včetně položek</inv:text>
+				<inv:paymentType>
+					<typ:paymentType>draft</typ:paymentType>
+				</inv:paymentType>
+				<inv:account>					
+					<typ:ids>KB</typ:ids>
+				</inv:account>
+				<inv:note>Načteno z XML</inv:note>
+				<inv:intNote>Faktura s textovou a skladovou položkou</inv:intNote>
+			</inv:invoiceHeader>
+			<inv:invoiceDetail>
+				<!--textova položka-->
+				<inv:invoiceItem>
+					<inv:text>Poštovné</inv:text>
+					<inv:quantity>1</inv:quantity>
+					<inv:rateVAT>high</inv:rateVAT>
+					<inv:homeCurrency>
+						<typ:unitPrice>120</typ:unitPrice>
+					</inv:homeCurrency>
+				</inv:invoiceItem>
+				<!--skladova polozka-->
+				<inv:invoiceItem>
+					<inv:text>Židle Z100</inv:text>
+					<inv:quantity>1</inv:quantity>
+					<inv:rateVAT>high</inv:rateVAT>
+					<inv:guarantee>48</inv:guarantee>
+					<inv:guaranteeType>month</inv:guaranteeType>
+					<inv:stockItem>
+						<typ:stockItem>
+							<typ:ids>Z100</typ:ids>
+						</typ:stockItem>
+					</inv:stockItem>
+				</inv:invoiceItem>
+			</inv:invoiceDetail>
+		</inv:invoice>
+	</dat:dataPackItem>
+	
+</dat:dataPack>

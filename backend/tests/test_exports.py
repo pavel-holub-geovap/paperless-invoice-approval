@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import zipfile
 from decimal import Decimal
 from pathlib import Path
@@ -13,10 +14,16 @@ from app.models import (
     ApprovalAction,
     ApprovalAssignment,
     CostCenter,
+    ExportArtifact,
     InvoiceStatus,
     UserIdentity,
 )
-from app.services.exports import create_export_batch, mark_batch_imported
+from app.services.exports import (
+    create_export_batch,
+    generate_export_artifact,
+    mark_batch_imported,
+    store_pohoda_response,
+)
 from app.services.validation import run_validations
 from app.services.workflow import (
     WorkflowError,
@@ -46,8 +53,11 @@ def approved_invoice(
         invoice,
         {
             "supplier_name": "Dodavatel s.r.o.",
-            "ico": "27082440",
-            "dic": "CZ27082440",
+            "supplier_ico": "27082440",
+            "supplier_dic": "CZ27082440",
+            "supplier_street": "Testovací 1",
+            "supplier_city": "Praha",
+            "supplier_zip": "100 00",
             "invoice_number": invoice_number,
             "variable_symbol": "2026001",
             "issue_date": "2026-08-01",
@@ -56,7 +66,7 @@ def approved_invoice(
             "currency": "CZK",
             "total_amount": "121.00",
             "description": "Testovací licence",
-            "vat_breakdown": [{"base": "100.00", "rate": "21", "vat": "21.00"}],
+            "vat_lines": [{"taxable_base": "100.00", "vat_rate": "21", "vat_amount": "21.00"}],
         },
         "manager",
     )
@@ -95,7 +105,7 @@ async def test_export_zip_and_explicit_import_are_separate_states(
     db: Session, tmp_path: Path
 ) -> None:
     invoice = approved_invoice(db)
-    xsd = Path(__file__).resolve().parents[2] / "fixtures" / "pohoda" / "data.xsd"
+    xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
     settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd)
     batch = await create_export_batch(
         db, settings, FakePaperless(), [invoice], "manager", xsd
@@ -103,6 +113,13 @@ async def test_export_zip_and_explicit_import_are_separate_states(
     db.flush()
     assert invoice.status == InvoiceStatus.EXPORT_CREATED
     assert batch.imported_at is None
+    assert batch.archive_sha256 == hashlib.sha256(Path(batch.archive_path).read_bytes()).hexdigest()
+    assert len(batch.items) == 1
+    artifact = db.get(ExportArtifact, batch.items[0].export_artifact_id)
+    assert artifact is not None
+    assert artifact.source_snapshot["revision_id"] == invoice.current_revision.id
+    assert artifact.xml_sha256 == hashlib.sha256(Path(artifact.xml_path).read_bytes()).hexdigest()
+    assert artifact.pdf_sha256 == hashlib.sha256(await FakePaperless().download_pdf(501)).hexdigest()
     with zipfile.ZipFile(batch.archive_path) as archive:
         names = archive.namelist()
         assert any(name.endswith(".pdf") for name in names)
@@ -114,15 +131,17 @@ async def test_export_zip_and_explicit_import_are_separate_states(
     mark_batch_imported(db, batch, "manager")
     assert invoice.status == InvoiceStatus.IMPORTED_TO_POHODA
     assert batch.imported_at is not None
+    assert invoice.imported_export_id == artifact.id
+    assert invoice.imported_to_pohoda_by == "manager"
 
 
 @pytest.mark.asyncio
 async def test_rejected_invoice_cannot_be_exported(db: Session, tmp_path: Path) -> None:
     invoice = approved_invoice(db)
     invoice.status = InvoiceStatus.REJECTED
-    xsd = Path(__file__).resolve().parents[2] / "fixtures" / "pohoda" / "data.xsd"
+    xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
     settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd)
-    with pytest.raises(WorkflowError, match="not ready"):
+    with pytest.raises(WorkflowError, match="Only an APPROVED"):
         await create_export_batch(db, settings, FakePaperless(), [invoice], "manager", xsd)
 
 
@@ -132,16 +151,59 @@ async def test_batch_export_contains_pdf_and_xml_for_multiple_invoices(
 ) -> None:
     first = approved_invoice(db, 601, "BATCH-1", "IT")
     second = approved_invoice(db, 602, "BATCH-2", "PROVOZ")
-    xsd = Path(__file__).resolve().parents[2] / "fixtures" / "pohoda" / "data.xsd"
+    xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
     settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd)
     batch = await create_export_batch(
         db, settings, FakePaperless(), [first, second], "manager", xsd
     )
     with zipfile.ZipFile(batch.archive_path) as archive:
         assert sorted(archive.namelist()) == [
-            "BATCH-1.pdf",
-            "BATCH-1.xml",
-            "BATCH-2.pdf",
-            "BATCH-2.xml",
+            "invoice-BATCH-1/invoice.pdf",
+            "invoice-BATCH-1/invoice.xml",
+            "invoice-BATCH-2/invoice.pdf",
+            "invoice-BATCH-2/invoice.xml",
         ]
     assert first.status == second.status == InvoiceStatus.EXPORT_CREATED
+
+
+@pytest.mark.asyncio
+async def test_reexport_keeps_revision_and_links_immutable_artifacts(
+    db: Session, tmp_path: Path
+) -> None:
+    invoice = approved_invoice(db, 701, "REEXPORT-1", "IT-RE")
+    xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
+    settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd)
+    first = await generate_export_artifact(db, settings, FakePaperless(), invoice, "manager")
+    second = await generate_export_artifact(
+        db,
+        settings,
+        FakePaperless(),
+        invoice,
+        "manager",
+        reexport_reason="Opakovaný testovací import",
+    )
+    assert first.id != second.id
+    assert second.source_export_id == first.id
+    assert second.revision_id == first.revision_id == invoice.current_revision.id
+    assert second.xml_sha256 == first.xml_sha256
+    assert second.reexport_reason == "Opakovaný testovací import"
+
+
+def test_response_upload_is_diagnostic_only(db: Session, tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[2]
+    content = (
+        root
+        / "schemas"
+        / "pohoda"
+        / "2025-10-16"
+        / "samples"
+        / "received-invoice-response.xml"
+    ).read_bytes()
+    settings = Settings(
+        export_archive_dir=tmp_path,
+        pohoda_xsd_path=root / "schemas" / "pohoda" / "2025-10-16" / "data.xsd",
+    )
+    upload = store_pohoda_response(db, settings, content, "response.xml", "manager")
+    assert upload.parse_status == "PARSED"
+    assert upload.parsed_result["state"] == "ok"
+    assert upload.parsed_result["items"][0]["id"] == "POL001"

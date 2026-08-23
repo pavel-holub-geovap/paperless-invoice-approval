@@ -17,6 +17,14 @@
 
 `api/routes` mapuje HTTP na use-cases; `services` obsahuje workflow, validace, audit, exporty a XML; `integrations` izoluje Paperless/Ollama/OIDC; `models` a `schemas` definují persistence a kontrakty. Route nesmí přímo přepisovat workflow stav.
 
+## POHODA export
+
+Exportní hranice je jednosměrná a offline: aplikace vytváří soubory, ale s POHODOU nekomunikuje. `PohodaInvoiceXmlGenerator` přijímá jen immutable snapshot schválené aktuální revize, allocations a platných approvals. LLM do této cesty nevstupuje. DOM se serializuje jako Windows-1250 a validuje lokálním `schemas/pohoda/2025-10-16/data.xsd`; transitivní závislosti se nikdy nestahují za běhu.
+
+`ExportArtifact` uchovává revizi, vstupní snapshot, verze, XSD výsledek, cestu/hash/velikost XML a hash aktuálního Paperless PDF. Samotné PDF zůstává v Paperless. `ExportBatch` archivuje stabilní ZIP s `invoice-<safe-number>/invoice.xml` a `invoice.pdf` a vlastním SHA-256. Re-export stejné revize vytvoří nový artifact s vazbou na předchozí; změna revize invaliduje použitelnost starého artifactu a vrací workflow ke schválení.
+
+Položky XML vznikají z allocations, ne z assignmentů. U jedné sazby se základ rozdělí metodou largest remainder a DPH je dopočet do schválené hrubé allocation. Kombinace více sazeb a více středisek bez explicitního `Allocation.vat_breakdown` export blokuje. Diagnostický parser POHODA response ukládá výsledek append-only, ale nemění stav; `IMPORTED_TO_POHODA` vyžaduje samostatnou potvrzenou akci správce.
+
 ## Paperless snapshot
 
 Approval databáze ukládá pouze `paperless_document_id`, název, čas vytvoření, korespondenta, tagy, OCR text, původní název souboru a diagnostiku synchronizace. PDF zůstává autoritativně v Paperless a endpoint `/api/invoices/{id}/pdf` jej streamuje přes REST API bez trvalé kopie. Nový dokument prochází centralizovaně `NEW → VALIDATION → QUEUE_REVIEW`; AI mezitím používá samostatné stavy `AI_PENDING → AI_PROCESSING → AI_COMPLETED|AI_FAILED`, takže nemění obchodní stav.
@@ -41,4 +49,4 @@ PostgreSQL tabulka `processing_jobs` je approval fronta se stavem, omezeným po�
 
 ## Důvěryhodné hranice
 
-Browser nikdy nevidí Paperless token ani client secret. Backend drží náhodné opaque session ID v `HttpOnly`, `Secure` (v produkci) a `SameSite=Lax` cookie. Změnové endpointy kontrolují roli a CSRF origin. Exportní archiv je přístupný jen autorizovaným endpointem.
+Browser nikdy nevidí Paperless token ani client secret. Backend drží náhodné opaque session ID v `HttpOnly`, `Secure` (v produkci) a `SameSite=Lax` cookie. Změnové endpointy kontrolují roli a CSRF origin. Exportní archiv je přístupný jen autorizovaným endpointem; normalizované názvy a kontrola resolved cest brání traversal.

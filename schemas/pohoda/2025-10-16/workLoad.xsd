@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="windows-1250"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd"
+ xmlns:rdc="http://www.stormware.cz/schema/version_2/documentresponse.xsd"
+  xmlns:wld="http://www.stormware.cz/schema/version_2/workLoad.xsd"
+  xmlns="http://www.stormware.cz/schema/version_2/workLoad.xsd" targetNamespace="http://www.stormware.cz/schema/version_2/workLoad.xsd" elementFormDefault="qualified">
+	
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/type.xsd" schemaLocation="type.xsd"/>
+	<xsd:import namespace="http://www.stormware.cz/schema/version_2/documentresponse.xsd" schemaLocation="documentresponse.xsd"/>
+	
+	<!-- ************************************************************************** Import work load - Individual assignment ************************************************************************** -->
+	<!-- ************************************************************************** Import úvazku - inviduálního rozvrhu ************************************************************************** -->
+	<xsd:element name="workLoad" type="workLoadType">
+		<xsd:annotation>
+			<xsd:documentation xml:lang="en">Import work load - Individual assignment.</xsd:documentation>
+			<xsd:documentation>Import úvazku - individuální rozvrh v konkrétní mzdě.</xsd:documentation>
+		</xsd:annotation>
+	</xsd:element>
+	
+	<xsd:complexType name="workLoadType">
+		<xsd:all>
+			<xsd:element name="wage" type="typ:wageType">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Employment, year and month, issued wages for which the Individual assignment is to be imported.</xsd:documentation>
+					<xsd:documentation>Pracovní poměr, rok a měsíc, vystavených mezd, pro kterého se má importovat individuální rozvrh.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+			<xsd:element name="individualSchedule" type="individualScheduleType">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Individual assignment.</xsd:documentation>
+					<xsd:documentation>Individuální rozvrh.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:all>
+		<xsd:attribute name="version" type="wldVersionType"/>
+	</xsd:complexType>
+	
+	<xsd:simpleType name="wldVersionType">
+		<xsd:annotation>
+			<xsd:documentation xml:lang="en">Available versions. Details on individual versions can be found at www.stormware.cz/xml</xsd:documentation>
+			<xsd:documentation>Verze, které jsou dostupné k tomuto dokladu. Podrobnosti k jednotlivým verzím najdete na www.stormware.cz/xml</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="2.0"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	
+	<xsd:complexType name="individualScheduleType">
+		<xsd:all>
+			<xsd:element name="schedule" type="wld:scheduleType">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Schedule individual assignment.</xsd:documentation>
+					<xsd:documentation>Rozvrh individuálního zadání.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:all>
+	</xsd:complexType>
+
+	<xsd:complexType name="scheduleType">
+		<xsd:sequence>
+			<xsd:element name="workHours" type="wld:workHoursType" minOccurs="1" maxOccurs="31">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Hours must be listed for each day of the month, including days with zero hours..</xsd:documentation>
+					<xsd:documentation>Úvazek musí být uveden pro každý den v měsíci, včetně dnů s nulovým úvazkem.</xsd:documentation>
+				</xsd:annotation>
+			</xsd:element>
+		</xsd:sequence>
+	</xsd:complexType>
+
+	<xsd:complexType name="workHoursType">
+		<xsd:simpleContent>
+			<xsd:extension base="hourType">
+				<xsd:annotation>
+					<xsd:documentation xml:lang="en">Work load.</xsd:documentation>
+					<xsd:documentation>Hodiny úvazku.</xsd:documentation>
+				</xsd:annotation>
+				<xsd:attribute name="day" type="wld:dayType" use="required">
+					<xsd:annotation>
+						<xsd:documentation xml:lang="en">The day for which the shift is set, in DD format.</xsd:documentation>
+						<xsd:documentation>Den, pro který je úvazek nastavován, ve formátu DD.</xsd:documentation>
+					</xsd:annotation>
+				</xsd:attribute>
+			</xsd:extension>
+		</xsd:simpleContent>
+	</xsd:complexType>
+
+	<xsd:simpleType name="dayType">
+		<xsd:annotation>
+			<xsd:documentation xml:lang="en">Day in DD format</xsd:documentation>
+			<xsd:documentation>Den ve formátu DD</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:integer">
+			<xsd:minInclusive value="1"/>
+			<xsd:maxInclusive value = "31"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+
+	<xsd:simpleType name="hourType">
+		<xsd:annotation>
+			<xsd:documentation xml:lang="en">Hour</xsd:documentation>
+			<xsd:documentation>Počet hodin</xsd:documentation>
+		</xsd:annotation>
+		<xsd:restriction base="xsd:float">
+			<xsd:minInclusive value="0"/>
+			<xsd:maxInclusive value = "24"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	
+	<!-- RESPONSE -->
+	<xsd:element name="workLoadResponse" type="workLoadResponseType"/>
+	<xsd:complexType name="workLoadResponseType">
+		<xsd:complexContent>
+			<xsd:extension base="rdc:documentResponseType"/>
+		</xsd:complexContent>
+	</xsd:complexType>
+</xsd:schema>

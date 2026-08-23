@@ -42,7 +42,7 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
             for row in connection.execute("PRAGMA table_info(approval_assignments)").fetchall()
         }
 
-    assert revision == ("0004",)
+    assert revision == ("0005",)
     assert {
         "paperless_title",
         "paperless_ocr_text",
@@ -54,7 +54,7 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
     } <= invoice_columns
     assert {"expected", "actual"} <= validation_columns
     assert {"parsed_result", "raw_response", "extraction_revision", "duration_ms"} <= ai_columns
-    assert {"note", "created_by", "created_at", "updated_at"} <= allocation_columns
+    assert {"note", "vat_breakdown", "created_by", "created_at", "updated_at"} <= allocation_columns
     assert {
         "status",
         "assigned_by",

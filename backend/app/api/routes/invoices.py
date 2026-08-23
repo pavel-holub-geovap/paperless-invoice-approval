@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -19,6 +20,7 @@ from app.models import (
     ApprovalDecision,
     AuditEvent,
     CostCenter,
+    ExportArtifact,
     Invoice,
     InvoiceStatus,
     ValidationResult,
@@ -34,8 +36,8 @@ from app.schemas import (
     InvoicePatch,
 )
 from app.services.approval_setup import replace_allocations, replace_approvers
+from app.services.exports import latest_valid_artifact
 from app.services.extraction import apply_ai_extraction, queue_ai_extraction
-from app.services.pohoda import generate_invoice_xml, validate_xml
 from app.services.validation import run_validations
 from app.services.workflow import (
     WorkflowError,
@@ -102,6 +104,14 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
     ai_history = sorted(invoice.ai_extractions, key=lambda row: row.extraction_revision, reverse=True)
     latest_ai = ai_history[0] if ai_history else None
     total, allocated, remaining = allocation_totals(db, invoice)
+    latest_export = db.scalar(
+        select(ExportArtifact)
+        .where(
+            ExportArtifact.invoice_id == invoice.id,
+            ExportArtifact.revision_id == revision.id,
+        )
+        .order_by(ExportArtifact.generated_at.desc())
+    )
 
     def serialize_ai(row: AIExtraction, *, include_result: bool = False) -> dict[str, Any]:
         result = {
@@ -176,6 +186,7 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
                 "amount": allocation.amount,
                 "percentage": allocation.percentage,
                 "note": allocation.note,
+                "vat_breakdown": allocation.vat_breakdown,
                 "created_by": allocation.created_by,
                 "cost_center": {
                     "id": allocation.cost_center.id,
@@ -213,6 +224,25 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             "allocated": allocated,
             "remaining": remaining,
         },
+        "pohoda_export": (
+            {
+                "id": latest_export.id,
+                "status": latest_export.status,
+                "generator_version": latest_export.generator_version,
+                "xsd_bundle_version": latest_export.xsd_bundle_version,
+                "encoding": latest_export.encoding,
+                "xml_sha256": latest_export.xml_sha256,
+                "xml_size": latest_export.xml_size,
+                "generated_by": latest_export.generated_by,
+                "generated_at": latest_export.generated_at,
+                "validation_errors": latest_export.validation_errors,
+                "source_export_id": latest_export.source_export_id,
+                "imported_by": latest_export.imported_by,
+                "imported_at": latest_export.imported_at,
+            }
+            if latest_export
+            else None
+        ),
         "created_at": invoice.created_at,
         "updated_at": invoice.updated_at,
     }
@@ -345,37 +375,22 @@ def download_pohoda_xml(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
-) -> Response:
+) -> FileResponse:
     _manager(user)
     invoice = _invoice_or_404(db, invoice_id)
-    if invoice.status not in {
-        InvoiceStatus.APPROVED,
-        InvoiceStatus.XML_READY,
-        InvoiceStatus.READY_FOR_EXPORT,
-        InvoiceStatus.EXPORT_CREATED,
-        InvoiceStatus.IMPORTED_TO_POHODA,
-    }:
-        raise HTTPException(status_code=409, detail="Only an approved invoice can produce XML")
-    allocations = db.scalars(
-        select(Allocation)
-        .options(selectinload(Allocation.cost_center))
-        .where(
-            Allocation.revision_id == invoice.current_revision.id,
-            Allocation.active.is_(True),
-        )
-    ).all()
-    xml = generate_invoice_xml(invoice.current_revision, list(allocations))
-    errors = validate_xml(xml, settings.pohoda_xsd_path)
-    if errors:
-        raise HTTPException(status_code=409, detail={"message": "XSD validation failed", "errors": errors[:20]})
+    artifact = latest_valid_artifact(db, invoice)
+    if artifact is None:
+        raise HTTPException(status_code=409, detail="Generate and validate XML explicitly first")
+    path = Path(artifact.xml_path).resolve()
+    root = settings.export_archive_dir.resolve()
+    if root not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="XML artifact is unavailable")
     stem = str(invoice.current_revision.data.get("invoice_number") or invoice.id)
-    return Response(
-        xml,
+    return FileResponse(
+        path,
         media_type="application/xml",
-        headers={
-            "Content-Disposition": f'attachment; filename="invoice-{stem}.xml"',
-            "Cache-Control": "private, no-store",
-        },
+        filename=f"invoice-{stem}.xml",
+        headers={"Cache-Control": "private, no-store"},
     )
 
 

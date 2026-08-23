@@ -119,11 +119,18 @@ class AIExtractionApply(BaseModel):
     confirm_overwrite: bool = False
 
 
+class AllocationVatInput(BaseModel):
+    rate: Decimal = Field(ge=0, le=100)
+    base: Decimal
+    vat: Decimal
+
+
 class AllocationInput(BaseModel):
     cost_center_id: str
     amount: Decimal | None = Field(default=None, ge=0)
     percentage: Decimal | None = Field(default=None, ge=0, le=100)
     note: str | None = Field(default=None, max_length=2000)
+    vat_breakdown: list[AllocationVatInput] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def one_mode(self) -> AllocationInput:
@@ -201,6 +208,20 @@ class CostCenterOut(CostCenterIn):
 
 class ExportCreate(BaseModel):
     invoice_ids: list[str] = Field(min_length=1)
+
+
+class ExportGenerate(BaseModel):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class ImportConfirmation(BaseModel):
+    confirmed: bool
+
+    @model_validator(mode="after")
+    def must_be_confirmed(self) -> ImportConfirmation:
+        if not self.confirmed:
+            raise ValueError("Explicit import confirmation is required")
+        return self
 
 
 class CurrentUser(BaseModel):

@@ -95,6 +95,11 @@ class ExportBatchStatus(enum.StrEnum):
     IMPORTED = "IMPORTED"
 
 
+class ExportArtifactStatus(enum.StrEnum):
+    XSD_VALID = "XSD_VALID"
+    XSD_INVALID = "XSD_INVALID"
+
+
 class UserIdentity(Base):
     __tablename__ = "user_identities"
 
@@ -153,6 +158,9 @@ class Invoice(Base):
     original_review_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     original_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     original_reviewed_by: Mapped[str | None] = mapped_column(String(255))
+    imported_to_pohoda_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    imported_to_pohoda_by: Mapped[str | None] = mapped_column(String(255))
+    imported_export_id: Mapped[str | None] = mapped_column(String(36), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -293,6 +301,7 @@ class Allocation(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     percentage: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     note: Mapped[str | None] = mapped_column(Text)
+    vat_breakdown: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     created_by: Mapped[str] = mapped_column(String(255), default="system", nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -417,6 +426,7 @@ class ExportBatch(Base):
         Enum(ExportBatchStatus, native_enum=False), default=ExportBatchStatus.CREATED
     )
     archive_path: Mapped[str] = mapped_column(Text, nullable=False)
+    archive_sha256: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     imported_by: Mapped[str | None] = mapped_column(String(255))
@@ -433,6 +443,57 @@ class ExportBatchItem(Base):
     batch_id: Mapped[str] = mapped_column(ForeignKey("export_batches.id", ondelete="CASCADE"), index=True)
     invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id"), index=True)
     revision_id: Mapped[str] = mapped_column(ForeignKey("invoice_revisions.id"))
+    export_artifact_id: Mapped[str | None] = mapped_column(
+        ForeignKey("export_artifacts.id"), index=True
+    )
     pdf_filename: Mapped[str] = mapped_column(String(255))
     xml_filename: Mapped[str] = mapped_column(String(255))
     imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ExportArtifact(Base):
+    __tablename__ = "export_artifacts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id"), index=True)
+    revision_id: Mapped[str] = mapped_column(ForeignKey("invoice_revisions.id"), index=True)
+    source_export_id: Mapped[str | None] = mapped_column(
+        ForeignKey("export_artifacts.id"), index=True
+    )
+    status: Mapped[ExportArtifactStatus] = mapped_column(
+        Enum(ExportArtifactStatus, native_enum=False), nullable=False, index=True
+    )
+    generator_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    xsd_bundle_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    encoding: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    xml_path: Mapped[str] = mapped_column(Text, nullable=False)
+    xml_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    xml_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    pdf_sha256: Mapped[str | None] = mapped_column(String(64))
+    validation_errors: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    reexport_reason: Mapped[str | None] = mapped_column(Text)
+    generated_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    imported_by: Mapped[str | None] = mapped_column(String(255))
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PohodaResponseUpload(Base):
+    __tablename__ = "pohoda_response_uploads"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    export_artifact_id: Mapped[str | None] = mapped_column(
+        ForeignKey("export_artifacts.id"), index=True
+    )
+    batch_id: Mapped[str | None] = mapped_column(ForeignKey("export_batches.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    artifact_path: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    parse_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    parsed_result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    parse_errors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    uploaded_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

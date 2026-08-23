@@ -10,7 +10,7 @@ Podrobnosti jsou v `docs/ARCHITECTURE.md`. Doménová logika patří do `backend
 
 - Kopíruj `.env.example` na `.env`; žádný secret necommituj.
 - Konfigurace: `docker-compose config`
-- Stack Etapy E: `docker-compose up -d --build` (včetně Ollamy a idempotentního stažení modelu)
+- Stack Etapy F: `docker-compose up -d --build` (včetně Ollamy a idempotentního stažení modelu)
 - Backend testy: `cd backend` a `pytest`
 - Frontend testy: `cd frontend` a `npm run test`
 - Frontend build: `cd frontend` a `npm run build`
@@ -39,6 +39,8 @@ Před prací zkontroluj `git status`, remote a branch. Pokud remote existuje, po
 - Approval worker načítá dokumenty pouze přes Paperless REST API. LLM smí převádět OCR jen na striktní `InvoiceExtractionV1`; nesmí generovat XML/SQL, měnit workflow ani určovat střediska či schvalovatele.
 - Každý AI běh je append-only. Re-extrakce je pouze kandidát a pracovní data smí přepsat až po explicitním potvrzení správce.
 - Do POHODY se systém přímo nepřipojuje, nezapisuje do její databáze a neprovádí automatický import.
+- LLM nikdy negeneruje POHODA XML. XML vytváří pouze deterministický generátor ze schváleného immutable snapshotu a před zpřístupněním musí projít verzovaným XSD bundle.
+- POHODA response XML je pouze diagnostické; jeho upload nesmí automaticky měnit workflow stav.
 - Akce, která by mohla změnit jiný než izolovaný testovací Paperless, poškodit persistentní data, zveřejnit secret nebo přímo zapsat do POHODY, vyžaduje předem potvrzení uživatele.
 - Bez výslovného souhlasu nepoužívej `docker compose down -v`, `docker system prune`, `docker volume prune`, nemaž databáze ani Paperless storage.
 
@@ -51,3 +53,5 @@ Před prací zkontroluj `git status`, remote a branch. Pokud remote existuje, po
 5. Rozhodovací transakce zamyká fakturu a assignment; jeden assignment smí mít nejvýše jedno platné rozhodnutí.
 6. Export je povolen jen po finálním schválení a úspěšné XSD validaci.
 7. `EXPORT_CREATED` není `IMPORTED_TO_POHODA`; druhý stav vzniká jen explicitním potvrzením správce.
+8. Exportní artifact náleží konkrétní revizi; XML, snapshot a hash jsou immutable. Změněná revize vyžaduje nové schválení, nikoli re-export.
+9. Do XML se exportují allocations, nikoli approval assignmenty. Více středisek a více sazeb vyžaduje explicitní schválené `Allocation.vat_breakdown`.

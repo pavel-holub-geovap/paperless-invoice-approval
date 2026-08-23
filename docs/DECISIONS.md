@@ -43,3 +43,15 @@ Po zahájení schvalování změna významného fakturačního pole, allocation,
 ## ADR-011: Paralelní approvals s řádkovým zámkem
 
 Schvalovatelé nemají pořadí. Každé rozhodnutí zamkne fakturu a assignment v jednotném pořadí a databáze má částečný unikátní index na platné rozhodnutí assignmentu. Opakovaný shodný `APPROVE` vrací původní rozhodnutí, konfliktní nebo zastaralý požadavek je odmítnut.
+
+## ADR-012: Verzovaný offline POHODA XSD bundle
+
+Validace používá úplný oficiální POHODA XML 2.x bundle s datem 2025-10-16, uložený v repozitáři. Schémata se nestahují při exportu. Aktualizace bundle je auditovatelná změna zdroje, checksumů, aktivní verze a regresních testů.
+
+## ADR-013: Immutable exportní artifact
+
+Každé generování ukládá neměnný snapshot aktuální revize, allocations a approvals spolu s verzemi a SHA-256 XML/PDF. Re-export vytváří nový řádek a odkazuje na předchozí artifact. Stažení nic nemění; `IMPORTED_TO_POHODA` vzniká pouze explicitním potvrzením správce po ručním importu.
+
+## ADR-014: Účetní DPH split se neodhaduje
+
+Jedna sazba dovoluje deterministické largest-remainder rozdělení základu mezi střediska. U více sazeb a více středisek model vyžaduje explicitní `Allocation.vat_breakdown`; bez něj export končí blokující chybou. Správnost a reprodukovatelnost mají přednost před automatizací.

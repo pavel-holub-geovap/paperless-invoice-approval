@@ -55,6 +55,9 @@ SIGNIFICANT_FIELDS = {
     "supplier_ico",
     "supplier_dic",
     "supplier_address",
+    "supplier_street",
+    "supplier_city",
+    "supplier_zip",
     "ico",
     "dic",
     "address",
@@ -286,6 +289,7 @@ def _copy_allocations_and_assignments(
             amount=old.amount,
             percentage=old.percentage,
             note=old.note,
+            vat_breakdown=list(old.vat_breakdown),
             created_by=actor,
         )
         db.add(new)

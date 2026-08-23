@@ -90,6 +90,7 @@ export type Allocation = {
   amount: string;
   percentage?: string;
   note?: string;
+  vat_breakdown: { rate: string; base: string; vat: string }[];
   created_by: string;
   cost_center: CostCenter;
   assignments: Assignment[];
@@ -130,6 +131,23 @@ export type Invoice = {
     allocated: string;
     remaining: string;
   };
+  pohoda_export?: PohodaExport;
+};
+
+export type PohodaExport = {
+  id: string;
+  status: "XSD_VALID" | "XSD_INVALID";
+  source_export_id?: string;
+  generator_version: string;
+  xsd_bundle_version: string;
+  encoding: string;
+  xml_sha256: string;
+  xml_size: number;
+  generated_by: string;
+  generated_at: string;
+  validation_errors: { line?: number; column?: number; message: string; path?: string }[];
+  imported_by?: string;
+  imported_at?: string;
 };
 
 export type ApprovalTask = {
@@ -174,5 +192,14 @@ export type ExportBatch = {
   created_at: string;
   imported_by?: string;
   imported_at?: string;
+  archive_sha256?: string;
   invoice_ids: string[];
+  items: {
+    invoice_id: string;
+    revision_id: string;
+    export_artifact_id: string;
+    pdf_filename: string;
+    xml_filename: string;
+    imported_at?: string;
+  }[];
 };

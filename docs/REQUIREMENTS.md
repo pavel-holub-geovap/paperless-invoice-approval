@@ -27,7 +27,7 @@ Přechody jsou centralizované. API nesmí stav libovolně přepisovat.
 
 ## Data a integrita
 
-Minimální entity: identita uživatele, faktura, revize, vytěžené pole, výsledek validace, středisko, allocation, assignment, rozhodnutí, auditní událost, job, exportní dávka a její položka. Unikátní vazba chrání před duplicitou Paperless ID. Backend a databázové constraints brání schválení staré revize, exportu neschválené faktury a rozhodnutí bez assignmentu.
+Minimální entity: identita uživatele, faktura, revize, vytěžené pole, výsledek validace, středisko, allocation včetně případného explicitního VAT splitu, assignment, rozhodnutí, auditní událost, job, immutable exportní artifact, exportní dávka a její položka a diagnostický upload POHODA response. Unikátní vazba chrání před duplicitou Paperless ID. Backend a databázové constraints brání schválení staré revize, exportu neschválené faktury a rozhodnutí bez assignmentu.
 
 ## Validace
 
@@ -48,6 +48,7 @@ Responzivní React/TypeScript/Vite UI funguje na desktopu, tabletu i telefonu. S
 - Background joby approval aplikace jsou v PostgreSQL, obnovitelné a idempotentní. Redis je vyhrazen Paperless službám a approval worker jej zatím nepoužívá.
 - Jeden testovací `docker-compose` stack obsahuje PostgreSQL se třemi oddělenými databázemi/uživateli, Redis, Paperless-ngx, Keycloak, Ollama, backend, worker, statický frontend a reverse proxy.
 - Paperless data, media, consume, export, Redis, PostgreSQL, Ollama a approval export mají samostatné persistentní volumes.
+- POHODA XML se za běhu neopírá o internet: validace používá verzovaný oficiální bundle v image. Artifact ukládá verzi generátoru/XSD, zdrojový snapshot a SHA-256 XML/PDF; PDF bytes nejsou ukládány do approval databáze.
 - Persistent volumes, healthchecks, restart policies a rozumné limity musí zachovat workflow, audit i exporty po restartu.
 - Logy nesou invoice/paperless/job/transition/actor kontext, ale nikdy secrets, Authorization hlavičky ani celý dokument.
 
@@ -62,10 +63,11 @@ Repozitář nesmí obsahovat skutečné faktury, secrets, produkční certifiká
 - Invalidace po změně významných polí, střediska, částky allocation a seznamu approvers.
 - Přesný, neúplný a přečerpaný součet, procenta a hraniční zaokrouhlení.
 - Zákaz exportu před schválením, individuální i batch export, PDF z Paperless, XSD-validní XML a oddělení export/import.
+- Semantický golden test `receivedInvoice`, adresy bez vazby na adresář, středisek, DPH a totals; pět negativních XSD mutací a diagnostický response parser.
 - Append-only audit s before/after a vazbou approvals na revizi.
 - Negativní autorizace cizího assignmentu, idempotentní double-click a souběžné approvals různých assignmentů.
 - Šest E2E scénářů popsaných ve zdrojovém zadání.
 
 ## Mimo rozsah
 
-Bez dalšího zadání se neimplementuje přímý import či zápis do POHODY, automatické zaúčtování, e-mailové/Teams notifikace, sekvenční approval chains, zastupování, částkové limity ani účetní předkontace.
+Bez dalšího zadání se neimplementuje přímý import či zápis do POHODY, ovládání desktop POHODY, automatické zaúčtování, změna adresáře/číselníků POHODY, e-mailové/Teams notifikace, sekvenční approval chains, zastupování, částkové limity ani účetní předkontace.

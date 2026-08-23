@@ -123,6 +123,26 @@ def replace_allocations(
 
     new_value: list[dict[str, Any]] = []
     for item, amount in zip(items, amounts, strict=True):
+        vat_breakdown = [
+            {
+                "rate": str(row.rate),
+                "base": str(row.base.quantize(CENT, rounding=ROUND_HALF_UP)),
+                "vat": str(row.vat.quantize(CENT, rounding=ROUND_HALF_UP)),
+            }
+            for row in item.vat_breakdown
+        ]
+        if vat_breakdown:
+            vat_total = sum(
+                (Decimal(row["base"]) + Decimal(row["vat"]) for row in vat_breakdown),
+                Decimal("0"),
+            )
+            if abs(vat_total - amount) > CENT:
+                raise WorkflowError(
+                    "Allocation VAT breakdown must equal the allocation amount within 0.01"
+                )
+            rates = [row["rate"] for row in vat_breakdown]
+            if len(rates) != len(set(rates)):
+                raise WorkflowError("An allocation VAT rate can occur only once")
         allocation = Allocation(
             invoice_id=invoice.id,
             revision_id=revision.id,
@@ -130,6 +150,7 @@ def replace_allocations(
             amount=amount,
             percentage=item.percentage,
             note=item.note,
+            vat_breakdown=vat_breakdown,
             created_by=actor,
         )
         db.add(allocation)
@@ -140,6 +161,7 @@ def replace_allocations(
             "amount": str(amount),
             "percentage": str(item.percentage) if item.percentage is not None else None,
             "note": item.note,
+            "vat_breakdown": vat_breakdown,
         }
         new_value.append(value)
         record_event(db, "ALLOCATION_CREATED", actor=actor, invoice=invoice, new_value=value)

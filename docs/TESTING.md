@@ -74,12 +74,22 @@ docker compose run --rm --no-deps --env-from-file .env \
 
 Skript opraví platební údaje syntetické faktury podle fixture, používá střediska 200/300 a částky 700/510 Kč, ověří všechny submit preconditions, RETURN, REJECT, REOPEN, invalidaci po změně částky/střediska/approvera/fakturačního údaje, cizí assignment HTTP 403, idempotentní double-click a skutečná souběžná rozhodnutí. Nakonec provede sekvenci tří approvals a čeká na Paperless tag `Schváleno`. Hesla čte pouze z VM `.env` a netiskne je.
 
-## Pozdější etapy
+## POHODA exportní integrační test (Etapa F)
 
-Po úspěšné Etapě E se samostatně implementuje a testuje Etapa F pro aktuální POHODA XSD, deterministický XML/ZIP export a explicitní potvrzení ručního importu.
+Po migraci `0005` spusťte skutečný export nad `paperless_document_id=1`:
+
+```text
+docker compose run --rm --no-deps --env-from-file .env \
+  -v "$PWD/scripts:/smoke:ro" \
+  worker python /smoke/smoke_stage_f.py
+```
+
+Skript případně doplní přesnou strukturovanou adresu a nechá novou revizi znovu schválit reálnými OIDC uživateli. Ověří dvě allocations 700/510 Kč na střediska 200/300, první XML a auditovaný deterministický re-export, Windows-1250, `receivedInvoice`, adresu s `linkToAddress=false`, XSD-validitu, hash originálního Paperless PDF, stabilní ZIP/batch a diagnostický upload oficiální response fixture. Závěrečný stav je `EXPORT_CREATED`; skript nikdy nepotvrdí `IMPORTED_TO_POHODA`.
+
+Doménová sada navíc testuje 1 středisko/1 sazbu, více středisek/1 sazbu, 1 středisko/více sazeb, explicitní split více středisek/více sazeb a rounding remainder. Negativní XSD testy porušují povinný element, pořadí, datový typ, enum a namespace.
 
 Změny tagů jsou povolené pouze v izolované testovací instanci. Reálné faktury, produkční Paperless a POHODA nejsou součástí automatických testů.
 
 ## Evidence
 
-Pro každý deployment uložte do reportu commit, `docker compose config --quiet`, `docker compose ps`, healthchecks, relevantní logy bez secrets, RAM před/po OCR a Ollamě, document ID syntetické fixture a výsledek persistence restartu. Modul označte za funkční pouze po praktickém testu.
+Pro každý deployment uložte do reportu commit, `docker compose config --quiet`, `docker compose ps`, healthchecks, relevantní logy bez secrets, RAM před/po OCR a Ollamě, document ID syntetické fixture, migraci, XML/PDF/ZIP hashe a výsledek persistence restartu. Etapa F je technicky připravena po XSD a smoke testu, praktická kompatibilita však vyžaduje ruční import konkrétního XML do testovací POHODY, response XML a kontrolní export.

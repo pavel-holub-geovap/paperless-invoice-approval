@@ -8,7 +8,7 @@ export function setApiUser(user: User | null) {
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (init.method && !["GET", "HEAD"].includes(init.method) && currentUser?.csrf_token) {
     headers.set("X-CSRF-Token", currentUser.csrf_token);
   }
@@ -29,4 +29,3 @@ export function money(value?: string | number, currency = "CZK") {
 export function shortDate(value?: string) {
   return value ? new Intl.DateTimeFormat("cs-CZ").format(new Date(value)) : "—";
 }
-

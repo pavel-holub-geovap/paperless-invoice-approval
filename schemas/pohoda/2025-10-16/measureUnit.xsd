@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="Windows-1250"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+			xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd"
+			xmlns:rdc="http://www.stormware.cz/schema/version_2/documentresponse.xsd"
+			xmlns:unt="http://www.stormware.cz/schema/version_2/measureUnit.xsd"
+			xmlns="http://www.stormware.cz/schema/version_2/measureUnit.xsd"
+			targetNamespace="http://www.stormware.cz/schema/version_2/measureUnit.xsd"
+			elementFormDefault="qualified"
+>
+
+<xsd:import namespace="http://www.stormware.cz/schema/version_2/type.xsd" schemaLocation="type.xsd"/>
+<xsd:import namespace="http://www.stormware.cz/schema/version_2/documentresponse.xsd" schemaLocation="documentresponse.xsd"/>
+
+<!-- **************************************************************************
+	Agenda Měrné jednotky
+	************************************************************************** -->
+
+<xsd:element name="measureUnit" type="unt:measureUnitTypeRoot"/>
+
+  <xsd:complexType name="measureUnitTypeRoot">
+    <xsd:sequence minOccurs="1" maxOccurs="1">
+      <xsd:element name="measureUnitHeader" type="unt:measureUnitHeaderType" minOccurs="0"/>
+    </xsd:sequence>
+    <xsd:attribute name="version" type="unt:measureUnitVersionType" use="required"/>
+  </xsd:complexType>
+
+  <xsd:simpleType name="measureUnitVersionType">
+    <xsd:annotation>
+      <xsd:documentation>Verze, které jsou dostupné k tomuto dokladu. Podrobnosti k jednotlivým verzím najdete na www.stormware.cz/xml</xsd:documentation>
+    </xsd:annotation>
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="2.0"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:complexType name="measureUnitHeaderType">
+    <xsd:all>
+      <xsd:element name="id" type="typ:idType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>ID záznamu.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="name" type="typ:string10">
+        <xsd:annotation>
+          <xsd:documentation>Název jednotky.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="description" type="typ:string32" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Popis měrné jednotky.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="basic" type="typ:refType" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Základní jednotka vztahující se k uvedené měrné jednotce</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>    
+      <xsd:element name="coefficient" type="xsd:float" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Přepočtový koeficient ze základní měrné jednotky na zadávanou měrnou jednotku.</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="standardMeasureUnit" type="typ:string3" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>standardizované měrné jednotky (pouze SK).</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+      <xsd:element name="markRecord" type="typ:boolean" minOccurs="0">
+        <xsd:annotation>
+          <xsd:documentation>Označení záznamu v programu POHODA, sloupec "X".</xsd:documentation>
+        </xsd:annotation>
+      </xsd:element>
+    </xsd:all>
+  </xsd:complexType>
+
+  <!-- RESPONSE -->
+
+  <xsd:element name="measureUnitResponse" type="unt:measureUnitResponseType"/>
+
+  <xsd:complexType name="measureUnitResponseType">
+    <xsd:complexContent>
+      <xsd:extension  base="rdc:documentResponseType"/>
+    </xsd:complexContent>
+  </xsd:complexType>
+
+</xsd:schema>

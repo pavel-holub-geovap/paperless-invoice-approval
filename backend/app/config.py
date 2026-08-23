@@ -45,7 +45,10 @@ class Settings(BaseSettings):
     worker_poll_seconds: int = 3
     paperless_sync_seconds: int = 30
     export_archive_dir: Path = Path("./exports")
-    pohoda_xsd_path: Path = Path("../fixtures/pohoda/data.xsd")
+    pohoda_xsd_path: Path = Path("../schemas/pohoda/2025-10-16/data.xsd")
+    pohoda_xsd_bundle_version: str = "2025-10-16"
+    pohoda_xml_encoding: str = "Windows-1250"
+    pohoda_generator_version: str = "pohoda-received-invoice.v1"
     allocation_tolerance: str = "0.01"
     session_ttl_seconds: int = 28800
     external_retry_attempts: int = 3

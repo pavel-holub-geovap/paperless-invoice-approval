@@ -1,36 +1,26 @@
 param(
-    [string]$OutputDirectory = "fixtures/pohoda"
+    [string]$Version = "2025-10-16",
+    [string]$ExpectedSha256 = "AB6A9F3C406A9E2257F544203D21DF3723E8E10026E73A0898AA6249446BFD9B"
 )
 
 $ErrorActionPreference = "Stop"
-$baseUri = "https://www.stormware.cz/schema/version_2/"
-$resolvedOutput = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\$OutputDirectory"))
-New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
+$source = "https://www.stormware.cz/xml/schema/all_schema_ver2.zip"
+$root = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\schemas\pohoda"))
+$target = Join-Path $root $Version
+$archive = Join-Path $root "all_schema_ver2.zip"
 
-$queue = [System.Collections.Generic.Queue[string]]::new()
-$queue.Enqueue("data.xsd")
-$seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-
-while ($queue.Count -gt 0) {
-    $name = $queue.Dequeue()
-    if (-not $seen.Add($name)) { continue }
-    if ($name.Contains("..") -or [System.IO.Path]::GetFileName($name) -ne $name) {
-        throw "Unsafe schema name: $name"
-    }
-
-    $target = Join-Path $resolvedOutput $name
-    if (-not (Test-Path -LiteralPath $target)) {
-        Invoke-WebRequest -Uri ($baseUri + $name) -OutFile $target
-    }
-
-    $content = Get-Content -LiteralPath $target -Raw
-    [regex]::Matches($content, 'schemaLocation\s*=\s*["'']([^"'']+\.xsd)["'']') | ForEach-Object {
-        $dependency = $_.Groups[1].Value
-        if (-not $seen.Contains($dependency)) {
-            $queue.Enqueue($dependency)
-        }
-    }
+if (Test-Path -LiteralPath $target) {
+    throw "Target already exists: $target. Create a new dated version instead of overwriting it."
 }
-
-Write-Output "Downloaded/verified $($seen.Count) official POHODA XSD files in $resolvedOutput"
-
+New-Item -ItemType Directory -Force -Path $root | Out-Null
+Invoke-WebRequest -Uri $source -OutFile $archive
+$actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+if ($actual -ne $ExpectedSha256) {
+    throw "Unexpected bundle SHA-256: $actual"
+}
+Expand-Archive -LiteralPath $archive -DestinationPath $target
+$schemas = @(Get-ChildItem -LiteralPath $target -Filter *.xsd -File)
+if ($schemas.Count -lt 4) {
+    throw "Incomplete bundle: only $($schemas.Count) XSD files"
+}
+Write-Output "Downloaded $($schemas.Count) official schemas to $target; SHA-256 $actual"
