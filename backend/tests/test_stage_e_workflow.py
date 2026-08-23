@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from app.api.routes.approvals import make_decision
-from app.api.routes.invoices import get_invoice
+from app.api.routes.invoices import get_invoice, set_allocations
 from app.models import (
     Allocation,
     ApprovalAction,
@@ -22,7 +22,7 @@ from app.models import (
     ValidationResult,
     ValidationSeverity,
 )
-from app.schemas import AllocationInput, ApprovalRequest, CurrentUser
+from app.schemas import AllocationInput, AllocationSet, ApprovalRequest, CurrentUser
 from app.services.approval_setup import replace_allocations, replace_approvers
 from app.services.cost_centers import create_cost_center, update_cost_center
 from app.services.validation import run_validations, validate_invoice_data
@@ -322,6 +322,22 @@ def test_cost_center_crud_is_audited(db) -> None:
         "COST_CENTER_CREATED",
         "COST_CENTER_CHANGED",
     }
+
+
+def test_allocation_mutation_response_refreshes_relationship(db) -> None:
+    invoice, centres = base_invoice(db)
+    response = set_allocations(
+        invoice.id,
+        AllocationSet(
+            allocations=[
+                AllocationInput(cost_center_id=centres[1].id, amount=Decimal("700.00")),
+                AllocationInput(cost_center_id=centres[2].id, amount=Decimal("510.00")),
+            ]
+        ),
+        db,
+        manager(),
+    )
+    assert {row["cost_center"]["code"] for row in response["allocations"]} == {"200", "300"}
 
 
 def test_payment_details_are_explicitly_validated() -> None:

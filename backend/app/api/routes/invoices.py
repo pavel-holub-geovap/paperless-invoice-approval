@@ -87,7 +87,7 @@ def _invoice_or_404(db: Session, invoice_id: str, lock: bool = False) -> Invoice
     )
     if lock:
         query = query.with_for_update()
-    invoice = db.scalar(query)
+    invoice = db.scalar(query.execution_options(populate_existing=True))
     if invoice is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return invoice
