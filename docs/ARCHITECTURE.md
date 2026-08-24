@@ -29,11 +29,17 @@ Položky XML vznikají z allocations, ne z assignmentů. U jedné sazby se zákl
 
 Approval databáze ukládá pouze `paperless_document_id`, název, čas vytvoření, korespondenta, tagy, OCR text, původní název souboru a diagnostiku synchronizace. PDF zůstává autoritativně v Paperless a endpoint `/api/invoices/{id}/pdf` jej streamuje přes REST API bez trvalé kopie. Nový dokument prochází centralizovaně `NEW → VALIDATION → QUEUE_REVIEW`; AI mezitím používá samostatné stavy `AI_PENDING → AI_PROCESSING → AI_COMPLETED|AI_FAILED`, takže nemění obchodní stav.
 
+Worker při každém discovery cyklu navíc reconciliuje všechny uložené `paperless_document_id`. Jen explicitní REST HTTP 404 mění `source_status` z `AVAILABLE` na `MISSING`; 401/403, timeout, síťová chyba a 5xx ponechávají dostupnost beze změny. Opětovné nalezení dokumentu nastaví `AVAILABLE`. Oba přechody jsou idempotentní a auditované. `MISSING` přidává blocking validation, ale nepřepisuje workflow, revize, approvals ani exportní historii.
+
+`Invoice.disposition` je třetí, samostatná osa: `ACTIVE`, `IGNORED_DUPLICATE`, `IGNORED_OTHER`. Uchovává důvod, komentář, aktéra, čas a volitelný odkaz na původní fakturu. Výchozí fronta zobrazuje jen `ACTIVE + AVAILABLE`; další pohledy explicitně ukazují ignorované a chybějící zdroje.
+
 ## AI extrakce a validace
 
 Worker před každým během znovu načte OCR z Paperless REST API. Ollama dostane nedůvěryhodný OCR text oddělený značkami a striktní JSON schema. Pydantic odmítne chybějící nebo neznámá pole; hodnoty mohou být explicitně `null`. Každý běh ukládá model, schema/prompt verzi, raw response, parsed JSON, provenance, dobu, chybu a validační snapshot do `ai_extractions`. První běh lze aplikovat automaticky jen na prázdnou revizi; re-extrakce zůstane kandidátem do explicitního potvrzení.
 
 Deterministická validační služba používá `Decimal`, český checksum IČO, formát DIČ/VS, ISO datum a měnu, matematiku DPH a součtů, účet, IBAN mod-97 a BIC. LLM nevytváří XML/SQL, workflow stav, cost center ani approvera. Detailní kontrakt je v `docs/AI_EXTRACTION.md`.
+
+Český domácí účet prochází jedinou normalizační službou. Kombinovaný vstup `[prefix-]account/bank_code` se rozloží bez hádání číslic; původní text zůstane v `bank_account_raw`. Tím se opraví i LLM chyba, kdy je kombinovaná hodnota zkopírovaná do `bank_account` i `bank_code`. Volitelný modulo-11 checksum je review WARNING. Tři souhrnné DPH kontroly (`VAT_BASE_TOTAL_MISMATCH`, `VAT_TOTAL_MISMATCH`, `VAT_TOTAL_MATH`) jsou rovněž WARNING; řádkový formát a řádková matematika zůstávají blocking.
 
 `QUEUE_MANAGER` vidí celou frontu a smí provádět správcovské změny. `APPROVER` vidí endpoint „Moje úkoly“ a detail/PDF pouze faktur s aktivním assignmentem. Role pocházejí z Keycloak tokenu a backend je kontroluje nezávisle na viditelnosti prvků ve frontendu.
 

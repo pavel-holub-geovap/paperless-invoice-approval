@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.integrations.paperless import PaperlessDocument
-from app.models import AIExtraction, Invoice, InvoiceStatus, PaperlessSyncStatus, utcnow
+from app.models import (
+    AIExtraction,
+    Invoice,
+    InvoiceDisposition,
+    InvoiceStatus,
+    PaperlessSyncStatus,
+    SourceDocumentStatus,
+    utcnow,
+)
 from app.services.audit import record_event
 from app.services.workflow import transition
 
@@ -35,6 +43,19 @@ def sync_document_snapshot(
     document: PaperlessDocument,
     actor: str = "system",
 ) -> bool:
+    source_restored = invoice.source_status == SourceDocumentStatus.MISSING
+    if source_restored:
+        invoice.source_status = SourceDocumentStatus.AVAILABLE
+        invoice.source_missing_at = None
+        record_event(
+            db,
+            "SOURCE_DOCUMENT_RESTORED",
+            actor=actor,
+            invoice=invoice,
+            old_state=SourceDocumentStatus.MISSING.value,
+            new_state=SourceDocumentStatus.AVAILABLE.value,
+            metadata={"paperless_document_id": document.id},
+        )
     old_snapshot = _snapshot(invoice)
     invoice.paperless_title = document.title
     invoice.paperless_created_at = document.created_at
@@ -70,14 +91,53 @@ def sync_document_snapshot(
         transition(db, invoice, InvoiceStatus.VALIDATION, actor)
         transition(db, invoice, InvoiceStatus.QUEUE_REVIEW, actor)
     settings = get_settings()
+    if source_restored and invoice.disposition != InvoiceDisposition.ACTIVE:
+        from app.services.jobs import enqueue_job
+
+        tag_setting = (
+            "paperless_tag_duplicate"
+            if invoice.disposition == InvoiceDisposition.IGNORED_DUPLICATE
+            else "paperless_tag_ignored"
+        )
+        enqueue_job(
+            db,
+            "SYNC_PAPERLESS_STATUS",
+            f"paperless-source-restored:{invoice.id}:{invoice.disposition.value}",
+            invoice_id=invoice.id,
+            payload={"tag_setting": tag_setting, "disposition": invoice.disposition.value},
+        )
     has_extraction = db.scalar(
         select(AIExtraction.id).where(AIExtraction.invoice_id == invoice.id).limit(1)
     )
-    if settings.ai_extraction_enabled and not has_extraction and document.content.strip():
+    if (
+        settings.ai_extraction_enabled
+        and invoice.disposition == InvoiceDisposition.ACTIVE
+        and not has_extraction
+        and document.content.strip()
+    ):
         from app.services.extraction import queue_ai_extraction
 
         queue_ai_extraction(db, invoice, settings, actor)
     return changed
+
+
+def mark_source_missing(db: Session, invoice: Invoice, actor: str = "system") -> bool:
+    if invoice.source_status == SourceDocumentStatus.MISSING:
+        return False
+    invoice.source_status = SourceDocumentStatus.MISSING
+    invoice.source_missing_at = utcnow()
+    invoice.sync_status = PaperlessSyncStatus.ERROR
+    invoice.sync_error = "Paperless source document returned HTTP 404"
+    record_event(
+        db,
+        "SOURCE_DOCUMENT_MISSING",
+        actor=actor,
+        invoice=invoice,
+        old_state=SourceDocumentStatus.AVAILABLE.value,
+        new_state=SourceDocumentStatus.MISSING.value,
+        metadata={"paperless_document_id": invoice.paperless_document_id},
+    )
+    return True
 
 
 def mark_sync_error(db: Session, invoice: Invoice, error: Exception) -> None:

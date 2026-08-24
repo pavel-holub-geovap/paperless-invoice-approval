@@ -23,6 +23,7 @@ from app.models import (
 )
 from app.schemas import EvidenceValue, InvoiceExtractionV1
 from app.services.audit import record_event
+from app.services.bank_accounts import normalize_payment_data
 from app.services.jobs import enqueue_job
 from app.services.validation import run_validations, validate_invoice_data
 from app.services.workflow import update_invoice_data
@@ -41,7 +42,7 @@ def extraction_to_invoice_data(payload: InvoiceExtractionV1) -> dict[str, Any]:
         return value
 
     currency = scalar("currency")
-    return {
+    return normalize_payment_data({
         "supplier_name": scalar("supplier_name"),
         "supplier_ico": scalar("supplier_ico"),
         "supplier_dic": scalar("supplier_dic"),
@@ -61,7 +62,7 @@ def extraction_to_invoice_data(payload: InvoiceExtractionV1) -> dict[str, Any]:
         "total_vat": scalar("total_vat"),
         "total_amount": scalar("total_amount"),
         "description": scalar("description"),
-    }
+    })
 
 
 def _evidence(payload: InvoiceExtractionV1) -> dict[str, tuple[Any, str | None]]:
@@ -97,6 +98,16 @@ def _evidence(payload: InvoiceExtractionV1) -> dict[str, tuple[Any, str | None]]
         [row.model_dump(mode="json") for row in payload.vat_lines],
         " | ".join(row.source_text for row in payload.vat_lines if row.source_text) or None,
     )
+    normalized = extraction_to_invoice_data(payload)
+    account_source = payload.bank_account.source_text or payload.bank_code.source_text
+    for field in (
+        "bank_account_raw",
+        "bank_account_prefix",
+        "bank_account_number",
+        "bank_account",
+        "bank_code",
+    ):
+        result[field] = (normalized.get(field), account_source)
     return result
 
 
@@ -108,6 +119,7 @@ def _validation_json(row: ValidationResult) -> dict[str, Any]:
         "message": row.message,
         "expected": row.expected,
         "actual": row.actual,
+        "details": row.details,
     }
 
 

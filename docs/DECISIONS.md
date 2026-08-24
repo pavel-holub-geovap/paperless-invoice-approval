@@ -55,3 +55,15 @@ Každé generování ukládá neměnný snapshot aktuální revize, allocations 
 ## ADR-014: Účetní DPH split se neodhaduje
 
 Jedna sazba dovoluje deterministické largest-remainder rozdělení základu mezi střediska. U více sazeb a více středisek model vyžaduje explicitní `Allocation.vat_breakdown`; bez něj export končí blokující chybou. Správnost a reprodukovatelnost mají přednost před automatizací.
+
+## ADR-015: Tři nezávislé osy stavu faktury
+
+Workflow popisuje business proces, dispozice vědomé vyřazení a source status fyzickou dostupnost Paperless originálu. Nezavádíme pseudo-workflow stavy pro duplicitu nebo 404, protože by přepisovaly účetní historii. Ignorování i source přechody jsou append-only auditované a slouží jako guard podmínky nad existujícím workflow.
+
+## ADR-016: Jen potvrzená 404 znamená MISSING
+
+Reconciliation čte každý známý dokument přes REST. Pouze HTTP 404 je důkaz neexistence. Auth chyba, timeout, síťová chyba a 5xx zůstávají retryovatelnou integrační chybou, aby výpadek Paperless nemohl hromadně označit faktury jako smazané.
+
+## ADR-017: Deterministická normalizace účtu a review DPH rozdíly
+
+LLM poskytuje hodnotu a evidence, nikoli strukturu českého clearingového účtu. Parser bez odhadu rozloží `[prefix-]number/code` a POHODA v2 mapuje účet/kód odděleně. Tři agregované DPH reconciliation rozdíly jsou WARNING, protože mohou představovat legitimní zaokrouhlení; řádkové a strukturální chyby zůstávají blocking.

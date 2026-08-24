@@ -55,3 +55,8 @@ Před prací zkontroluj `git status`, remote a branch. Pokud remote existuje, po
 7. `EXPORT_CREATED` není `IMPORTED_TO_POHODA`; druhý stav vzniká jen explicitním potvrzením správce.
 8. Exportní artifact náleží konkrétní revizi; XML, snapshot a hash jsou immutable. Změněná revize vyžaduje nové schválení, nikoli re-export.
 9. Do XML se exportují allocations, nikoli approval assignmenty. Více středisek a více sazeb vyžaduje explicitní schválené `Allocation.vat_breakdown`.
+10. `Invoice.status`, dispozice a dostupnost Paperless zdroje jsou nezávislé. Ignorování ani `MISSING` nesmí přepsat historický workflow nebo smazat artifact.
+11. Ignorovat lze běžně jen časné workflow stavy; výjimkou je označení zdrojově chybějícího dokladu jako potvrzené duplicity. Obnova vrací pouze dispozici na `ACTIVE`.
+12. Pouze skutečné Paperless HTTP 404 smí nastavit `source_status=MISSING`. Timeout, 5xx, síťová chyba ani auth chyba jsou synchronizační chyba, nikoli důkaz smazání.
+13. Ignorovaný nebo zdrojově chybějící doklad nesmí nově vstoupit do approval, exportu ani potvrzení importu. `MISSING` navíc blokuje PDF a ZIP.
+14. Český účet normalizuje pouze deterministická služba. POHODA `accountNo` nikdy nesmí obsahovat `/bank_code`; kód banky patří do samostatného elementu.

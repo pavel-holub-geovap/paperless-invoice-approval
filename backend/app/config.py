@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     paperless_tag_pohoda_ready: str = "Připraveno pro Pohodu"
     paperless_tag_exported: str = "Exportováno"
     paperless_tag_imported: str = "Importováno do Pohody"
+    paperless_tag_duplicate: str = "Duplicita"
+    paperless_tag_ignored: str = "Ignorováno"
 
     ollama_base_url: str = "http://ollama:11434"
     ollama_model: str = "qwen3:4b"
@@ -48,7 +50,7 @@ class Settings(BaseSettings):
     pohoda_xsd_path: Path = Path("../schemas/pohoda/2025-10-16/data.xsd")
     pohoda_xsd_bundle_version: str = "2025-10-16"
     pohoda_xml_encoding: str = "Windows-1250"
-    pohoda_generator_version: str = "pohoda-received-invoice.v1"
+    pohoda_generator_version: str = "pohoda-received-invoice.v2"
     allocation_tolerance: str = "0.01"
     session_ttl_seconds: int = 28800
     external_retry_attempts: int = 3

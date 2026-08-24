@@ -9,12 +9,14 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.db import SessionLocal
 from app.integrations.ollama import OllamaClient, OllamaError
-from app.integrations.paperless import PaperlessClient, PaperlessError
+from app.integrations.paperless import PaperlessClient, PaperlessError, PaperlessNotFound
 from app.models import (
     AIExtraction,
     AIExtractionStatus,
     Invoice,
+    InvoiceDisposition,
     ProcessingJob,
+    SourceDocumentStatus,
     SystemHeartbeat,
     utcnow,
 )
@@ -26,7 +28,7 @@ from app.services.extraction import (
     start_ai_extraction,
 )
 from app.services.jobs import complete_job, fail_job, lease_next_job
-from app.services.paperless_sync import mark_sync_error, sync_document_snapshot
+from app.services.paperless_sync import mark_source_missing, mark_sync_error, sync_document_snapshot
 from app.services.workflow import create_invoice
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -50,6 +52,43 @@ async def discover_documents(paperless: PaperlessClient) -> None:
                     mark_sync_error(db, invoice, exc)
 
 
+async def reconcile_source_documents(paperless: PaperlessClient) -> None:
+    with SessionLocal() as db:
+        rows = db.execute(select(Invoice.id, Invoice.paperless_document_id)).all()
+    for invoice_id, document_id in rows:
+        try:
+            document = await paperless.get_document(document_id)
+        except PaperlessNotFound:
+            with SessionLocal.begin() as db:
+                invoice = db.get(Invoice, invoice_id)
+                if invoice is not None:
+                    changed = mark_source_missing(db, invoice)
+                    if changed:
+                        from app.services.validation import run_validations
+
+                        run_validations(db, invoice)
+        except Exception as exc:
+            logger.warning(
+                "paperless_reconciliation_unavailable document_id=%s error=%s",
+                document_id,
+                type(exc).__name__,
+            )
+            with SessionLocal.begin() as db:
+                invoice = db.get(Invoice, invoice_id)
+                if invoice is not None:
+                    mark_sync_error(db, invoice, exc)
+        else:
+            with SessionLocal.begin() as db:
+                invoice = db.get(Invoice, invoice_id)
+                if invoice is not None:
+                    was_missing = invoice.source_status == SourceDocumentStatus.MISSING
+                    sync_document_snapshot(db, invoice, document)
+                    if was_missing:
+                        from app.services.validation import run_validations
+
+                        run_validations(db, invoice)
+
+
 def queue_pending_ai() -> None:
     settings = get_settings()
     if not settings.ai_extraction_enabled:
@@ -59,6 +98,8 @@ def queue_pending_ai() -> None:
             select(Invoice).where(
                 Invoice.ai_status == AIExtractionStatus.AI_PENDING,
                 Invoice.paperless_ocr_text != "",
+                Invoice.disposition == InvoiceDisposition.ACTIVE,
+                Invoice.source_status == SourceDocumentStatus.AVAILABLE,
             )
         ).all()
         for invoice in invoices:
@@ -119,6 +160,10 @@ async def process_one(paperless: PaperlessClient, ollama: OllamaClient | None) -
                 invoice = db.get(Invoice, invoice_id)
                 if sync_job is None or invoice is None:
                     raise ValueError("Invoice or status job no longer exists")
+                if invoice.source_status == SourceDocumentStatus.MISSING:
+                    complete_job(sync_job)
+                    db.commit()
+                    return True
                 tag_name = getattr(get_settings(), str(sync_job.payload["tag_setting"]))
                 paperless_id = invoice.paperless_document_id
             await paperless.set_managed_status_tag(paperless_id, tag_name)
@@ -192,6 +237,7 @@ async def run() -> None:
             if time.monotonic() >= next_discovery:
                 try:
                     await discover_documents(paperless)
+                    await reconcile_source_documents(paperless)
                 except Exception:
                     logger.exception("paperless_discovery_failed")
                 next_discovery = time.monotonic() + settings.paperless_sync_seconds

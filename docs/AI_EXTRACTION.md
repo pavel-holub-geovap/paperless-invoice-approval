@@ -4,6 +4,8 @@
 
 `InvoiceExtractionV1` je verzované striktní schéma `invoice-extraction.v1`. Obsahuje dodavatele (název, IČO, DIČ, adresu), číslo faktury, variabilní symbol, tři data, měnu, účet/kód banky, IBAN, SWIFT/BIC, DPH řádky, základ, DPH, celkovou částku a popis. Každá skalární hodnota má `value` a krátký doslovný `source_text`; neznámá hodnota je explicitně `null`. Extra pole se odmítají.
 
+Po přijetí strict výstupu deterministická vrstva rozloží český účet do `bank_account_raw`, `bank_account_prefix`, `bank_account_number`, `bank_code` a kompatibilního `bank_account`. Raw model response a `source_text` zůstávají append-only; normalizace tedy neopravuje důkaz, ale pracovní hodnotu. Stejný kombinovaný řetězec v obou LLM polích se bezpečně rozpozná bez odhadu.
+
 ## Tok
 
 1. Worker načte živý dokument a OCR pouze přes Paperless REST API.

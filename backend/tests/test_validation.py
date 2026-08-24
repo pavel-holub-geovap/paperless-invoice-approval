@@ -35,11 +35,15 @@ def test_valid_invoice_has_no_blocking_error() -> None:
     assert not [row for row in results if row.severity == ValidationSeverity.BLOCKING_ERROR]
 
 
-def test_vat_total_is_blocking() -> None:
+def test_vat_total_mismatch_is_a_review_warning() -> None:
     data = valid_data()
     data["total_amount"] = "120.00"
     results = validate_invoice_data(data)
-    assert any(row.code == "VAT_TOTAL_MATH" and row.severity == ValidationSeverity.BLOCKING_ERROR for row in results)
+    mismatch = next(row for row in results if row.code == "VAT_TOTAL_MATH")
+    assert mismatch.severity == ValidationSeverity.WARNING
+    assert mismatch.expected == "121.00"
+    assert mismatch.actual == "120.00"
+    assert mismatch.details == {"difference": "-1.00"}
 
 
 def test_missing_required_fields_are_blocking() -> None:

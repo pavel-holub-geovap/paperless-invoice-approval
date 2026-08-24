@@ -55,6 +55,22 @@ Model určuje `OLLAMA_MODEL`; výchozí je `qwen3:4b`. `ollama-pull` ho stáhne 
 
 Projděte paralelní approvals, RETURN, REJECT a invalidaci revize. Nakonec ověřte APPROVED → POHODA XML → XSD → PDF + XML ZIP → `EXPORT_CREATED`. POHODA import zůstává ruční a `IMPORTED_TO_POHODA` vyžaduje explicitní potvrzení.
 
+## Opravná migrace 0006
+
+Před `docker compose config` doplňte do chráněného serverového `.env` ne-secret hodnoty `PAPERLESS_TAG_DUPLICATE=Duplicita`, `PAPERLESS_TAG_IGNORED=Ignorováno` a `POHODA_GENERATOR_VERSION=pohoda-received-invoice.v2`. Potom použijte beze změny standardní pořadí:
+
+```text
+git pull --ff-only
+docker compose config
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+Migrace nastaví všem existujícím fakturám `disposition=ACTIVE` a `source_status=AVAILABLE`; teprve následný REST reconciliation smí označit skutečné 404 jako `MISSING`. `paperless-bootstrap` idempotentně přidá tagy Duplicita/Ignorováno. Neprovádějte `down -v`, prune ani ruční mazání DB/Paperless dokumentů.
+
+Po startu spusťte read-only inventuru, úplnou regresi B–F a correction smoke z `docs/TESTING.md`. Zkontrolujte zvlášť existující orphan, uživatelské nově nahrané faktury, aktivní/ignorované/missing filtry, OIDC 403 pro approvera a nový immutable POHODA artifact generátoru v2. Starší artifact ani batch nemažte.
+
 ## Persistence a diagnostika
 
 Persistentní volumes: PostgreSQL, Redis, Paperless data/media/consume/export, runtime API token, Ollama modely a approval export. Restart kontejneru je nesmí odstranit.

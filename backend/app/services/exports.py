@@ -30,6 +30,7 @@ from app.models import (
     new_id,
 )
 from app.services.audit import record_event
+from app.services.disposition import ensure_actionable
 from app.services.pohoda import (
     PohodaInvoiceXmlGenerator,
     PohodaMappingError,
@@ -79,6 +80,7 @@ def _active_allocations(db: Session, invoice: Invoice) -> list[Allocation]:
 
 
 def _check_export_eligibility(db: Session, invoice: Invoice, allocations: list[Allocation]) -> None:
+    ensure_actionable(invoice, "be exported")
     revision = invoice.current_revision
     if revision is None:
         raise WorkflowError("Invoice has no current revision")
@@ -198,6 +200,7 @@ async def generate_export_artifact(
     *,
     reexport_reason: str | None = None,
 ) -> ExportArtifact:
+    ensure_actionable(invoice, "be exported")
     previous = latest_valid_artifact(db, invoice)
     is_reexport = previous is not None
     if is_reexport:
@@ -401,6 +404,7 @@ def mark_batch_imported(db: Session, batch: ExportBatch, actor: str) -> None:
         artifact = db.get(ExportArtifact, item.export_artifact_id)
         if invoice is None or artifact is None or invoice.status != InvoiceStatus.EXPORT_CREATED:
             raise WorkflowError("Every batch invoice must be in EXPORT_CREATED with an artifact")
+        ensure_actionable(invoice, "be marked as imported")
         if artifact.revision_id != invoice.current_revision.id:
             raise WorkflowError("Cannot confirm import of an obsolete invoice revision")
         transition(db, invoice, InvoiceStatus.IMPORTED_TO_POHODA, actor)
@@ -425,6 +429,7 @@ def mark_batch_imported(db: Session, batch: ExportBatch, actor: str) -> None:
 def mark_artifact_imported(
     db: Session, artifact: ExportArtifact, invoice: Invoice, actor: str
 ) -> None:
+    ensure_actionable(invoice, "be marked as imported")
     if artifact.imported_at is not None and invoice.imported_export_id == artifact.id:
         return
     if invoice.status != InvoiceStatus.EXPORT_CREATED:

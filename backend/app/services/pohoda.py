@@ -9,6 +9,7 @@ from lxml import etree
 
 from app.models import Allocation, InvoiceRevision
 from app.services.allocations import allocate_proportionally
+from app.services.bank_accounts import normalize_payment_data
 
 NS_DATA = "http://www.stormware.cz/schema/version_2/data.xsd"
 NS_INV = "http://www.stormware.cz/schema/version_2/invoice.xsd"
@@ -257,6 +258,7 @@ class PohodaInvoiceXmlGenerator:
         _text(address, NS_TYP, "ico", data.get("supplier_ico", data.get("ico")))
         _text(address, NS_TYP, "dic", data.get("supplier_dic", data.get("dic")))
 
+        data = normalize_payment_data(data)
         iban = str(data.get("iban") or "").replace(" ", "")
         bic = str(data.get("swift_bic") or "").replace(" ", "")
         domestic_account = str(data.get("bank_account") or "").replace(" ", "")

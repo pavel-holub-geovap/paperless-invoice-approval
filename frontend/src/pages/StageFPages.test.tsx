@@ -14,6 +14,8 @@ const approved: Invoice = {
   id: "invoice-f",
   paperless_document_id: 1,
   status: "APPROVED",
+  disposition: { status: "ACTIVE" },
+  source: { status: "AVAILABLE" },
   ai_status: "AI_COMPLETED",
   ai: { history: [] },
   current_revision_number: 22,

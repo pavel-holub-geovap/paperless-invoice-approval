@@ -12,7 +12,14 @@ from app.auth import get_current_user, require_csrf
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.integrations.paperless import PaperlessClient
-from app.models import ExportArtifact, ExportBatch, Invoice, PohodaResponseUpload
+from app.models import (
+    ExportArtifact,
+    ExportBatch,
+    ExportBatchItem,
+    Invoice,
+    PohodaResponseUpload,
+    SourceDocumentStatus,
+)
 from app.schemas import CurrentUser, ExportCreate, ExportGenerate, ImportConfirmation
 from app.services.exports import (
     create_export_batch,
@@ -291,6 +298,17 @@ def download_export(
     batch = db.get(ExportBatch, batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail="Export batch not found")
+    missing_source = db.scalar(
+        select(Invoice.id)
+        .join(ExportBatchItem, Invoice.id == ExportBatchItem.invoice_id)
+        .where(
+            ExportBatchItem.batch_id == batch.id,
+            Invoice.source_status == SourceDocumentStatus.MISSING,
+        )
+        .limit(1)
+    )
+    if missing_source:
+        raise HTTPException(status_code=409, detail="A batch source document is missing in Paperless")
     path = Path(batch.archive_path).resolve()
     root = settings.export_archive_dir.resolve()
     if root not in path.parents or not path.is_file():

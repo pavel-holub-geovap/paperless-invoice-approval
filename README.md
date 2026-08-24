@@ -12,6 +12,7 @@ Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schvále
 - POHODA XML generuje deterministický kód a před exportem jej validuje XSD.
 - Import do POHODY je výhradně ruční. Až správce explicitně potvrdí import, vznikne stav `IMPORTED_TO_POHODA`.
 - Audit je append-only. Secrets, skutečné faktury ani modely se necommitují.
+- Workflow, dispozice (`ACTIVE`/ignorováno) a dostupnost Paperless zdroje (`AVAILABLE`/`MISSING`) jsou tři nezávislé osy. Ignorování ani ztráta zdroje nemažou historii.
 
 ## Rychlý start
 
@@ -25,6 +26,8 @@ Etapy B/C synchronizují metadata, tagy a OCR text z Paperless REST API do samos
 Etapa E přidává konfigurovatelná střediska, Decimal rozúčtování, povinnou kontrolu originálu a paralelní assignmenty navázané na konkrétní revizi, středisko a částku. `RETURN` vrací celou fakturu správci, `REJECT` ji globálně zamítá a `REOPEN` vytváří novou auditovanou revizi. Významná změna dat, allocations nebo approverů invaliduje všechna dřívější rozhodnutí bez mazání historie. Podrobný kontrakt je v [docs/APPROVAL_WORKFLOW.md](docs/APPROVAL_WORKFLOW.md).
 
 Etapa F vytváří deterministickým Python generátorem `receivedInvoice`, validuje jej proti verzovanému oficiálnímu POHODA XML 2.x bundle a ukládá immutable exportní snapshot s hashy XML i původního PDF. Do položek se exportují allocations a `pohoda_code`, nikdy approval assignmenty. Správce může stáhnout XML, PDF nebo dávkový ZIP, diagnosticky načíst POHODA response a teprve po skutečném ručním importu explicitně potvrdit `IMPORTED_TO_POHODA`. Viz [docs/POHODA_EXPORT.md](docs/POHODA_EXPORT.md), [docs/POHODA_MAPPING.md](docs/POHODA_MAPPING.md) a [docs/POHODA_XSD.md](docs/POHODA_XSD.md).
+
+Opravná iterace po Etapě F normalizuje český účet deterministicky na `bank_account_raw`, `bank_account_prefix`, `bank_account_number`, `bank_code` a zpětně kompatibilní `bank_account`. Souhrnné rozdíly DPH jsou review WARNING s očekávanou, skutečnou hodnotou a rozdílem; chybné nebo neúplné řádky zůstávají blokující. Správce má zvláštní pohledy aktivních, ignorovaných a zdrojově chybějících dokladů. Frontend používá skutečné SPA URL včetně přímého `/invoices/{id}`.
 
 Výchozí model je konfigurovatelný přes `OLLAMA_MODEL` (`qwen3:4b`), inference běží s teplotou 0, jedním paralelním požadavkem, kontextem 4096 a `num_gpu=0`. Podrobnosti a bezpečnostní hranice jsou v [docs/AI_EXTRACTION.md](docs/AI_EXTRACTION.md).
 

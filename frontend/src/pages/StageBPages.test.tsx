@@ -15,6 +15,8 @@ const invoice: Invoice = {
   id: "invoice-1",
   paperless_document_id: 1,
   status: "QUEUE_REVIEW",
+  disposition: { status: "ACTIVE" },
+  source: { status: "AVAILABLE" },
   ai_status: "AI_COMPLETED",
   ai: { history: [] },
   current_revision_number: 1,
@@ -78,5 +80,20 @@ describe("Stage B pages", () => {
     render(<Approvals />);
 
     expect(await screen.findByText("Momentálně nemáte žádný aktivní úkol ke schválení.")).toBeVisible();
+  });
+
+  it("shows a missing-source warning and does not request the PDF surface", () => {
+    mockEmptyApi();
+    render(
+      <InvoiceDetail
+        invoice={{ ...invoice, source: { status: "MISSING", missing_at: "2026-08-23T20:00:00Z" } }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+    expect(screen.getByText(/Zdrojový dokument v Paperless chybí/)).toBeVisible();
+    expect(screen.queryByTitle("Originální faktura")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Předat ke schválení" })).toBeDisabled();
   });
 });

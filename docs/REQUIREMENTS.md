@@ -25,13 +25,15 @@ Zdrojovým implementačním kontraktem je `Zadání sw-paperless-invoice-full.do
 
 Přechody jsou centralizované. API nesmí stav libovolně přepisovat.
 
+Samostatné stavy jsou `disposition_status = ACTIVE|IGNORED_DUPLICATE|IGNORED_OTHER` a `source_document_status = AVAILABLE|MISSING`. `REJECTED` je business rozhodnutí ve workflow, `IGNORED_*` je vědomé vyřazení před účetním workflow a `MISSING` je fyzická nedostupnost autoritativního originálu. Tyto osy se navzájem nepřepisují.
+
 ## Data a integrita
 
 Minimální entity: identita uživatele, faktura, revize, vytěžené pole, výsledek validace, středisko, allocation včetně případného explicitního VAT splitu, assignment, rozhodnutí, auditní událost, job, immutable exportní artifact, exportní dávka a její položka a diagnostický upload POHODA response. Unikátní vazba chrání před duplicitou Paperless ID. Backend a databázové constraints brání schválení staré revize, exportu neschválené faktury a rozhodnutí bez assignmentu.
 
 ## Validace
 
-Povinné kontroly: formát a český kontrolní součet IČO, formát DIČ, data, číslo faktury, variabilní symbol, měna, DPH a daňové součty, celková částka, povinná pole, duplicita a matematická konzistence allocations. Domácí český účet je platný jen jako číslo účtu společně s čtyřmístným kódem banky; neúplná dvojice je `WARNING`. IBAN se ověřuje mod-97 a může být samostatným platebním údajem, BIC/SWIFT má samostatnou syntaktickou kontrolu. Externí ARES je volitelný, pouze varuje a jeho nedostupnost neblokuje systém.
+Povinné kontroly: formát a český kontrolní součet IČO, formát DIČ, data, číslo faktury, variabilní symbol, měna, DPH a daňové součty, celková částka, povinná pole, duplicita a matematická konzistence allocations. Domácí český účet se deterministicky rozkládá z `[prefix-]number/code`; raw evidence a explicitní prefix/number/code se uchovávají. Neúplná dvojice nebo neplatný modulo-11 checksum jsou `WARNING`. IBAN se ověřuje mod-97 a může být samostatným platebním údajem, BIC/SWIFT má samostatnou syntaktickou kontrolu. `VAT_BASE_TOTAL_MISMATCH`, `VAT_TOTAL_MISMATCH` a `VAT_TOTAL_MATH` jsou review WARNING; chybný řádek a ostatní integritní chyby zůstávají blocking. Externí ARES je volitelný, pouze varuje a jeho nedostupnost neblokuje systém.
 
 ## Identita a role
 

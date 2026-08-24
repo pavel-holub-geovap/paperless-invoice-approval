@@ -83,6 +83,17 @@ class PaperlessSyncStatus(enum.StrEnum):
     ERROR = "ERROR"
 
 
+class InvoiceDisposition(enum.StrEnum):
+    ACTIVE = "ACTIVE"
+    IGNORED_DUPLICATE = "IGNORED_DUPLICATE"
+    IGNORED_OTHER = "IGNORED_OTHER"
+
+
+class SourceDocumentStatus(enum.StrEnum):
+    AVAILABLE = "AVAILABLE"
+    MISSING = "MISSING"
+
+
 class AIExtractionStatus(enum.StrEnum):
     AI_PENDING = "AI_PENDING"
     AI_PROCESSING = "AI_PROCESSING"
@@ -145,6 +156,26 @@ class Invoice(Base):
     )
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sync_error: Mapped[str | None] = mapped_column(Text)
+    disposition: Mapped[InvoiceDisposition] = mapped_column(
+        Enum(InvoiceDisposition, native_enum=False),
+        default=InvoiceDisposition.ACTIVE,
+        nullable=False,
+        index=True,
+    )
+    disposition_reason: Mapped[str | None] = mapped_column(String(100))
+    disposition_comment: Mapped[str | None] = mapped_column(Text)
+    disposition_actor: Mapped[str | None] = mapped_column(String(255))
+    disposition_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duplicate_of_invoice_id: Mapped[str | None] = mapped_column(
+        ForeignKey("invoices.id"), index=True
+    )
+    source_status: Mapped[SourceDocumentStatus] = mapped_column(
+        Enum(SourceDocumentStatus, native_enum=False),
+        default=SourceDocumentStatus.AVAILABLE,
+        nullable=False,
+        index=True,
+    )
+    source_missing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ai_status: Mapped[AIExtractionStatus] = mapped_column(
         Enum(AIExtractionStatus, native_enum=False),
         default=AIExtractionStatus.AI_PENDING,

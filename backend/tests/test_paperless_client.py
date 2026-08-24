@@ -7,7 +7,7 @@ import pytest
 from pydantic import SecretStr
 
 from app.config import Settings
-from app.integrations.paperless import PaperlessClient
+from app.integrations.paperless import PaperlessClient, PaperlessError, PaperlessNotFound
 
 
 @pytest.mark.asyncio
@@ -52,3 +52,31 @@ async def test_document_metadata_and_pdf_are_loaded_only_over_rest() -> None:
     assert document.correspondent_name == "Supplier"
     assert document.original_filename == "invoice.pdf"
     assert pdf.startswith(b"%PDF")
+
+
+@pytest.mark.asyncio
+async def test_only_http_404_is_classified_as_missing_source() -> None:
+    settings = Settings(
+        paperless_base_url="http://paperless.test",
+        paperless_api_token=SecretStr("test-token"),
+        paperless_api_token_file=None,
+        external_retry_attempts=1,
+    )
+
+    not_found = PaperlessClient(
+        settings,
+        transport=httpx.MockTransport(lambda _: httpx.Response(404, json={"detail": "not found"})),
+    )
+    unavailable = PaperlessClient(
+        settings,
+        transport=httpx.MockTransport(lambda _: httpx.Response(503, json={"detail": "down"})),
+    )
+    try:
+        with pytest.raises(PaperlessNotFound):
+            await not_found.get_document(99)
+        with pytest.raises(PaperlessError) as error:
+            await unavailable.get_document(99)
+        assert not isinstance(error.value, PaperlessNotFound)
+    finally:
+        await not_found.close()
+        await unavailable.close()

@@ -12,6 +12,9 @@ export type InvoiceListItem = {
   id: string;
   paperless_document_id: number;
   status: string;
+  disposition: "ACTIVE" | "IGNORED_DUPLICATE" | "IGNORED_OTHER";
+  source_status: "AVAILABLE" | "MISSING";
+  source_missing_at?: string;
   current_revision_number: number;
   title: string;
   correspondent?: string;
@@ -46,6 +49,7 @@ export type Validation = {
   message: string;
   expected?: unknown;
   actual?: unknown;
+  details?: Record<string, unknown>;
 };
 
 export type AIStatus = "AI_PENDING" | "AI_PROCESSING" | "AI_COMPLETED" | "AI_FAILED";
@@ -100,6 +104,15 @@ export type Invoice = {
   id: string;
   paperless_document_id: number;
   status: string;
+  disposition: {
+    status: "ACTIVE" | "IGNORED_DUPLICATE" | "IGNORED_OTHER";
+    reason?: string;
+    comment?: string;
+    actor?: string;
+    changed_at?: string;
+    duplicate_of_invoice_id?: string;
+  };
+  source: { status: "AVAILABLE" | "MISSING"; missing_at?: string };
   ai_status: AIStatus;
   ai: {
     latest?: AIExtraction;

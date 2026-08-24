@@ -12,4 +12,8 @@ Immutable export ukládá jen účetní snapshot, XML a hashe. Originální PDF 
 
 Testovací Paperless má vlastní databázi, Redis a volumes. Žádná jeho služba nesmí dostat produkční Paperless credentials nebo mount. Approval backend používá pouze REST API token z runtime Docker volume a nemá Paperless DB heslo. Paperless OIDC client secret je jiný než secret Approval aplikace.
 
+Reconciliation nesmí zaměnit výpadek za smazání: pouze konkrétní HTTP 404 nastaví `MISSING`. Chybějící zdroj blokuje další approval, nový export/import, PDF a ZIP, ale nemaže důkazní historii. Disposition mění pouze `QUEUE_MANAGER`; approver dostane HTTP 403. Paperless tag se zapisuje jen existujícímu dokumentu a automatické fyzické mazání není součástí aplikace.
+
+Correction smoke smí mazat pouze dvě syntetická Paperless ID, která sám právě vytvořil a zaznamenal. Cleanup nevyhledává ani nemaže uživatelské faktury. Report neobsahuje PDF bytes, OCR text, token ani heslo.
+
 Na testovací HTTP/IP topologii zůstává běžné Paperless přihlášení zapnuté jako nouzová cesta, dokud není OIDC prakticky ověřeno. Prostředí nesmí být vystaveno do nedůvěryhodné sítě. Před produkčním použitím jsou povinné TLS, bezpečné hostname, rotace všech testovacích secrets a least-privileged Paperless service account.

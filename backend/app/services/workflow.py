@@ -14,13 +14,16 @@ from app.models import (
     ApprovalAssignmentStatus,
     ApprovalDecision,
     Invoice,
+    InvoiceDisposition,
     InvoiceRevision,
     InvoiceStatus,
+    SourceDocumentStatus,
     UserIdentity,
     ValidationResult,
     ValidationSeverity,
 )
 from app.services.audit import record_event
+from app.services.bank_accounts import normalize_payment_data
 
 
 class WorkflowError(ValueError):
@@ -68,6 +71,9 @@ SIGNIFICANT_FIELDS = {
     "due_date",
     "currency",
     "bank_account",
+    "bank_account_raw",
+    "bank_account_prefix",
+    "bank_account_number",
     "bank_code",
     "iban",
     "swift_bic",
@@ -104,6 +110,19 @@ def transition(
         return
     if target not in ALLOWED_TRANSITIONS[invoice.status]:
         raise WorkflowError(f"Transition {invoice.status.value} -> {target.value} is not allowed")
+    if target in {
+        InvoiceStatus.READY_FOR_APPROVAL,
+        InvoiceStatus.AWAITING_APPROVAL,
+        InvoiceStatus.APPROVED,
+        InvoiceStatus.XML_READY,
+        InvoiceStatus.READY_FOR_EXPORT,
+        InvoiceStatus.EXPORT_CREATED,
+        InvoiceStatus.IMPORTED_TO_POHODA,
+    }:
+        if invoice.disposition != InvoiceDisposition.ACTIVE:
+            raise WorkflowError("Ignored invoice cannot advance in workflow")
+        if invoice.source_status == SourceDocumentStatus.MISSING:
+            raise WorkflowError("Invoice with a missing Paperless source cannot advance in workflow")
     old = invoice.status
     invoice.status = target
     record_event(
@@ -169,7 +188,18 @@ def update_invoice_data(
     unknown = set(changes) - set(current.data) - allowed
     if unknown:
         raise WorkflowError(f"Unknown invoice fields: {', '.join(sorted(unknown))}")
-    changed = {key: value for key, value in changes.items() if current.data.get(key) != value}
+    merged = {**current.data, **changes}
+    if set(changes) & {
+        "bank_account",
+        "bank_account_raw",
+        "bank_account_prefix",
+        "bank_account_number",
+        "bank_code",
+        "iban",
+        "swift_bic",
+    }:
+        merged = normalize_payment_data(merged)
+    changed = {key: value for key, value in merged.items() if current.data.get(key) != value}
     if not changed:
         return current
     old_values = {key: current.data.get(key) for key in changed}
@@ -180,7 +210,7 @@ def update_invoice_data(
             invoice,
             actor,
             f"Významná změna polí: {', '.join(sorted(changed))}",
-            data={**current.data, **changed},
+            data=merged,
         )
         invoice.original_review_confirmed = False
         invoice.original_reviewed_at = None
@@ -364,6 +394,9 @@ def invalidate_approvals(
 
 
 def confirm_original(db: Session, invoice: Invoice, actor: str) -> None:
+    from app.services.disposition import ensure_actionable
+
+    ensure_actionable(invoice, "confirm source review")
     invoice.original_review_confirmed = True
     invoice.original_reviewed_at = datetime.now(UTC)
     invoice.original_reviewed_by = actor
@@ -395,6 +428,10 @@ def ready_for_approval(db: Session, invoice: Invoice) -> tuple[bool, list[str]]:
     if revision is None:
         return False, ["Faktura nemá revizi."]
     errors: list[str] = []
+    if invoice.disposition != InvoiceDisposition.ACTIVE:
+        errors.append("Faktura je ignorovaná.")
+    if invoice.source_status == SourceDocumentStatus.MISSING:
+        errors.append("Zdrojový dokument v Paperless chybí.")
     if not revision.data:
         errors.append("Faktura nemá vytěžená ani ručně doplněná data.")
     if not invoice.original_review_confirmed or invoice.original_reviewed_at is None:
@@ -490,6 +527,9 @@ def decide(
     invoice = db.scalar(select(Invoice).where(Invoice.id == assignment.invoice_id).with_for_update())
     if invoice is None:
         raise WorkflowError("Invoice does not exist")
+    from app.services.disposition import ensure_actionable
+
+    ensure_actionable(invoice, "be approved")
     assignment = db.scalar(
         select(ApprovalAssignment)
         .where(ApprovalAssignment.id == assignment.id)

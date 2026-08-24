@@ -76,7 +76,7 @@ Skript opraví platební údaje syntetické faktury podle fixture, používá st
 
 ## POHODA exportní integrační test (Etapa F)
 
-Po migraci `0005` spusťte skutečný export nad `paperless_document_id=1`:
+Po migraci `0006` spusťte skutečný export nad `paperless_document_id=1`:
 
 ```text
 docker compose run --rm --no-deps --env-from-file .env \
@@ -89,6 +89,21 @@ Skript případně doplní přesnou strukturovanou adresu a nechá novou revizi 
 Doménová sada navíc testuje 1 středisko/1 sazbu, více středisek/1 sazbu, 1 středisko/více sazeb, explicitní split více středisek/více sazeb a rounding remainder. Negativní XSD testy porušují povinný element, pořadí, datový typ, enum a namespace.
 
 Změny tagů jsou povolené pouze v izolované testovací instanci. Reálné faktury, produkční Paperless a POHODA nejsou součástí automatických testů.
+
+## Opravná iterace po Etapě F
+
+Lokální sada navíc ověřuje varianty českého účtu (s/bez předčíslí, mezery, oddělený a kombinovaný vstup, IBAN-only, nevalidní vstup a LLM duplikaci hodnoty), modulo-11 checksum, POHODA rozdělení `accountNo`/`bankCode`, přesně tři WARNING souhrnných DPH, dispozici/restore, filtry, idempotentní source audit a rozlišení 404 od 5xx. Frontend testuje detail → Fronta, přímý deep link, browser `popstate`, varování `MISSING` a blokované PDF/workflow akce.
+
+Skutečný test vytvoří dvě jednoznačně pojmenované vlastní syntetické položky, čeká na OCR, Approval sync a AI, ověří normalizaci chybného kombinovaného účtu, označí druhou jako duplicitu, ověří Paperless tag a smaže výhradně ID vytvořená vlastním během:
+
+```text
+docker compose run --rm --no-deps --env-from-file .env \
+  -v "$PWD/scripts:/smoke:ro" \
+  -v "$PWD/fixtures/synthetic:/fixtures:ro" \
+  worker python /smoke/smoke_correction.py
+```
+
+Po smazání musí reconciliation nastavit `MISSING`, vytvořit jednu blocking validation a audity, PDF i nový export musí vrátit HTTP 409. Skript v `finally` maže jen přesná Paperless ID vrácená jeho dvěma upload tasky. Uživatelské dokumenty ani původní syntetická faktura se nemažou. Read-only inventuru bez OCR obsahu lze spustit jako `/smoke/inventory_correction.py`.
 
 ## Evidence
 

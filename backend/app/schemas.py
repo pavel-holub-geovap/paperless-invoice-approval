@@ -9,8 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.models import (
     AIExtractionStatus,
     ApprovalAction,
+    InvoiceDisposition,
     InvoiceStatus,
     PaperlessSyncStatus,
+    SourceDocumentStatus,
     ValidationSeverity,
 )
 
@@ -26,8 +28,13 @@ class InvoiceData(BaseModel):
     taxable_supply_date: date | None = None
     due_date: date | None = None
     currency: str | None = None
+    bank_account_raw: str | None = None
+    bank_account_prefix: str | None = None
+    bank_account_number: str | None = None
     bank_account: str | None = None
+    bank_code: str | None = None
     iban: str | None = None
+    swift_bic: str | None = None
     vat_breakdown: list[dict[str, Any]] = Field(default_factory=list)
     total_amount: Decimal | None = None
     description: str | None = None
@@ -115,6 +122,25 @@ class InvoicePatch(BaseModel):
     comment: str | None = None
 
 
+class InvoiceDispositionSet(BaseModel):
+    disposition: Literal["IGNORED_DUPLICATE", "IGNORED_OTHER"]
+    reason: str = Field(min_length=1, max_length=100)
+    comment: str | None = Field(default=None, max_length=2000)
+    duplicate_of_invoice_id: str | None = None
+
+    @model_validator(mode="after")
+    def duplicate_target(self) -> InvoiceDispositionSet:
+        if self.disposition == "IGNORED_DUPLICATE" and not self.duplicate_of_invoice_id:
+            raise ValueError("IGNORED_DUPLICATE requires duplicate_of_invoice_id")
+        if self.disposition == "IGNORED_OTHER" and self.duplicate_of_invoice_id:
+            raise ValueError("IGNORED_OTHER cannot reference a duplicate")
+        return self
+
+
+class InvoiceDispositionRestore(BaseModel):
+    comment: str | None = Field(default=None, max_length=2000)
+
+
 class AIExtractionApply(BaseModel):
     confirm_overwrite: bool = False
 
@@ -167,6 +193,7 @@ class ValidationOut(BaseModel):
     message: str
     expected: Any | None = None
     actual: Any | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -175,6 +202,9 @@ class InvoiceListItem(BaseModel):
     id: str
     paperless_document_id: int
     status: InvoiceStatus
+    disposition: InvoiceDisposition
+    source_status: SourceDocumentStatus
+    source_missing_at: datetime | None = None
     current_revision_number: int
     title: str
     correspondent: str | None

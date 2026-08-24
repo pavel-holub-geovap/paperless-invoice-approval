@@ -14,7 +14,9 @@ from app.models import (
     ApprovalAssignment,
     ApprovalAssignmentStatus,
     Invoice,
+    InvoiceDisposition,
     InvoiceStatus,
+    SourceDocumentStatus,
 )
 from app.schemas import ApprovalRequest, CurrentUser
 from app.services.workflow import WorkflowError, decide
@@ -44,7 +46,12 @@ def my_approvals(
     for assignment in assignments:
         invoice = db.get(Invoice, assignment.invoice_id)
         revision = invoice.current_revision
-        if invoice.status != InvoiceStatus.AWAITING_APPROVAL or assignment.revision_id != revision.id:
+        if (
+            invoice.status != InvoiceStatus.AWAITING_APPROVAL
+            or invoice.disposition != InvoiceDisposition.ACTIVE
+            or invoice.source_status != SourceDocumentStatus.AVAILABLE
+            or assignment.revision_id != revision.id
+        ):
             continue
         valid_decision = next((row for row in reversed(assignment.decisions) if row.valid), None)
         result.append(

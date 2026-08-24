@@ -377,7 +377,7 @@ def main() -> None:
                     "invoice_id": invoice_id,
                     "invoice_revision": current["current_revision_number"],
                     "final_status": "EXPORT_CREATED",
-                    "migration_expected": "0005",
+                    "migration_expected": "0006",
                     "xsd_status": second["status"],
                     "xsd_bundle_version": second["xsd_bundle_version"],
                     "generator_version": second["generator_version"],

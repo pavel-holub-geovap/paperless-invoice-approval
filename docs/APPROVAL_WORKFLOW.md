@@ -1,5 +1,7 @@
 # Schvalovací workflow
 
+Workflow stav je nezávislý na `Invoice.disposition` a `source_status`. Ignorování ani Paperless 404 stav nepřepisují; ignored/MISSING pouze zablokují nové předání, rozhodnutí, export a potvrzení importu. Obnovení zdroje/dispozice pokračuje z dochovaného workflow podle jeho běžných preconditions.
+
 ## Doménová vazba
 
 Schvalovatel nerozhoduje o faktuře obecně. Assignment vždy váže konkrétní fakturu, `InvoiceRevision`, allocation, středisko, peněžní částku a approvera. Allocation částky jsou `Decimal`/PostgreSQL `NUMERIC`; procento je vstup a provenance, autoritativní je vypočtená částka.

@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -17,6 +18,7 @@ from app.models import (
     ExportArtifact,
     InvoiceStatus,
     UserIdentity,
+    ValidationResult,
 )
 from app.services.exports import (
     create_export_batch,
@@ -46,6 +48,7 @@ def approved_invoice(
     paperless_id: int = 501,
     invoice_number: str = "EXP-TEST-1",
     centre_code: str = "GIS",
+    total_amount: str = "121.00",
 ):
     invoice = create_invoice(db, paperless_id)
     update_invoice_data(
@@ -64,7 +67,7 @@ def approved_invoice(
             "taxable_supply_date": "2026-08-01",
             "due_date": "2026-08-15",
             "currency": "CZK",
-            "total_amount": "121.00",
+            "total_amount": total_amount,
             "description": "Testovací licence",
             "vat_lines": [{"taxable_base": "100.00", "vat_rate": "21", "vat_amount": "21.00"}],
         },
@@ -78,7 +81,7 @@ def approved_invoice(
         invoice_id=invoice.id,
         revision_id=invoice.current_revision.id,
         cost_center_id=centre.id,
-        amount=Decimal("121.00"),
+        amount=Decimal(total_amount),
     )
     db.add(allocation)
     db.flush()
@@ -98,6 +101,47 @@ def approved_invoice(
     submit_for_approval(db, invoice, "manager")
     decide(db, assignment, ApprovalAction.APPROVE, "approver-1", None)
     return invoice
+
+
+@pytest.mark.asyncio
+async def test_vat_rounding_warning_does_not_block_approval_or_export(
+    db: Session, tmp_path: Path
+) -> None:
+    invoice = approved_invoice(
+        db,
+        503,
+        "ROUNDING-WARNING",
+        "ROUND",
+        total_amount="120.99",
+    )
+    mismatch = db.scalar(
+        select(ValidationResult).where(
+            ValidationResult.revision_id == invoice.current_revision.id,
+            ValidationResult.code == "VAT_TOTAL_MATH",
+        )
+    )
+    assert mismatch is not None
+    assert mismatch.severity.value == "WARNING"
+    assert mismatch.expected == "121.00"
+    assert mismatch.actual == "120.99"
+    assert mismatch.details["difference"] == "-0.01"
+    assert invoice.status == InvoiceStatus.APPROVED
+
+    xsd = (
+        Path(__file__).resolve().parents[2]
+        / "schemas"
+        / "pohoda"
+        / "2025-10-16"
+        / "data.xsd"
+    )
+    artifact = await generate_export_artifact(
+        db,
+        Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd),
+        FakePaperless(),
+        invoice,
+        "manager",
+    )
+    assert artifact.status.value == "XSD_VALID"
 
 
 @pytest.mark.asyncio

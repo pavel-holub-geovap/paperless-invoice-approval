@@ -18,7 +18,7 @@ Mapování je odvozené z oficiálních `data.xsd`, `invoice.xsd`, `type.xsd` a 
 | `taxable_supply_date` | `inv:invoiceHeader/inv:dateTax` | schválená revize | volitelné XSD | ISO `YYYY-MM-DD` |
 | `due_date` | `inv:invoiceHeader/inv:dateDue` | schválená revize | volitelné XSD | ISO `YYYY-MM-DD` |
 | `currency` | `inv:homeCurrency`, nebo `inv:foreignCurrency/typ:currency/typ:ids` | schválená revize | povinné aplikací | CZK používá home currency; cizí měna vyžaduje ručně ověřený kurz |
-| `bank_account` + `bank_code` | `inv:paymentAccount/typ:accountNo`, `typ:bankCode` | schválená revize | společně volitelné | neúplná dvojice export zablokuje |
+| normalizované `bank_account` + `bank_code` | `inv:paymentAccount/typ:accountNo`, `typ:bankCode` | schválená revize | společně volitelné | vstup `[prefix-]number/code` se rozloží; `accountNo` nikdy neobsahuje lomítko/kód a neúplná dvojice export zablokuje |
 | `iban` + `swift_bic` | stejný `inv:paymentAccount` pár | schválená revize | společně volitelné | úplný IBAN+BIC má přednost před domácím párem; žádná hodnota se nedopočítává |
 | `description` | `inv:invoiceHeader/inv:text` a prefix `inv:invoiceItem/inv:text` | schválená revize | povinné aplikací | položkový text je omezen na 90 znaků |
 | `vat_lines[].vat_rate` | `inv:invoiceItem/inv:rateVAT` | schválená revize | povinné pro zdaněný doklad | `21 → high`, `12 → low`, `0 → none`; jiná sazba bez otestovaného mapování blokuje export |

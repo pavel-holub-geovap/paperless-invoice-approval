@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.auth import get_current_user, require_csrf
 from app.config import Settings, get_settings
 from app.db import get_db
-from app.integrations.paperless import PaperlessClient
+from app.integrations.paperless import PaperlessClient, PaperlessError, PaperlessNotFound
 from app.models import (
     AIExtraction,
     Allocation,
@@ -22,7 +22,9 @@ from app.models import (
     CostCenter,
     ExportArtifact,
     Invoice,
+    InvoiceDisposition,
     InvoiceStatus,
+    SourceDocumentStatus,
     ValidationResult,
     ValidationSeverity,
 )
@@ -32,12 +34,16 @@ from app.schemas import (
     ApproverSet,
     CurrentUser,
     InvoiceCreate,
+    InvoiceDispositionRestore,
+    InvoiceDispositionSet,
     InvoiceListItem,
     InvoicePatch,
 )
 from app.services.approval_setup import replace_allocations, replace_approvers
+from app.services.disposition import restore_disposition, set_disposition
 from app.services.exports import latest_valid_artifact
 from app.services.extraction import apply_ai_extraction, queue_ai_extraction
+from app.services.paperless_sync import mark_source_missing
 from app.services.validation import run_validations
 from app.services.workflow import (
     WorkflowError,
@@ -155,6 +161,18 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             "sync_error": invoice.sync_error,
         },
         "status": invoice.status,
+        "disposition": {
+            "status": invoice.disposition,
+            "reason": invoice.disposition_reason,
+            "comment": invoice.disposition_comment,
+            "actor": invoice.disposition_actor,
+            "changed_at": invoice.disposition_changed_at,
+            "duplicate_of_invoice_id": invoice.duplicate_of_invoice_id,
+        },
+        "source": {
+            "status": invoice.source_status,
+            "missing_at": invoice.source_missing_at,
+        },
         "ai_status": invoice.ai_status,
         "ai": {
             "latest": serialize_ai(latest_ai, include_result=True) if latest_ai else None,
@@ -177,6 +195,7 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
                 "message": result.message,
                 "expected": result.expected,
                 "actual": result.actual,
+                "details": result.details,
             }
             for result in validations
         ],
@@ -254,6 +273,7 @@ def list_invoices(
     supplier: str | None = None,
     approver: str | None = None,
     cost_center: str | None = None,
+    view: Literal["active", "ignored", "missing", "all"] = "active",
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[InvoiceListItem]:
@@ -261,6 +281,15 @@ def list_invoices(
     query = select(Invoice).options(selectinload(Invoice.revisions)).order_by(Invoice.updated_at.desc())
     if status_filter:
         query = query.where(Invoice.status == status_filter)
+    if view == "active":
+        query = query.where(
+            Invoice.disposition == InvoiceDisposition.ACTIVE,
+            Invoice.source_status == SourceDocumentStatus.AVAILABLE,
+        )
+    elif view == "ignored":
+        query = query.where(Invoice.disposition != InvoiceDisposition.ACTIVE)
+    elif view == "missing":
+        query = query.where(Invoice.source_status == SourceDocumentStatus.MISSING)
     invoices = db.scalars(query).unique().all()
     result: list[InvoiceListItem] = []
     for invoice in invoices:
@@ -307,6 +336,9 @@ def list_invoices(
                 id=invoice.id,
                 paperless_document_id=invoice.paperless_document_id,
                 status=invoice.status,
+                disposition=invoice.disposition,
+                source_status=invoice.source_status,
+                source_missing_at=invoice.source_missing_at,
                 current_revision_number=invoice.current_revision_number,
                 title=invoice.paperless_title,
                 correspondent=invoice.paperless_correspondent_name,
@@ -361,12 +393,69 @@ async def proxy_pdf(
 ) -> Response:
     invoice = _invoice_or_404(db, invoice_id)
     _viewer(db, invoice, user)
+    if invoice.source_status == SourceDocumentStatus.MISSING:
+        raise HTTPException(status_code=409, detail="Paperless source document is missing")
     client = PaperlessClient(settings)
     try:
-        pdf = await client.download_pdf(invoice.paperless_document_id)
+        try:
+            pdf = await client.download_pdf(invoice.paperless_document_id)
+        except PaperlessNotFound as exc:
+            mark_source_missing(db, invoice, user.subject)
+            run_validations(db, invoice, user.subject)
+            db.commit()
+            raise HTTPException(
+                status_code=409, detail="Paperless source document is missing"
+            ) from exc
+        except PaperlessError as exc:
+            raise HTTPException(
+                status_code=502, detail="Paperless is temporarily unavailable"
+            ) from exc
     finally:
         await client.close()
     return Response(pdf, media_type="application/pdf", headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/{invoice_id}/disposition")
+def ignore_invoice(
+    invoice_id: str,
+    payload: InvoiceDispositionSet,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_csrf),
+) -> dict[str, Any]:
+    _manager(user)
+    invoice = _invoice_or_404(db, invoice_id, lock=True)
+    duplicate_of = None
+    if payload.duplicate_of_invoice_id:
+        duplicate_of = _invoice_or_404(db, payload.duplicate_of_invoice_id)
+    try:
+        set_disposition(
+            db,
+            invoice,
+            InvoiceDisposition(payload.disposition),
+            user.subject,
+            payload.reason,
+            comment=payload.comment,
+            duplicate_of=duplicate_of,
+        )
+        db.commit()
+    except WorkflowError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return serialize_invoice(db, _invoice_or_404(db, invoice_id))
+
+
+@router.post("/{invoice_id}/restore")
+def restore_invoice(
+    invoice_id: str,
+    payload: InvoiceDispositionRestore,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_csrf),
+) -> dict[str, Any]:
+    _manager(user)
+    invoice = _invoice_or_404(db, invoice_id, lock=True)
+    restore_disposition(db, invoice, user.subject, payload.comment)
+    db.commit()
+    return serialize_invoice(db, _invoice_or_404(db, invoice_id))
 
 
 @router.get("/{invoice_id}/pohoda.xml")

@@ -10,6 +10,8 @@ První generování je povoleno pouze nad `APPROVED` aktuální revizí se všem
 
 Re-export je povolen jen pro stejnou aktuální revizi. Vytvoří nový artifact s odkazem na původní export a audit `REEXPORTED`; změněná revize musí znovu projít schválením.
 
+Ignorovaná faktura nebo faktura s `source_status=MISSING` nesmí vytvořit první export ani re-export a nesmí být nově označena jako importovaná. Historický XML artifact zůstává dostupný jako immutable evidence; `MISSING` ale blokuje PDF a ZIP, protože nelze ověřit aktuální autoritativní originál.
+
 ## Soubory
 
 - XML: immutable Windows-1250 artifact, vždy XSD-validní.
@@ -25,3 +27,7 @@ Správce může nahrát nejvýše 5 MiB response XML. Bezpečný parser ověří
 ## Duplicity
 
 Před generováním se porovnává IČO dodavatele, dodavatelské číslo faktury, total a datum vystavení. Shoda vytvoří WARNING `POSSIBLE_DUPLICATE_INVOICE`; záznam se nemaže ani neslučuje.
+
+## Platební účet ve verzi v2
+
+Generátor `pohoda-received-invoice.v2` před mapováním znovu deterministicky normalizuje data. Domácí účet `[prefix-]number/bank_code` se zapíše jako `typ:accountNo=[prefix-]number` a `typ:bankCode=bank_code`; lomítko ani celý kombinovaný řetězec se nikdy nedostane do obou elementů. IBAN/BIC zůstávají samostatnou podporovanou dvojicí podle existujícího mapovacího kontraktu. Každé nové generování vytvoří nový immutable artifact; v1 artifact se nepřepisuje.

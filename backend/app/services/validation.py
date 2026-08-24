@@ -12,10 +12,12 @@ from app.models import (
     Allocation,
     Invoice,
     InvoiceRevision,
+    SourceDocumentStatus,
     ValidationResult,
     ValidationSeverity,
 )
 from app.services.audit import record_event
+from app.services.bank_accounts import normalize_payment_data, valid_czech_account_checksum
 
 ICO_RE = re.compile(r"^\d{8}$")
 DIC_RE = re.compile(r"^(CZ)?\d{8,10}$", re.IGNORECASE)
@@ -106,6 +108,7 @@ def _result(
 
 
 def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
+    data = normalize_payment_data(data)
     results: list[ValidationResult] = []
     required = ("supplier_name", "invoice_number", "issue_date", "currency", "total_amount")
     missing = [field for field in required if _value(data, field) in (None, "", [])]
@@ -361,8 +364,8 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
     if vat_rows and declared_base is not None:
         severity = (
             ValidationSeverity.OK
-            if abs(sum_base - declared_base) <= MONEY_TOLERANCE
-            else ValidationSeverity.BLOCKING_ERROR
+            if sum_base == declared_base
+            else ValidationSeverity.WARNING
         )
         results.append(
             _result(
@@ -371,14 +374,17 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                 "Součet základů DPH odpovídá celkovému základu."
                 if severity == ValidationSeverity.OK
                 else "Součet základů DPH neodpovídá celkovému základu.",
-                "total_without_vat", expected=str(sum_base), actual=str(declared_base)
+                "total_without_vat",
+                expected=str(sum_base),
+                actual=str(declared_base),
+                details={"difference": str(declared_base - sum_base)},
             )
         )
     if vat_rows and declared_vat is not None:
         severity = (
             ValidationSeverity.OK
-            if abs(sum_vat - declared_vat) <= MONEY_TOLERANCE
-            else ValidationSeverity.BLOCKING_ERROR
+            if sum_vat == declared_vat
+            else ValidationSeverity.WARNING
         )
         results.append(
             _result(
@@ -387,7 +393,10 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                 "Součet DPH odpovídá celkovému DPH."
                 if severity == ValidationSeverity.OK
                 else "Součet DPH neodpovídá celkovému DPH.",
-                "total_vat", expected=str(sum_vat), actual=str(declared_vat)
+                "total_vat",
+                expected=str(sum_vat),
+                actual=str(declared_vat),
+                details={"difference": str(declared_vat - sum_vat)},
             )
         )
     math_base = declared_base if declared_base is not None else (sum_base if vat_rows else None)
@@ -396,8 +405,8 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
         expected_total = math_base + math_vat
         severity = (
             ValidationSeverity.OK
-            if abs(expected_total - total) <= MONEY_TOLERANCE
-            else ValidationSeverity.BLOCKING_ERROR
+            if expected_total == total
+            else ValidationSeverity.WARNING
         )
         results.append(
             _result(
@@ -406,11 +415,16 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                 "Základ a DPH odpovídají celkové částce."
                 if severity == ValidationSeverity.OK
                 else "Základ a DPH neodpovídají celkové částce.",
-                "total_amount", expected=str(expected_total), actual=str(total)
+                "total_amount",
+                expected=str(expected_total),
+                actual=str(total),
+                details={"difference": str(total - expected_total)},
             )
         )
 
     account = str(_value(data, "bank_account") or "").replace(" ", "")
+    account_prefix = str(_value(data, "bank_account_prefix") or "")
+    account_number = str(_value(data, "bank_account_number") or "")
     bank_code = str(_value(data, "bank_code") or "").replace(" ", "")
     if bool(account) != bool(bank_code):
         results.append(
@@ -442,6 +456,17 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                 actual=f"{account}/{bank_code}",
             )
         )
+        if not valid_czech_account_checksum(account_prefix or None, account_number):
+            results.append(
+                _result(
+                    "BANK_ACCOUNT_CHECKSUM",
+                    ValidationSeverity.WARNING,
+                    "Český účet neprošel kontrolním součtem modulo 11; ověřte jej v originálu.",
+                    "bank_account",
+                    expected="valid Czech account checksum",
+                    actual=f"{account}/{bank_code}",
+                )
+            )
     if bank_code and not BANK_CODE_RE.fullmatch(bank_code):
         results.append(
             _result(
@@ -511,28 +536,63 @@ def run_validations(
         raise ValueError("Invoice has no current revision")
     db.execute(delete(ValidationResult).where(ValidationResult.revision_id == revision.id))
     results = validate_invoice_data(revision.data)
+    if invoice.source_status == SourceDocumentStatus.MISSING:
+        results.append(
+            _result(
+                "SOURCE_DOCUMENT_MISSING",
+                ValidationSeverity.BLOCKING_ERROR,
+                "Zdrojový dokument v Paperless není dostupný (HTTP 404).",
+                "paperless_document_id",
+                expected="AVAILABLE",
+                actual="MISSING",
+                details={"paperless_document_id": invoice.paperless_document_id},
+            )
+        )
 
     candidates = db.scalars(
         select(InvoiceRevision)
         .join(Invoice, Invoice.id == InvoiceRevision.invoice_id)
         .where(Invoice.id != invoice.id, Invoice.current_revision_number == InvoiceRevision.number)
     ).all()
-    duplicate_keys = ("supplier_ico", "invoice_number", "total_amount")
+    duplicate_keys = (
+        "supplier_ico",
+        "supplier_dic",
+        "invoice_number",
+        "variable_symbol",
+        "total_amount",
+        "issue_date",
+    )
 
     def duplicate_value(row: dict[str, Any], key: str) -> Any:
         return _value(row, key, "ico") if key == "supplier_ico" else row.get(key)
 
-    if all(duplicate_value(revision.data, key) not in (None, "") for key in duplicate_keys) and any(
-        all(
-            str(duplicate_value(other.data, key)) == str(duplicate_value(revision.data, key))
+    duplicate_candidates: list[dict[str, Any]] = []
+    for other in candidates:
+        matched = [
+            key
             for key in duplicate_keys
-        )
-        for other in candidates
-    ):
+            if duplicate_value(revision.data, key) not in (None, "")
+            and str(duplicate_value(other.data, key)).strip().casefold()
+            == str(duplicate_value(revision.data, key)).strip().casefold()
+        ]
+        if (
+            "invoice_number" in matched
+            and "total_amount" in matched
+            and ("supplier_ico" in matched or "supplier_dic" in matched)
+        ):
+            duplicate_candidates.append(
+                {"invoice_id": other.invoice_id, "matched_fields": matched}
+            )
+    if duplicate_candidates:
         results.append(
             _result(
-                "DUPLICATE_INVOICE", ValidationSeverity.BLOCKING_ERROR,
-                "Jiná faktura má stejné IČO, číslo dokladu a částku."
+                "DUPLICATE_INVOICE",
+                ValidationSeverity.WARNING,
+                "Jiná faktura má stejné IČO, číslo dokladu a částku; rozhodnutí je na správci.",
+                details={
+                    "candidate_invoice_ids": [row["invoice_id"] for row in duplicate_candidates],
+                    "candidates": duplicate_candidates,
+                },
             )
         )
 

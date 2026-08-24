@@ -15,6 +15,10 @@ class PaperlessError(RuntimeError):
     pass
 
 
+class PaperlessNotFound(PaperlessError):
+    pass
+
+
 @dataclass(frozen=True)
 class PaperlessDocument:
     id: int
@@ -51,8 +55,12 @@ class PaperlessClient:
         for attempt in range(self.settings.external_retry_attempts):
             try:
                 response = await self.client.request(method, path, **kwargs)
+                if response.status_code == 404:
+                    raise PaperlessNotFound(f"Paperless resource {path} was not found")
                 response.raise_for_status()
                 return response
+            except PaperlessNotFound:
+                raise
             except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as exc:
                 last_error = exc
                 if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500:
@@ -115,8 +123,14 @@ class PaperlessClient:
 
     async def iter_documents_with_tag(self, tag_name: str) -> AsyncIterator[PaperlessDocument]:
         tag_id = await self.resolve_tag_id(tag_name)
+        async for document in self.iter_documents(tag_id=tag_id):
+            yield document
+
+    async def iter_documents(self, *, tag_id: int | None = None) -> AsyncIterator[PaperlessDocument]:
         path: str | None = "/documents/"
-        params: dict[str, Any] | None = {"tags__id__all": tag_id, "page_size": 100}
+        params: dict[str, Any] | None = {"page_size": 100}
+        if tag_id is not None:
+            params["tags__id__all"] = tag_id
         while path:
             response = await self._request("GET", path, params=params)
             payload = response.json()
@@ -149,6 +163,8 @@ class PaperlessClient:
             self.settings.paperless_tag_pohoda_ready,
             self.settings.paperless_tag_exported,
             self.settings.paperless_tag_imported,
+            self.settings.paperless_tag_duplicate,
+            self.settings.paperless_tag_ignored,
         }
         managed_ids = {await self.resolve_tag_id(name) for name in managed_names}
         target_id = await self.resolve_tag_id(target_tag_name)
