@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -25,6 +26,7 @@ from app.schemas import EvidenceValue, InvoiceExtractionV1
 from app.services.audit import record_event
 from app.services.bank_accounts import normalize_payment_data
 from app.services.jobs import enqueue_job
+from app.services.supplier_addresses import normalize_supplier_address
 from app.services.validation import run_validations, validate_invoice_data
 from app.services.workflow import update_invoice_data
 
@@ -42,11 +44,14 @@ def extraction_to_invoice_data(payload: InvoiceExtractionV1) -> dict[str, Any]:
         return value
 
     currency = scalar("currency")
-    return normalize_payment_data({
+    data = normalize_supplier_address({
         "supplier_name": scalar("supplier_name"),
         "supplier_ico": scalar("supplier_ico"),
         "supplier_dic": scalar("supplier_dic"),
-        "supplier_address": scalar("supplier_address"),
+        "supplier_address_raw": scalar("supplier_address_raw"),
+        "supplier_street": scalar("supplier_street"),
+        "supplier_city": scalar("supplier_city"),
+        "supplier_zip": scalar("supplier_zip"),
         "invoice_number": scalar("invoice_number"),
         "variable_symbol": scalar("variable_symbol"),
         "issue_date": scalar("issue_date"),
@@ -57,12 +62,23 @@ def extraction_to_invoice_data(payload: InvoiceExtractionV1) -> dict[str, Any]:
         "bank_code": scalar("bank_code"),
         "iban": scalar("iban"),
         "swift_bic": scalar("swift_bic"),
-        "vat_lines": [row.model_dump(mode="json") for row in payload.vat_lines],
+        "vat_lines": [
+            {
+                **row.model_dump(mode="json"),
+                "adjustment_type": row.adjustment_type or (
+                    "ROUNDING"
+                    if row.source_text and re.search(r"\b(?:zaokrouhlení|zaokr\.?|rounding)\b", row.source_text, re.IGNORECASE)
+                    else None
+                ),
+            }
+            for row in payload.vat_lines
+        ],
         "total_without_vat": scalar("total_without_vat"),
         "total_vat": scalar("total_vat"),
         "total_amount": scalar("total_amount"),
         "description": scalar("description"),
     })
+    return normalize_payment_data(data)
 
 
 def _evidence(payload: InvoiceExtractionV1) -> dict[str, tuple[Any, str | None]]:
@@ -71,7 +87,10 @@ def _evidence(payload: InvoiceExtractionV1) -> dict[str, tuple[Any, str | None]]
         "supplier_name",
         "supplier_ico",
         "supplier_dic",
-        "supplier_address",
+        "supplier_address_raw",
+        "supplier_street",
+        "supplier_city",
+        "supplier_zip",
         "invoice_number",
         "variable_symbol",
         "issue_date",
@@ -99,6 +118,14 @@ def _evidence(payload: InvoiceExtractionV1) -> dict[str, tuple[Any, str | None]]
         " | ".join(row.source_text for row in payload.vat_lines if row.source_text) or None,
     )
     normalized = extraction_to_invoice_data(payload)
+    for field in ("supplier_address_raw", "supplier_street", "supplier_city", "supplier_zip"):
+        source = getattr(payload, field).source_text
+        result[field] = (normalized.get(field), source)
+    # Compatibility evidence name for revisions created before schema v2.
+    result["supplier_address"] = (
+        normalized.get("supplier_address_raw"),
+        payload.supplier_address_raw.source_text,
+    )
     account_source = payload.bank_account.source_text or payload.bank_code.source_text
     for field in (
         "bank_account_raw",
@@ -353,7 +380,19 @@ def apply_ai_extraction(
     if extraction.requires_confirmation and not confirm_overwrite:
         raise ValueError("Applying re-extraction requires explicit overwrite confirmation")
 
-    payload = InvoiceExtractionV1.model_validate(extraction.parsed_result)
+    stored_payload = dict(extraction.parsed_result)
+    if stored_payload.get("schema_version") == "invoice-extraction.v1":
+        legacy_address = stored_payload.pop("supplier_address", {"value": None, "source_text": None})
+        stored_payload.update(
+            {
+                "schema_version": "invoice-extraction.v2",
+                "supplier_address_raw": legacy_address,
+                "supplier_street": {"value": None, "source_text": None},
+                "supplier_city": {"value": None, "source_text": None},
+                "supplier_zip": {"value": None, "source_text": None},
+            }
+        )
+    payload = InvoiceExtractionV1.model_validate(stored_payload)
     data = extraction_to_invoice_data(payload)
     update_invoice_data(
         db,

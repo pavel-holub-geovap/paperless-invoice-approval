@@ -307,6 +307,7 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
     vat_rows = _value(data, "vat_lines", "vat_breakdown") or []
     sum_base = Decimal("0")
     sum_vat = Decimal("0")
+    rounding_rows: list[dict[str, Any]] = []
     if not isinstance(vat_rows, list):
         results.append(
             _result(
@@ -340,12 +341,41 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
             expected_vat = (base * rate / Decimal("100")).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
+            source_text = str(row.get("source_text") or "")
+            is_rounding = row.get("adjustment_type") == "ROUNDING" or bool(
+                re.search(r"\b(?:zaokrouhlení|zaokr\.?|rounding)\b", source_text, re.IGNORECASE)
+            )
+            if is_rounding:
+                rounding_rows.append(
+                    {
+                        "row": index + 1,
+                        "base": str(base),
+                        "vat": str(vat),
+                        "total": str(base + vat),
+                    }
+                )
+                results.append(
+                    _result(
+                        "VAT_ROUNDING_ADJUSTMENT",
+                        ValidationSeverity.WARNING,
+                        f"Faktura obsahuje položku zaokrouhlení {base + vat}.",
+                        "vat_lines",
+                        expected="explicit invoice adjustment",
+                        actual=str(base + vat),
+                        details=rounding_rows[-1],
+                    )
+                )
             if abs(expected_vat - vat) > MONEY_TOLERANCE:
                 results.append(
                     _result(
-                        "VAT_ROW_MATH", ValidationSeverity.BLOCKING_ERROR,
-                        f"DPH řádek {index + 1} matematicky nesedí.", "vat_lines",
-                        expected=str(expected_vat), actual=str(vat), details={"row": index + 1}
+                        "VAT_ROW_MATH", ValidationSeverity.WARNING,
+                        f"Kontrolní přepočet DPH řádku {index + 1} se liší od hodnoty na faktuře.", "vat_lines",
+                        expected=str(expected_vat), actual=str(vat),
+                        details={
+                            "row": index + 1,
+                            "difference": str(vat - expected_vat),
+                            "rounding_detected": is_rounding,
+                        },
                     )
                 )
             else:
@@ -377,7 +407,10 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                 "total_without_vat",
                 expected=str(sum_base),
                 actual=str(declared_base),
-                details={"difference": str(declared_base - sum_base)},
+                details={
+                    "difference": str(declared_base - sum_base),
+                    **({"rounding": rounding_rows} if rounding_rows else {}),
+                },
             )
         )
     if vat_rows and declared_vat is not None:
@@ -396,7 +429,10 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                 "total_vat",
                 expected=str(sum_vat),
                 actual=str(declared_vat),
-                details={"difference": str(declared_vat - sum_vat)},
+                details={
+                    "difference": str(declared_vat - sum_vat),
+                    **({"rounding": rounding_rows} if rounding_rows else {}),
+                },
             )
         )
     math_base = declared_base if declared_base is not None else (sum_base if vat_rows else None)
@@ -418,7 +454,10 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                 "total_amount",
                 expected=str(expected_total),
                 actual=str(total),
-                details={"difference": str(total - expected_total)},
+                details={
+                    "difference": str(total - expected_total),
+                    **({"rounding": rounding_rows} if rounding_rows else {}),
+                },
             )
         )
 

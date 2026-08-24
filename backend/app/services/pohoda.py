@@ -62,20 +62,22 @@ def _rate_name(rate: Decimal) -> str:
 
 def _vat_rows(data: dict[str, Any]) -> list[dict[str, str]]:
     source = data.get("vat_lines") or data.get("vat_breakdown") or []
-    rows: list[dict[str, str]] = []
+    by_rate: dict[Decimal, dict[str, Decimal]] = defaultdict(
+        lambda: {"base": Decimal("0"), "vat": Decimal("0")}
+    )
     for row in source:
         rate = row.get("vat_rate", row.get("rate"))
         base = row.get("taxable_base", row.get("base"))
         vat = row.get("vat_amount", row.get("vat"))
         if rate is None or base is None or vat is None:
             raise PohodaMappingError("Every VAT row requires rate, taxable base, and VAT amount")
-        rows.append(
-            {
-                "rate": str(Decimal(str(rate))),
-                "base": _money(_decimal(base, "VAT base")),
-                "vat": _money(_decimal(vat, "VAT amount")),
-            }
-        )
+        normalized_rate = Decimal(str(rate))
+        by_rate[normalized_rate]["base"] += _decimal(base, "VAT base")
+        by_rate[normalized_rate]["vat"] += _decimal(vat, "VAT amount")
+    rows = [
+        {"rate": str(rate), "base": _money(values["base"]), "vat": _money(values["vat"])}
+        for rate, values in by_rate.items()
+    ]
     if not rows:
         total = _decimal(data.get("total_amount"), "total_amount")
         rows.append({"rate": "0", "base": _money(total), "vat": "0.00"})

@@ -58,6 +58,7 @@ SIGNIFICANT_FIELDS = {
     "supplier_ico",
     "supplier_dic",
     "supplier_address",
+    "supplier_address_raw",
     "supplier_street",
     "supplier_city",
     "supplier_zip",

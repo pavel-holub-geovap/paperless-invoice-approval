@@ -5,7 +5,7 @@ Mapování je odvozené z oficiálních `data.xsd`, `invoice.xsd`, `type.xsd` a 
 | Approval field | POHODA XML | Zdroj | Povinnost | Transformace a validace |
 |---|---|---|---|---|
 | `supplier_name` | `inv:partnerIdentity/typ:address/typ:company` | schválená revize | povinné aplikací | max. délku ověří XSD |
-| `supplier_address` | pouze zdrojový text, přímo se neexportuje | OCR/ruční kontrola | volitelné | generátor adresu z volného textu nehádá |
+| `supplier_address_raw` | pouze zdrojový text, přímo se neexportuje | dodavatelský blok OCR/ruční kontrola | volitelné | PSČ se normalizuje; generátor adresu z volného textu nehádá |
 | `supplier_street` | `.../typ:street` | ručně potvrzená strukturovaná adresa | povinné aplikací | beze změny |
 | `supplier_city` | `.../typ:city` | ručně potvrzená strukturovaná adresa | povinné aplikací | beze změny |
 | `supplier_zip` | `.../typ:zip` | ručně potvrzená strukturovaná adresa | povinné aplikací | beze změny |
@@ -24,6 +24,7 @@ Mapování je odvozené z oficiálních `data.xsd`, `invoice.xsd`, `type.xsd` a 
 | `vat_lines[].vat_rate` | `inv:invoiceItem/inv:rateVAT` | schválená revize | povinné pro zdaněný doklad | `21 → high`, `12 → low`, `0 → none`; jiná sazba bez otestovaného mapování blokuje export |
 | `vat_lines[].taxable_base` | `inv:invoiceItem/inv:homeCurrency/typ:price` | schválená revize | povinné aplikací | `Decimal`, 2 desetinná místa |
 | `vat_lines[].vat_amount` | `.../typ:priceVAT` | schválená revize | povinné aplikací | `Decimal`, 2 desetinná místa |
+| `vat_lines[].adjustment_type=ROUNDING` | agreguje se do stejné sazby v položkách a summary | explicitní řádek faktury | volitelné | základ, DPH a hrubá korekce se zachovají; nerozbíjí jednu sazbu na falešné více-sazbové rozhodnutí |
 | souhrny DPH | `inv:invoiceSummary/inv:homeCurrency/typ:price*` | schválený VAT breakdown | povinné aplikací pro CZK | sazby se agregují přesně, bez float |
 | `total_amount` | součet všech položkových `typ:price + typ:priceVAT` a summary | schválená revize | povinné aplikací | musí souhlasit s allocations a VAT breakdown do 0,01 |
 | `Allocation.amount` | hrubá částka jedné nebo více `inv:invoiceItem` | aktuální schválená revize | povinné | exportuje se allocation, nikoli approval assignment |
@@ -36,6 +37,7 @@ Mapování je odvozené z oficiálních `data.xsd`, `invoice.xsd`, `type.xsd` a 
 - Více středisek a jedna sazba: základ se rozdělí podle hrubých allocation částek metodou largest remainder na haléře; DPH každé allocation je `allocation gross − allocated base`. Tím se přesně zachová částka allocation, celkový základ, DPH i total.
 - Jedno středisko a více sazeb: použijí se přesné VAT řádky faktury.
 - Více středisek a více sazeb: automatický odhad je zakázán. Každá allocation musí mít explicitní `vat_breakdown`; součet po allocation i agregace po sazbě musí přesně rekonstruovat schválené hodnoty. Jinak export končí `MULTI_RATE_ALLOCATION_REQUIRES_EXPLICIT_VAT_SPLIT`.
+- Samostatné zaokrouhlení ve stejné sazbě se před rozdělením do POHODY agreguje s hlavním VAT řádkem. Deklarované součty z faktury se nedopočítávají ani nepřepisují; reconciliation odchylka je WARNING.
 
 Pro syntetickou fakturu s jedinou sazbou 21 % vzniknou přesně dvě účetní položky: 700 Kč se střediskem 200 a 510 Kč se střediskem 300. Dva schvalovatelé druhé allocation nevytvářejí druhou účetní položku.
 

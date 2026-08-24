@@ -14,6 +14,10 @@ FIELDS = (
     "supplier_name",
     "supplier_ico",
     "supplier_dic",
+    "supplier_address_raw",
+    "supplier_street",
+    "supplier_city",
+    "supplier_zip",
     "invoice_number",
     "variable_symbol",
     "bank_account",
@@ -22,6 +26,8 @@ FIELDS = (
     "issue_date",
     "due_date",
     "vat_lines",
+    "total_without_vat",
+    "total_vat",
     "total_amount",
 )
 

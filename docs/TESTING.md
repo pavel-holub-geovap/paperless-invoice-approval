@@ -120,3 +120,5 @@ Nový read-mostly smoke `scripts/smoke_correction_iteration.py` ověřuje obě �
 `scripts/smoke_qwen8_multi.py` spouští nové append-only kandidátní extrakce na třech existujících dostupných fakturách, vyžaduje metadata `model=qwen3:8b`, vypíše účetní pole a ověří, že se business workflow nezměnilo.
 
 `scripts/smoke_live_refresh.py` drží otevřenou manažerskou OIDC session, provede schválení v oddělené approver session a stejným polling endpointem jako React ověří změnu counteru bez reloadu. Nakonec dokončí zbývající syntetická schválení.
+
+`scripts/smoke_giriton_address_vat.py` spouští append-only Qwen3 8B kandidáty nad dostupnými skutečnými GIRITON dokumenty. Vypíše normalizovanou dodavatelskou adresu, banku, VAT/rounding řádky, deklarované součty a všechny VAT severity; kandidáty automaticky neaplikuje a zachovává workflow.

@@ -39,7 +39,7 @@ Worker před každým během znovu načte OCR z Paperless REST API. Ollama dosta
 
 Deterministická validační služba používá `Decimal`, český checksum IČO, formát DIČ/VS, ISO datum a měnu, matematiku DPH a součtů, účet, IBAN mod-97 a BIC. LLM nevytváří XML/SQL, workflow stav, cost center ani approvera. Detailní kontrakt je v `docs/AI_EXTRACTION.md`.
 
-Český domácí účet prochází jedinou normalizační službou. Kombinovaný vstup `[prefix-]account/bank_code` se rozloží bez hádání číslic; původní text zůstane v `bank_account_raw`. Tím se opraví i LLM chyba, kdy je kombinovaná hodnota zkopírovaná do `bank_account` i `bank_code`. Volitelný modulo-11 checksum je review WARNING. Tři souhrnné DPH kontroly (`VAT_BASE_TOTAL_MISMATCH`, `VAT_TOTAL_MISMATCH`, `VAT_TOTAL_MATH`) jsou rovněž WARNING; řádkový formát a řádková matematika zůstávají blocking.
+Český domácí účet prochází jedinou normalizační službou. Kombinovaný vstup `[prefix-]account/bank_code` se rozloží bez hádání číslic; původní text zůstane v `bank_account_raw`. Dodavatelská adresa se strukturuje primárně modelem a konzervativně normalizuje pouze z dodavatelského adresního bloku, nikdy z celého OCR. Volitelný modulo-11 checksum i matematické VAT reconciliation kontroly včetně řádku jsou review WARNING; pouze neplatný/neúplný VAT formát zůstává blocking. `ROUNDING` řádek se eviduje explicitně a deklarované částky se výpočtem nepřepisují.
 
 `QUEUE_MANAGER` vidí celou frontu a smí provádět správcovské změny. `APPROVER` vidí endpoint „Moje úkoly“ a detail/PDF pouze faktur s aktivním assignmentem. Role pocházejí z Keycloak tokenu a backend je kontroluje nezávisle na viditelnosti prvků ve frontendu.
 

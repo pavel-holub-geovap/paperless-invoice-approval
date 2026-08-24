@@ -25,11 +25,14 @@ def structured(supplier: str = "TESTOVACÍ DODAVATEL s.r.o.") -> dict:
         return {"value": value, "source_text": source if value is not None else None}
 
     return {
-        "schema_version": "invoice-extraction.v1",
+        "schema_version": "invoice-extraction.v2",
         "supplier_name": evidence(supplier, supplier),
         "supplier_ico": evidence("00000019", "IČO: 00000019"),
         "supplier_dic": evidence("CZ00000019", "DIČ: CZ00000019"),
-        "supplier_address": evidence("Fiktivní 123, 100 00 Praha", "Fiktivní 123"),
+        "supplier_address_raw": evidence("Fiktivní 123 100 00 Praha", "Fiktivní 123, 100 00 Praha"),
+        "supplier_street": evidence("Fiktivní 123", "Fiktivní 123"),
+        "supplier_city": evidence("Praha", "100 00 Praha"),
+        "supplier_zip": evidence("100 00", "100 00 Praha"),
         "invoice_number": evidence("TEST-2026-0001", "Číslo faktury TEST-2026-0001"),
         "variable_symbol": evidence("20260001", "Variabilní symbol 20260001"),
         "issue_date": evidence("2026-08-20", "Datum vystavení 20. 08. 2026"),

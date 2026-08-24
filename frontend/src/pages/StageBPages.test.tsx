@@ -141,6 +141,33 @@ describe("Stage B pages", () => {
     await act(async () => undefined);
   });
 
+  it("shows VAT reconciliation and rounding as a section warning", async () => {
+    mockEmptyApi();
+    render(
+      <InvoiceDetail
+        invoice={{
+          ...invoice,
+          data: {
+            currency: "CZK", total_without_vat: "4065.29", total_vat: "853.71", total_amount: "4919.00",
+            vat_lines: [
+              { vat_rate: "21", taxable_base: "4065.00", vat_amount: "853.65" },
+              { vat_rate: "21", taxable_base: "0.29", vat_amount: "0.06", adjustment_type: "ROUNDING" },
+            ],
+          },
+          validations: [{ code: "VAT_ROUNDING_ADJUSTMENT", severity: "WARNING", field_name: "vat_lines", message: "Faktura obsahuje položku zaokrouhlení 0.35.", expected: "explicit invoice adjustment", actual: "0.35", details: { difference: "0.35" } }],
+        }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "DPH a zaokrouhlení" })).toBeVisible();
+    expect(screen.getByText("Zaokrouhlení")).toBeVisible();
+    expect(screen.getAllByText(/pravděpodobně způsoben položkou Zaokrouhlení/)[0].closest(".alert")).toHaveClass("warning");
+    expect(screen.getByText(/VAT_ROUNDING_ADJUSTMENT/).closest(".alert")).toHaveClass("warning");
+    await act(async () => undefined);
+  });
+
   it("prevents double save and focuses the first returned field error", async () => {
     let finishPatch!: (value: unknown) => void;
     const patchResponse = new Promise((resolve) => { finishPatch = resolve; });

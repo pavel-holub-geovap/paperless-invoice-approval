@@ -71,6 +71,7 @@ class VatLineExtraction(BaseModel):
     vat_rate: Decimal | None
     taxable_base: Decimal | None
     vat_amount: Decimal | None
+    adjustment_type: Literal["ROUNDING"] | None = None
     source_text: str | None
 
     @model_validator(mode="after")
@@ -83,15 +84,18 @@ class VatLineExtraction(BaseModel):
 
 
 class InvoiceExtractionV1(BaseModel):
-    """Strict structured output produced by the untrusted-OCR extraction boundary."""
+    """Current v2 output; the historical class name is retained for API compatibility."""
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["invoice-extraction.v1"]
+    schema_version: Literal["invoice-extraction.v2"]
     supplier_name: TextEvidence
     supplier_ico: TextEvidence
     supplier_dic: TextEvidence
-    supplier_address: TextEvidence
+    supplier_address_raw: TextEvidence
+    supplier_street: TextEvidence
+    supplier_city: TextEvidence
+    supplier_zip: TextEvidence
     invoice_number: TextEvidence
     variable_symbol: TextEvidence
     issue_date: DateEvidence

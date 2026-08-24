@@ -4,14 +4,14 @@ import type { AuditEvent, CostCenter, Invoice, PohodaConfig, User, UserReference
 import { StatusBadge } from "../components/StatusBadge";
 
 const editableFields = [
-  ["supplier_name", "Dodavatel"], ["supplier_ico", "IČO"], ["supplier_dic", "DIČ"], ["supplier_address", "Adresa"], ["invoice_number", "Číslo faktury"],
+  ["supplier_name", "Dodavatel"], ["supplier_ico", "IČO"], ["supplier_dic", "DIČ"], ["supplier_address_raw", "Adresa – původní text"], ["invoice_number", "Číslo faktury"],
   ["supplier_street", "Ulice pro POHODU"], ["supplier_city", "Město pro POHODU"], ["supplier_zip", "PSČ pro POHODU"],
   ["variable_symbol", "Variabilní symbol"], ["issue_date", "Datum vystavení"], ["taxable_supply_date", "DUZP"],
   ["due_date", "Splatnost"], ["currency", "Měna"], ["bank_account", "Účet [prefix-]číslo"], ["bank_code", "Kód banky"], ["iban", "IBAN"], ["swift_bic", "SWIFT/BIC"],
   ["total_without_vat", "Základ bez DPH"], ["total_vat", "DPH celkem"], ["total_amount", "Celkem"], ["description", "Popis"],
 ] as const;
 
-const formFromInvoice = (invoice: Invoice) => Object.fromEntries(editableFields.map(([key]) => [key, String(invoice.data[key] ?? "")]));
+const formFromInvoice = (invoice: Invoice) => Object.fromEntries(editableFields.map(([key]) => [key, String(invoice.data[key] ?? (key === "supplier_address_raw" ? invoice.data.supplier_address : undefined) ?? "")]));
 
 function shown(value: unknown): string {
   if (value == null || value === "") return "—";
@@ -174,6 +174,9 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
   const validationByField = Object.fromEntries(invoice.validations.filter((row)=>row.field_name&&row.severity!=="OK").map((row)=>[row.field_name!,row]));
   const allocationError = invoice.validations.find((row)=>row.code==="ALLOCATION_TOTAL_MISMATCH");
   const missingApprover = invoice.allocations.find((row)=>row.assignments.length===0);
+  const vatLines = Array.isArray(invoice.data.vat_lines) ? invoice.data.vat_lines as Record<string, unknown>[] : [];
+  const vatValidations = invoice.validations.filter((row)=>row.code.startsWith("VAT_")||row.code==="TOTAL_MATH_OK");
+  const roundingLine = vatLines.find((row)=>row.adjustment_type==="ROUNDING");
   return <section>
     <button className="back" onClick={onBack}>← Zpět na frontu</button>
     <div className="section-heading"><div><p className="eyebrow">Paperless #{invoice.paperless_document_id} · revize {invoice.current_revision_number}</p><h1>{String(invoice.data.invoice_number || invoice.paperless.title || "Faktura bez názvu")}</h1><p className="muted">{String(invoice.data.supplier_name || invoice.paperless.correspondent || "Neznámý dodavatel")} · {money(String(invoice.data.total_amount || ""), String(invoice.data.currency || "CZK"))}</p></div><div className="heading-badges"><StatusBadge value={invoice.source.status} /><StatusBadge value={invoice.disposition.status} /><StatusBadge value={invoice.paperless.sync_status} /><StatusBadge value={invoice.ai_status} /><StatusBadge value={invoice.status} /></div></div>
@@ -207,6 +210,12 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
         <div className="card"><div className="card-title"><h2>Fakturační údaje</h2>{isManager&&<button className="button secondary" disabled={Boolean(pending)} onClick={saveData}>{pending==="data"?"Ukládám…":"Uložit změny"}</button>}</div>
           <dl className="metadata-grid"><div><dt>Účet – původní hodnota</dt><dd>{shown(invoice.data.bank_account_raw)}</dd></div><div><dt>Předčíslí</dt><dd>{shown(invoice.data.bank_account_prefix)}</dd></div><div><dt>Číslo účtu</dt><dd>{shown(invoice.data.bank_account_number)}</dd></div><div><dt>Kód banky</dt><dd>{shown(invoice.data.bank_code)}</dd></div></dl>
           <div className="form-grid">{editableFields.map(([key, label]) => {const fieldMessage=fieldErrors[key]||validationByField[key]?.message;return <label key={key} className={fieldMessage?"field-invalid":""}>{label}<input data-field={key} aria-invalid={Boolean(fieldMessage)} disabled={!isManager||Boolean(pending)} value={form[key]} onChange={(e)=>{setForm({...form,[key]:e.target.value});setDirty(true);setFieldErrors({...fieldErrors,[key]:""})}} />{fieldMessage&&<small className="field-error">{fieldMessage}</small>}{evidence[key] && <small title={evidence[key]}>AI zdroj: {evidence[key]}</small>}</label>})}</div>
+        </div>
+        <div className="card vat-card"><div className="card-title"><div><h2>DPH a zaokrouhlení</h2><p>Hodnoty vytištěné na faktuře zůstávají autoritativní; přepočet je pouze kontrola.</p></div></div>
+          <dl className="metadata-grid"><div><dt>Základ z faktury</dt><dd>{money(String(invoice.data.total_without_vat||""),String(invoice.data.currency||"CZK"))}</dd></div><div><dt>DPH z faktury</dt><dd>{money(String(invoice.data.total_vat||""),String(invoice.data.currency||"CZK"))}</dd></div><div><dt>Celkem z faktury</dt><dd>{money(String(invoice.data.total_amount||""),String(invoice.data.currency||"CZK"))}</dd></div></dl>
+          {vatLines.length>0&&<div className="vat-lines">{vatLines.map((row,index)=><div key={index} className={row.adjustment_type==="ROUNDING"?"vat-line rounding":"vat-line"}><strong>{row.adjustment_type==="ROUNDING"?"Zaokrouhlení":`DPH řádek ${index+1}`}</strong><span>Základ {shown(row.taxable_base??row.base)} · sazba {shown(row.vat_rate??row.rate)} % · DPH {shown(row.vat_amount??row.vat)} · celkem {shown(Number(row.taxable_base??row.base??0)+Number(row.vat_amount??row.vat??0))}</span></div>)}</div>}
+          {roundingLine&&<div className="alert warning"><strong>⚠ Rozdíl je pravděpodobně způsoben položkou Zaokrouhlení.</strong> Částka {shown(Number(roundingLine.taxable_base??roundingLine.base??0)+Number(roundingLine.vat_amount??roundingLine.vat??0))} Kč.</div>}
+          {vatValidations.filter((row)=>row.severity!=="OK").map((row)=><div key={`${row.code}-${row.field_name}`} className={`alert ${row.severity==="WARNING"?"warning":"danger"}`}><strong>{row.code}</strong>: {row.message}<small> hodnota z faktury: {shown(row.actual)} · vypočtená hodnota: {shown(row.expected)}{row.details?.difference!=null?` · rozdíl: ${shown(row.details.difference)}`:""}</small></div>)}
         </div>
         <div className="card"><div className="card-title"><h2>Deterministická validace</h2><span>{invoice.validations.length}</span></div><div className="validation-list">{invoice.validations.map((v)=><div key={`${v.code}-${v.field_name}`} className={`validation ${v.severity.toLowerCase()}`}><StatusBadge value={v.severity}/><span>{v.message}{(v.expected != null || v.actual != null) && <small> očekáváno: {shown(v.expected)} · skutečnost: {shown(v.actual)}{v.details?.difference != null ? ` · rozdíl: ${shown(v.details.difference)}` : ""}</small>}</span></div>)}</div></div>
         <div className="card"><div className="card-title"><div><h2>Rozúčtování</h2><p>Částky jsou ukládány jako Decimal; nesoulad je blokující validace.</p></div>{isManager&&<button className="button secondary" disabled={Boolean(pending)} onClick={()=>changeAllocationRows([...allocationRows,{cost_center_id:centres[0]?.id || "",amount:"0.00",percentage:"0",note:"",vat_breakdown:"[]"}])}>Přidat řádek</button>}</div>

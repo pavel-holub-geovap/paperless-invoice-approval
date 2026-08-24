@@ -1,10 +1,10 @@
 # AI extrakce faktury
 
-## Kontrakt V1
+## Kontrakt V2
 
-`InvoiceExtractionV1` je verzované striktní schéma `invoice-extraction.v1`. Obsahuje dodavatele (název, IČO, DIČ, adresu), číslo faktury, variabilní symbol, tři data, měnu, účet/kód banky, IBAN, SWIFT/BIC, DPH řádky, základ, DPH, celkovou částku a popis. Každá skalární hodnota má `value` a krátký doslovný `source_text`; neznámá hodnota je explicitně `null`. Extra pole se odmítají.
+Aktuální striktní schéma je `invoice-extraction.v2`. Obsahuje dodavatele, samostatné `supplier_address_raw`, `supplier_street`, `supplier_city`, `supplier_zip`, číslo faktury, variabilní symbol, data, platební údaje, VAT řádky a deklarované součty. VAT řádek může mít `adjustment_type=ROUNDING`. Každá skalární hodnota má `value` a krátký doslovný `source_text`; neznámá hodnota je explicitně `null`. Extra pole se odmítají. Historické v1 výsledky zůstávají beze změny a při případném použití procházejí kompatibilním převodem.
 
-Po přijetí strict výstupu deterministická vrstva rozloží český účet do `bank_account_raw`, `bank_account_prefix`, `bank_account_number`, `bank_code` a kompatibilního `bank_account`. Raw model response a `source_text` zůstávají append-only; normalizace tedy neopravuje důkaz, ale pracovní hodnotu. Stejný kombinovaný řetězec v obou LLM polích se bezpečně rozpozná bez odhadu.
+Po přijetí strict výstupu deterministická vrstva rozloží český účet a normalizuje české PSČ. Adresní fallback pracuje výhradně nad již izolovanou hodnotou adresy dodavatele a vyžaduje právě jedno PSČ s neprázdnou ulicí i městem; nikdy nehledá „první PSČ“ v celém OCR. Raw model response a `source_text` zůstávají append-only. Deklarované součty faktury se matematickým přepočtem nepřepisují.
 
 ## Tok
 
