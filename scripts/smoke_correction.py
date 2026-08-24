@@ -61,6 +61,12 @@ async def upload_fixture(
                 return int(related)
             if str(row.get("status") or "").upper() in {"FAILURE", "FAILED"}:
                 raise RuntimeError("Paperless consumption task failed")
+        # Paperless versions differ in whether /tasks exposes related_document.
+        # The title is unique per run, so an exact REST inventory match is an
+        # equally strong and version-independent consumption confirmation.
+        async for document in paperless.iter_documents():
+            if document.title == title and document.original_filename == f"{title}.pdf":
+                return document.id
         await asyncio.sleep(2)
     raise RuntimeError("Paperless upload was not consumed within 180 seconds")
 
