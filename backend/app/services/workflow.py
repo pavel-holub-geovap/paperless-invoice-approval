@@ -222,13 +222,14 @@ def update_invoice_data(
     for field, new_value in changed.items():
         record_event(
             db,
-            "FIELD_CHANGED",
+            "INVOICE_FIELD_CHANGED",
             actor=actor,
             invoice=invoice,
             revision_number=new_revision.number,
             old_value={field: old_values[field]},
             new_value={field: new_value},
             comment=comment,
+            metadata={"entity": "invoice", "field": field},
         )
     return new_revision
 

@@ -29,7 +29,11 @@ Etapa F vytváří deterministickým Python generátorem `receivedInvoice`, vali
 
 Opravná iterace po Etapě F normalizuje český účet deterministicky na `bank_account_raw`, `bank_account_prefix`, `bank_account_number`, `bank_code` a zpětně kompatibilní `bank_account`. Souhrnné rozdíly DPH jsou review WARNING s očekávanou, skutečnou hodnotou a rozdílem; chybné nebo neúplné řádky zůstávají blokující. Správce má zvláštní pohledy aktivních, ignorovaných a zdrojově chybějících dokladů. Frontend používá skutečné SPA URL včetně přímého `/invoices/{id}`.
 
-Výchozí model je konfigurovatelný přes `OLLAMA_MODEL` (`qwen3:4b`), inference běží s teplotou 0, jedním paralelním požadavkem, kontextem 4096 a `num_gpu=0`. Podrobnosti a bezpečnostní hranice jsou v [docs/AI_EXTRACTION.md](docs/AI_EXTRACTION.md).
+Výchozí model je konfigurovatelný přes `OLLAMA_MODEL` (`qwen3:8b`), inference běží s teplotou 0, jedním paralelním požadavkem, kontextem 4096 a `num_gpu=0`. Podrobnosti a bezpečnostní hranice jsou v [docs/AI_EXTRACTION.md](docs/AI_EXTRACTION.md).
+
+Nový POHODA export vyžaduje serverovou hodnotu `POHODA_TARGET_ICO`. Jde o IČO cílové účetní jednotky v POHODĚ, nikoli dodavatele faktury. `POHODA_TARGET_KEY` je volitelný a při prázdné hodnotě se do XML vůbec nezapisuje. UI ukazuje cílové IČO před generováním i u vytvořeného artefaktu.
+
+Dashboard a detail se průběžně obnovují pollingem. Mutace používají očekávané číslo revize; konflikt vrací HTTP 409 a rozepsaná data v prohlížeči zůstávají zachována.
 
 Testovací Paperless používá vlastní PostgreSQL databázi, Redis a persistentní volumes a nesmí sdílet produkční data ani tokeny. Postup je v [docs/PAPERLESS_INTEGRATION.md](docs/PAPERLESS_INTEGRATION.md) a OIDC v [docs/PAPERLESS_KEYCLOAK.md](docs/PAPERLESS_KEYCLOAK.md).
 

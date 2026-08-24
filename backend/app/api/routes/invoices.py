@@ -40,6 +40,7 @@ from app.schemas import (
     InvoicePatch,
 )
 from app.services.approval_setup import replace_allocations, replace_approvers
+from app.services.audit import record_event
 from app.services.disposition import restore_disposition, set_disposition
 from app.services.exports import latest_valid_artifact
 from app.services.extraction import apply_ai_extraction, queue_ai_extraction
@@ -99,6 +100,19 @@ def _invoice_or_404(db: Session, invoice_id: str, lock: bool = False) -> Invoice
     if invoice is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return invoice
+
+
+def _require_current_revision(invoice: Invoice, expected_revision: int | None) -> None:
+    if expected_revision is not None and expected_revision != invoice.current_revision_number:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "STALE_REVISION",
+                "message": "Faktura byla mezitím změněna. Načtěte aktuální revizi.",
+                "expected_revision": expected_revision,
+                "current_revision": invoice.current_revision_number,
+            },
+        )
 
 
 def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
@@ -258,6 +272,12 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
                 "source_export_id": latest_export.source_export_id,
                 "imported_by": latest_export.imported_by,
                 "imported_at": latest_export.imported_at,
+                "pohoda_target_ico": latest_export.source_snapshot.get(
+                    "pohoda_target_ico"
+                ),
+                "pohoda_target_key_configured": latest_export.source_snapshot.get(
+                    "pohoda_target_key_configured", False
+                ),
             }
             if latest_export
             else None
@@ -274,11 +294,21 @@ def list_invoices(
     approver: str | None = None,
     cost_center: str | None = None,
     view: Literal["active", "ignored", "missing", "all"] = "active",
+    sort: Literal["source_desc", "source_asc"] = "source_desc",
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[InvoiceListItem]:
     _manager(user)
-    query = select(Invoice).options(selectinload(Invoice.revisions)).order_by(Invoice.updated_at.desc())
+    source_order = (
+        Invoice.paperless_created_at.asc().nullslast()
+        if sort == "source_asc"
+        else Invoice.paperless_created_at.desc().nullslast()
+    )
+    query = (
+        select(Invoice)
+        .options(selectinload(Invoice.revisions))
+        .order_by(source_order, Invoice.updated_at.desc())
+    )
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if view == "active":
@@ -412,6 +442,14 @@ async def proxy_pdf(
             ) from exc
     finally:
         await client.close()
+    record_event(
+        db,
+        "PDF_DOWNLOADED",
+        actor=user.subject,
+        invoice=invoice,
+        metadata={"paperless_document_id": invoice.paperless_document_id},
+    )
+    db.commit()
     return Response(pdf, media_type="application/pdf", headers={"Cache-Control": "private, no-store"})
 
 
@@ -475,6 +513,14 @@ def download_pohoda_xml(
     if root not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="XML artifact is unavailable")
     stem = str(invoice.current_revision.data.get("invoice_number") or invoice.id)
+    record_event(
+        db,
+        "EXPORT_DOWNLOADED",
+        actor=user.subject,
+        invoice=invoice,
+        metadata={"export_artifact_id": artifact.id},
+    )
+    db.commit()
     return FileResponse(
         path,
         media_type="application/xml",
@@ -492,6 +538,7 @@ def patch_invoice(
 ) -> dict[str, Any]:
     _manager(user)
     invoice = _invoice_or_404(db, invoice_id, lock=True)
+    _require_current_revision(invoice, payload.expected_revision)
     try:
         update_invoice_data(db, invoice, payload.changes, user.subject, payload.comment)
         run_validations(db, invoice, user.subject)
@@ -576,6 +623,7 @@ def set_allocations(
 ) -> dict[str, Any]:
     _manager(user)
     invoice = _invoice_or_404(db, invoice_id, lock=True)
+    _require_current_revision(invoice, payload.expected_revision)
     try:
         replace_allocations(db, invoice, payload.allocations, user.subject)
         db.commit()
@@ -595,6 +643,7 @@ def set_approvers(
 ) -> dict[str, Any]:
     _manager(user)
     invoice = _invoice_or_404(db, invoice_id, lock=True)
+    _require_current_revision(invoice, payload.expected_revision)
     allocation = db.get(Allocation, allocation_id)
     if not allocation or allocation.invoice_id != invoice.id or not allocation.active:
         raise HTTPException(status_code=404, detail="Allocation not found")

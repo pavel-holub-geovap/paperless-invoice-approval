@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 XSD = ROOT / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
 RESPONSE_XSD = XSD.with_name("response.xsd")
 NS = {"dat": NS_DATA, "inv": NS_INV, "typ": NS_TYP}
+TARGET_ICO = "15049248"
 
 
 def revision(*, vat_lines: list[dict[str, str]], total: str) -> InvoiceRevision:
@@ -84,7 +85,7 @@ def item_values(xml: bytes) -> list[tuple[str, Decimal, Decimal]]:
 
 def test_received_invoice_semantics_address_payment_and_encoding() -> None:
     row = revision(vat_lines=[{"vat_rate": "21", "taxable_base": "100.00", "vat_amount": "21.00"}], total="121.00")
-    xml = generate_invoice_xml(row, [allocation(row, "IT", "121.00")])
+    xml = generate_invoice_xml(row, [allocation(row, "IT", "121.00")], accounting_unit_ico=TARGET_ICO)
     root = document(xml)
 
     assert validate_xml_detailed(xml, XSD) == []
@@ -103,18 +104,21 @@ def test_received_invoice_semantics_address_payment_and_encoding() -> None:
     assert address.xpath("string(typ:dic)", namespaces=NS) == "CZ27082440"
     assert root.xpath("string(//inv:paymentAccount/typ:accountNo)", namespaces=NS) == "123456789"
     assert root.xpath("string(//inv:paymentAccount/typ:bankCode)", namespaces=NS) == "0100"
+    assert root.get("ico") == TARGET_ICO
+    assert root.get("key") is None
+    assert root.get("ico") != address.xpath("string(typ:ico)", namespaces=NS)
 
 
 def test_one_centre_one_rate() -> None:
     row = revision(vat_lines=[{"vat_rate": "21", "taxable_base": "100.00", "vat_amount": "21.00"}], total="121.00")
-    values = item_values(generate_invoice_xml(row, [allocation(row, "100", "121.00")]))
+    values = item_values(generate_invoice_xml(row, [allocation(row, "100", "121.00")], accounting_unit_ico=TARGET_ICO))
     assert values == [("100", Decimal("100.00"), Decimal("21.00"))]
 
 
 def test_multiple_centres_one_rate_reconstructs_exact_totals() -> None:
     row = revision(vat_lines=[{"vat_rate": "21", "taxable_base": "1000.00", "vat_amount": "210.00"}], total="1210.00")
     values = item_values(
-        generate_invoice_xml(row, [allocation(row, "200", "700.00"), allocation(row, "300", "510.00")])
+        generate_invoice_xml(row, [allocation(row, "200", "700.00"), allocation(row, "300", "510.00")], accounting_unit_ico=TARGET_ICO)
     )
     assert len(values) == 2
     assert [(code, base + vat) for code, base, vat in values] == [
@@ -133,7 +137,7 @@ def test_one_centre_multiple_rates() -> None:
         ],
         total="177.00",
     )
-    values = item_values(generate_invoice_xml(row, [allocation(row, "100", "177.00")]))
+    values = item_values(generate_invoice_xml(row, [allocation(row, "100", "177.00")], accounting_unit_ico=TARGET_ICO))
     assert values == [
         ("100", Decimal("100.00"), Decimal("21.00")),
         ("100", Decimal("50.00"), Decimal("6.00")),
@@ -149,7 +153,7 @@ def test_multiple_centres_multiple_rates_require_and_use_explicit_split() -> Non
         total="177.00",
     )
     with pytest.raises(PohodaMappingError, match="EXPLICIT_VAT_SPLIT"):
-        generate_invoice_xml(row, [allocation(row, "200", "121.00"), allocation(row, "300", "56.00")])
+        generate_invoice_xml(row, [allocation(row, "200", "121.00"), allocation(row, "300", "56.00")], accounting_unit_ico=TARGET_ICO)
 
     xml = generate_invoice_xml(
         row,
@@ -157,6 +161,7 @@ def test_multiple_centres_multiple_rates_require_and_use_explicit_split() -> Non
             allocation(row, "200", "121.00", vat_breakdown=[{"rate": "21", "base": "100", "vat": "21"}]),
             allocation(row, "300", "56.00", vat_breakdown=[{"rate": "12", "base": "50", "vat": "6"}]),
         ],
+        accounting_unit_ico=TARGET_ICO,
     )
     assert item_values(xml) == [
         ("200", Decimal("100.00"), Decimal("21.00")),
@@ -170,6 +175,7 @@ def test_largest_remainder_is_stable_and_exact() -> None:
         generate_invoice_xml(
             row,
             [allocation(row, "100", "0.34"), allocation(row, "200", "0.33"), allocation(row, "300", "0.33")],
+            accounting_unit_ico=TARGET_ICO,
         )
     )
     assert [(base, vat) for _, base, vat in values] == [
@@ -183,7 +189,7 @@ def test_largest_remainder_is_stable_and_exact() -> None:
 @pytest.mark.parametrize("mutation", ["mandatory", "order", "datatype", "enum", "namespace"])
 def test_xsd_negative_cases(mutation: str) -> None:
     row = revision(vat_lines=[{"vat_rate": "21", "taxable_base": "100", "vat_amount": "21"}], total="121")
-    root = document(generate_invoice_xml(row, [allocation(row, "IT", "121")]))
+    root = document(generate_invoice_xml(row, [allocation(row, "IT", "121")], accounting_unit_ico=TARGET_ICO))
     header = root.xpath("//inv:invoiceHeader", namespaces=NS)[0]
     invoice = root.xpath("//inv:invoice", namespaces=NS)[0]
     if mutation == "mandatory":

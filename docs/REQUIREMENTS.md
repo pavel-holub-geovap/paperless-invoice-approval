@@ -46,7 +46,14 @@ Responzivní React/TypeScript/Vite UI funguje na desktopu, tabletu i telefonu. S
 ## Integrace a provoz
 
 - Paperless REST API: jediný runtime integrační kanál, timeout, retry, idempotence a konfigurovatelné tagy; approval backend nesmí znát Paperless DB credentials.
-- Ollama a model jsou konfigurovatelné; výchozí model `qwen3:4b`, CPU, sekvenční inference a konzervativní kontext.
+- Ollama a model jsou konfigurovatelné; výchozí model `qwen3:8b`, CPU, sekvenční inference a konzervativní kontext. Při nedostatku paměti není dovoleno automatické přepnutí na slabší model.
+
+## Opravná iterace 2026-08
+
+- POHODA export je zakázán bez validního osmimístného `POHODA_TARGET_ICO`; dodavatelské IČO zůstává pouze v `partnerIdentity`.
+- Formuláře zobrazují chybu u pole nebo sekce, zachovávají vstup a důležité mutace blokují opakované odeslání.
+- Seznamy a detail se obnovují pollingem. Rozepsaný formulář se nikdy automaticky nepřepíše; stale revize vrací HTTP 409.
+- Čas vložení do Paperless se přenáší včetně časové zóny a v UI se zobrazuje v `Europe/Prague`; dashboard umí řazení od nejnovějších i nejstarších.
 - Background joby approval aplikace jsou v PostgreSQL, obnovitelné a idempotentní. Redis je vyhrazen Paperless službám a approval worker jej zatím nepoužívá.
 - Jeden testovací `docker-compose` stack obsahuje PostgreSQL se třemi oddělenými databázemi/uživateli, Redis, Paperless-ngx, Keycloak, Ollama, backend, worker, statický frontend a reverse proxy.
 - Paperless data, media, consume, export, Redis, PostgreSQL, Ollama a approval export mají samostatné persistentní volumes.

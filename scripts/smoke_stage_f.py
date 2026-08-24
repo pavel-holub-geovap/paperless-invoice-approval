@@ -135,6 +135,8 @@ def xml_semantics(xml: bytes, expected: dict[str, Any]) -> dict[str, Any]:
     )
     require(xml.decode("windows-1250"), "XML cannot be decoded as Windows-1250")
     return {
+        "target_ico": root.get("ico"),
+        "target_key": root.get("key"),
         "invoice_type": invoice_type,
         "address": address_values,
         "bank": bank,
@@ -177,6 +179,13 @@ def main() -> None:
         require(row is not None, f"Paperless document {document_id} not found")
         invoice_id = row["id"]
         current = detail(manager, base_url, invoice_id)
+        export_config = response_json(
+            manager.get(f"{base_url}/api/exports/config"), "POHODA export config"
+        )
+        require(
+            export_config["pohoda_target_ico"],
+            "POHODA target accounting unit is not configured",
+        )
 
         structured_address = {
             "supplier_street": "Fiktivní 123",
@@ -283,6 +292,19 @@ def main() -> None:
         semantics = xml_semantics(
             xml_response.content, {**current["data"], **structured_address}
         )
+        require(
+            semantics["target_ico"] == export_config["pohoda_target_ico"],
+            "dataPack/@ico differs from configured POHODA target",
+        )
+        require(
+            semantics["target_ico"] != semantics["address"]["ico"],
+            "Target accounting unit IČO was replaced by supplier IČO",
+        )
+        if not export_config["pohoda_target_key_configured"]:
+            require(
+                semantics["target_key"] is None,
+                "dataPack/@key was generated without explicit configuration",
+            )
 
         pdf = manager.get(f"{base_url}/api/invoices/{invoice_id}/pdf")
         require(
@@ -405,6 +427,7 @@ def main() -> None:
                     "pdf_bytes": len(pdf.content),
                     "pdf_sha256": second["pdf_sha256"],
                     "xml_semantics": semantics,
+                    "pohoda_target_config": export_config,
                     "batch_id": batch["id"],
                     "batch_number": batch["batch_number"],
                     "zip_sha256": batch["archive_sha256"],

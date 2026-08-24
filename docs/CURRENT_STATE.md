@@ -11,7 +11,7 @@
 ## Opravná iterace po Etapě F
 
 - Český bankovní účet se po LLM vždy deterministicky normalizuje na `bank_account_raw`, `bank_account_prefix`, `bank_account_number`, zpětně kompatibilní `bank_account` a samostatný `bank_code`. Stejný kombinovaný řetězec v obou LLM polích je bezpečně rozpoznán. Modulo-11 checksum je deterministická WARNING kontrola.
-- POHODA generátor `pohoda-received-invoice.v2` používá normalizovanou schválenou revizi. `accountNo` nikdy neobsahuje lomítko/kód a `bankCode` nikdy neobsahuje účet.
+- POHODA generátor `pohoda-received-invoice.v3` používá normalizovanou schválenou revizi. `dataPack/@ico` je cílové IČO z konfigurace; `accountNo` nikdy neobsahuje lomítko/kód a `bankCode` nikdy neobsahuje účet.
 - Tři souhrnné kontroly `VAT_BASE_TOTAL_MISMATCH`, `VAT_TOTAL_MISMATCH` a `VAT_TOTAL_MATH` jsou WARNING a nesmějí samy blokovat workflow ani export. Řádková matematika, allocations, chybějící zdroj a ostatní skutečné chyby zůstávají blocking.
 - `disposition` je oddělená od workflow: `ACTIVE`, `IGNORED_DUPLICATE`, `IGNORED_OTHER`. Vyřazení/restore jsou auditované, ignorované faktury nelze schválit ani exportovat a Paperless zdroj se nemaže.
 - `source_status` je oddělený stav `AVAILABLE`/`MISSING`. Pouze přesné Paperless HTTP 404 označí zdroj jako chybějící; 5xx, timeout a síťová chyba jsou sync error. Missing audit je idempotentní a workflow/PDF/nový export jsou blokované.
@@ -38,8 +38,10 @@
 - Backend: 84/84 testů; Ruff čistý.
 - Frontend: 5 testovacích souborů, 11/11 testů; TypeScript a produkční Vite build prošly.
 - Stage B: OIDC queue-manager/approver1, role, PDF a manažerský endpoint 403 pro approvera prošly.
-- Stage D: dvě skutečné inference `qwen3:4b`, bezpečná neaplikovaná re-extrakce a prompt-injection kontrola prošly; business stav se nezměnil.
+- Historická Stage D: dvě skutečné inference `qwen3:4b`, bezpečná neaplikovaná re-extrakce a prompt-injection kontrola prošly; historické záznamy se nemění. Nové běhy používají výchozí `qwen3:8b`.
 - Stage E: allocations 700/510 Kč, tři assignments, RETURN/REJECT/REOPEN, invalidace, idempotentní/souběžné approvals, 403 a Paperless tagy prošly; skončilo `APPROVED`.
 - Stage F: re-approval, XSD-valid generování/re-export, XML/PDF/ZIP hashe, response parser a bankovní XML semantics prošly; skončilo `EXPORT_CREATED`.
 - Opravný smoke: vlastní ID 6/7 prošla Paperless upload → OCR 911/911 → Approval → AI COMPLETED; parser opravil `19-2000145399/0800`, duplicita byla otagována, skryta, blokována, obnovena s auditem a znovu vyřazena. Po odstranění pouze vlastních Paperless ID nastavila reconciliation `MISSING`; PDF/submit/export vrátily 409.
 - Deployment proběhl přes `git pull --ff-only`, `docker compose config --quiet`, build, `up -d`, migraci a reconciliation bez mazání databází, auditů nebo volumes.
+
+Opravná iterace přidala korelační audit stažení a mutací, ochranu stale revizí, workflow stepper, inline chyby a pending stavy, Prague timestamps a polling bez přepisování rozepsaných dat. Konkrétní provozní měření a smoke výsledky se doplní po deploymentu.

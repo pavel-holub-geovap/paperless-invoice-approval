@@ -43,6 +43,22 @@ class FakePaperless:
         return b"%PDF-1.4\n% synthetic fixture " + str(document_id).encode()
 
 
+@pytest.mark.asyncio
+async def test_export_fails_when_target_accounting_unit_is_not_configured(
+    db: Session, tmp_path: Path
+) -> None:
+    invoice = approved_invoice(db, 504, "NO-TARGET", "CFG")
+    xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
+    with pytest.raises(WorkflowError, match="POHODA_TARGET_ICO"):
+        await generate_export_artifact(
+            db,
+            Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd),
+            FakePaperless(),
+            invoice,
+            "manager",
+        )
+
+
 def approved_invoice(
     db: Session,
     paperless_id: int = 501,
@@ -136,7 +152,7 @@ async def test_vat_rounding_warning_does_not_block_approval_or_export(
     )
     artifact = await generate_export_artifact(
         db,
-        Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd),
+        Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd, pohoda_target_ico="15049248"),
         FakePaperless(),
         invoice,
         "manager",
@@ -150,7 +166,7 @@ async def test_export_zip_and_explicit_import_are_separate_states(
 ) -> None:
     invoice = approved_invoice(db)
     xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
-    settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd)
+    settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd, pohoda_target_ico="15049248")
     batch = await create_export_batch(
         db, settings, FakePaperless(), [invoice], "manager", xsd
     )
@@ -184,7 +200,7 @@ async def test_rejected_invoice_cannot_be_exported(db: Session, tmp_path: Path) 
     invoice = approved_invoice(db)
     invoice.status = InvoiceStatus.REJECTED
     xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
-    settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd)
+    settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd, pohoda_target_ico="15049248")
     with pytest.raises(WorkflowError, match="Only an APPROVED"):
         await create_export_batch(db, settings, FakePaperless(), [invoice], "manager", xsd)
 
@@ -196,7 +212,7 @@ async def test_batch_export_contains_pdf_and_xml_for_multiple_invoices(
     first = approved_invoice(db, 601, "BATCH-1", "IT")
     second = approved_invoice(db, 602, "BATCH-2", "PROVOZ")
     xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
-    settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd)
+    settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd, pohoda_target_ico="15049248")
     batch = await create_export_batch(
         db, settings, FakePaperless(), [first, second], "manager", xsd
     )
@@ -216,7 +232,7 @@ async def test_reexport_keeps_revision_and_links_immutable_artifacts(
 ) -> None:
     invoice = approved_invoice(db, 701, "REEXPORT-1", "IT-RE")
     xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
-    settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd)
+    settings = Settings(export_archive_dir=tmp_path, pohoda_xsd_path=xsd, pohoda_target_ico="15049248")
     first = await generate_export_artifact(db, settings, FakePaperless(), invoice, "manager")
     second = await generate_export_artifact(
         db,
@@ -246,6 +262,7 @@ def test_response_upload_is_diagnostic_only(db: Session, tmp_path: Path) -> None
     settings = Settings(
         export_archive_dir=tmp_path,
         pohoda_xsd_path=root / "schemas" / "pohoda" / "2025-10-16" / "data.xsd",
+        pohoda_target_ico="15049248",
     )
     upload = store_pohoda_response(db, settings, content, "response.xml", "manager")
     assert upload.parse_status == "PARSED"

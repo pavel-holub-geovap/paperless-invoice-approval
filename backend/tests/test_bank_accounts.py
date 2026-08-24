@@ -107,7 +107,7 @@ def test_pohoda_receives_account_without_slash_and_separate_bank_code() -> None:
     )
     combined = "19-2000145399/0800"
     row.data.update({"bank_account": combined, "bank_code": combined})
-    xml = generate_invoice_xml(row, [allocation(row, "IT", "121.00")])
+    xml = generate_invoice_xml(row, [allocation(row, "IT", "121.00")], accounting_unit_ico="15049248")
     root = etree.fromstring(xml)
     namespaces = {"inv": NS_INV, "typ": NS_TYP}
     assert root.xpath("string(//inv:paymentAccount/typ:accountNo)", namespaces=namespaces) == "19-2000145399"

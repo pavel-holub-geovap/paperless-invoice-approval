@@ -108,3 +108,11 @@ Po smazání musí reconciliation nastavit `MISSING`, vytvořit jednu blocking v
 ## Evidence
 
 Pro každý deployment uložte do reportu commit, `docker compose config --quiet`, `docker compose ps`, healthchecks, relevantní logy bez secrets, RAM před/po OCR a Ollamě, document ID syntetické fixture, migraci, XML/PDF/ZIP hashe a výsledek persistence restartu. Etapa F je technicky připravena po XSD a smoke testu, praktická kompatibilita však vyžaduje ruční import konkrétního XML do testovací POHODY, response XML a kontrolní export.
+
+## Regrese opravné iterace
+
+Automatické testy ověřují rozdílné IČO dodavatele a cílové účetní jednotky, vynechání prázdného `key`, fail-fast bez cílového IČO, normalizaci banky, strukturovaný stale-revision HTTP 409, obohacení auditu korelačním ID a zachování rozepsaného formuláře při polling aktualizaci. Před předáním spusťte celý backend, frontend testy, frontend build a smoke scénáře B–F.
+
+Při reálném 8B testu zaznamenejte velikost modelu, `free -h` před načtením, po načtení a maximum během inference, dobu každé inference a metadata nových extraction běhů. Neprovádějte fallback na 4B.
+
+Nový read-mostly smoke `scripts/smoke_correction_iteration.py` ověřuje obě řazení podle source timestampu, stale HTTP 409, cílovou konfiguraci POHODA, request ID a audit stažení PDF. Spouští se stejně jako ostatní skripty v worker image s read-only mountem adresáře `scripts`.

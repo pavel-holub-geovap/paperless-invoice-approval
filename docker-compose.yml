@@ -185,7 +185,7 @@ services:
       retries: 20
       start_period: 15s
     restart: unless-stopped
-    mem_limit: 3600m
+    mem_limit: 7500m
     cpus: 3.0
     networks: [app_net]
 
@@ -235,7 +235,9 @@ services:
       POHODA_XSD_PATH: ${POHODA_XSD_PATH}
       POHODA_XSD_BUNDLE_VERSION: ${POHODA_XSD_BUNDLE_VERSION:-2025-10-16}
       POHODA_XML_ENCODING: ${POHODA_XML_ENCODING:-Windows-1250}
-      POHODA_GENERATOR_VERSION: ${POHODA_GENERATOR_VERSION:-pohoda-received-invoice.v2}
+      POHODA_GENERATOR_VERSION: ${POHODA_GENERATOR_VERSION:-pohoda-received-invoice.v3}
+      POHODA_TARGET_ICO: ${POHODA_TARGET_ICO}
+      POHODA_TARGET_KEY: ${POHODA_TARGET_KEY:-}
       ALLOCATION_TOLERANCE: ${ALLOCATION_TOLERANCE}
       OLLAMA_MODEL: ${OLLAMA_MODEL}
       AI_EXTRACTION_ENABLED: ${AI_EXTRACTION_ENABLED}

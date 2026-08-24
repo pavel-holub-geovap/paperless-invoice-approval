@@ -28,3 +28,7 @@ Databázový job má idempotency key, lease a maximálně `AI_EXTRACTION_MAX_ATT
 - LLM nesmí vytvářet XML, SQL, workflow stav, cost center nebo approvera.
 - Originální PDF zůstává v Paperless; do Approval DB se neukládá.
 - Re-extrakce bez potvrzení nepřepíše uživatelské opravy.
+
+## Výchozí produkční model po opravné iteraci
+
+Výchozí hodnota je `qwen3:8b`, CPU-only, `num_ctx=4096`, jedna inference a timeout 900 s. Historické extrakce a jejich metadata se nemění; každý nový běh ukládá přesný název použitého modelu. Pád kvůli paměti je viditelná chyba a nesmí spustit automatický fallback na 4B.

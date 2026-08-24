@@ -56,3 +56,9 @@ PostgreSQL tabulka `processing_jobs` je approval fronta se stavem, omezeným po�
 ## Důvěryhodné hranice
 
 Browser nikdy nevidí Paperless token ani client secret. Backend drží náhodné opaque session ID v `HttpOnly`, `Secure` (v produkci) a `SameSite=Lax` cookie. Změnové endpointy kontrolují roli a CSRF origin. Exportní archiv je přístupný jen autorizovaným endpointem; normalizované názvy a kontrola resolved cest brání traversal.
+
+## Konzistence klienta a audit požadavků
+
+Frontend používá polling (dashboard 5 s, otevřený detail 3 s, úkoly 5 s) a po mutaci okamžitý refetch. Editační payload nese `expected_revision`; backend při nesouladu vrací HTTP 409 `STALE_REVISION`. Lokální dirty stav se pollingem nehydratuje.
+
+Middleware přiděluje nebo přebírá `X-Request-ID`. Auditní služba jej spolu s `actor_username` a `actor_roles` přidává do JSON metadata. POHODA generátor odděluje dodavatele ve zdrojové revizi od cílové účetní jednotky v serverové konfiguraci.

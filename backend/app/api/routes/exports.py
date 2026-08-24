@@ -21,6 +21,7 @@ from app.models import (
     SourceDocumentStatus,
 )
 from app.schemas import CurrentUser, ExportCreate, ExportGenerate, ImportConfirmation
+from app.services.audit import record_event
 from app.services.exports import (
     create_export_batch,
     generate_export_artifact,
@@ -57,6 +58,10 @@ def _artifact_out(row: ExportArtifact) -> dict[str, Any]:
         "generated_at": row.generated_at,
         "imported_by": row.imported_by,
         "imported_at": row.imported_at,
+        "pohoda_target_ico": row.source_snapshot.get("pohoda_target_ico"),
+        "pohoda_target_key_configured": row.source_snapshot.get(
+            "pohoda_target_key_configured", False
+        ),
     }
 
 
@@ -91,6 +96,23 @@ def _checked_artifact_path(row: ExportArtifact, settings: Settings) -> Path:
     if root not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="XML artifact is unavailable")
     return path
+
+
+@router.get("/config")
+def export_config(
+    user: CurrentUser = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    _manager(user)
+    return {
+        "pohoda_target_ico": settings.pohoda_target_ico or None,
+        "pohoda_target_key_configured": bool(settings.pohoda_target_key),
+        "identification": (
+            "ICO_AND_KEY" if settings.pohoda_target_key else "ICO_ONLY"
+        )
+        if settings.pohoda_target_ico
+        else "NOT_CONFIGURED",
+    }
 
 
 @router.get("")
@@ -132,6 +154,13 @@ async def generate_invoice_export(
     invoice = db.scalar(select(Invoice).where(Invoice.id == invoice_id).with_for_update())
     if invoice is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    record_event(
+        db,
+        "XML_GENERATION_REQUESTED",
+        actor=user.subject,
+        invoice=invoice,
+        comment=payload.reason,
+    )
     paperless = PaperlessClient(settings)
     try:
         artifact = await generate_export_artifact(
@@ -164,6 +193,15 @@ def download_xml_artifact(
         raise HTTPException(status_code=404, detail="Export artifact not found")
     if artifact.status.value != "XSD_VALID":
         raise HTTPException(status_code=409, detail="XSD-invalid XML cannot be downloaded")
+    invoice = db.get(Invoice, artifact.invoice_id)
+    record_event(
+        db,
+        "EXPORT_DOWNLOADED",
+        actor=user.subject,
+        invoice=invoice,
+        metadata={"export_artifact_id": artifact.id},
+    )
+    db.commit()
     return FileResponse(
         _checked_artifact_path(artifact, settings),
         media_type="application/xml",
@@ -313,6 +351,16 @@ def download_export(
     root = settings.export_archive_dir.resolve()
     if root not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="Archived export is unavailable")
+    for item in batch.items:
+        invoice = db.get(Invoice, item.invoice_id)
+        record_event(
+            db,
+            "ZIP_DOWNLOADED",
+            actor=user.subject,
+            invoice=invoice,
+            metadata={"batch_id": batch.id, "batch_number": batch.batch_number},
+        )
+    db.commit()
     return FileResponse(path, media_type="application/zip", filename=f"{batch.batch_number}.zip")
 
 

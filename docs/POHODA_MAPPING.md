@@ -38,3 +38,7 @@ Mapování je odvozené z oficiálních `data.xsd`, `invoice.xsd`, `type.xsd` a 
 - Více středisek a více sazeb: automatický odhad je zakázán. Každá allocation musí mít explicitní `vat_breakdown`; součet po allocation i agregace po sazbě musí přesně rekonstruovat schválené hodnoty. Jinak export končí `MULTI_RATE_ALLOCATION_REQUIRES_EXPLICIT_VAT_SPLIT`.
 
 Pro syntetickou fakturu s jedinou sazbou 21 % vzniknou přesně dvě účetní položky: 700 Kč se střediskem 200 a 510 Kč se střediskem 300. Dva schvalovatelé druhé allocation nevytvářejí druhou účetní položku.
+
+## Identifikace účetní jednotky
+
+`dat:dataPack/@ico` se plní pouze z `POHODA_TARGET_ICO` a identifikuje účetní jednotku, do které se balíček importuje. `supplier_ico` se mapuje pouze do `inv:partnerIdentity/typ:address/typ:ico`. Tyto hodnoty se v testech záměrně liší. `dat:dataPack/@key` vznikne pouze při explicitním `POHODA_TARGET_KEY`; generátor žádný náhodný klíč nevytváří.

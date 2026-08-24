@@ -120,6 +120,7 @@ class InvoiceCreate(BaseModel):
 class InvoicePatch(BaseModel):
     changes: dict[str, Any]
     comment: str | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
 
 
 class InvoiceDispositionSet(BaseModel):
@@ -167,10 +168,12 @@ class AllocationInput(BaseModel):
 
 class AllocationSet(BaseModel):
     allocations: list[AllocationInput] = Field(min_length=1)
+    expected_revision: int | None = Field(default=None, ge=1)
 
 
 class ApproverSet(BaseModel):
     approver_subjects: list[str] = Field(default_factory=list)
+    expected_revision: int | None = Field(default=None, ge=1)
 
 
 class ApprovalRequest(BaseModel):

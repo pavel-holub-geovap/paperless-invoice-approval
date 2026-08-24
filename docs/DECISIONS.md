@@ -67,3 +67,10 @@ Reconciliation čte každý známý dokument přes REST. Pouze HTTP 404 je důka
 ## ADR-017: Deterministická normalizace účtu a review DPH rozdíly
 
 LLM poskytuje hodnotu a evidence, nikoli strukturu českého clearingového účtu. Parser bez odhadu rozloží `[prefix-]number/code` a POHODA v2 mapuje účet/kód odděleně. Tři agregované DPH reconciliation rozdíly jsou WARNING, protože mohou představovat legitimní zaokrouhlení; řádkové a strukturální chyby zůstávají blocking.
+
+## ADR-018: Cílová identita POHODA, 8B model a polling
+
+- `dataPack/@ico` je povinná cílová účetní jednotka ze serverové konfigurace; `key` je pouze explicitní volba.
+- Výchozí extrakční model je Qwen3 8B bez automatického fallbacku. Historické běhy zůstávají nedotčené.
+- Pro živou aktualizaci byl zvolen polling; websocket infrastruktura by nepřinesla úměrný přínos.
+- Optimistická konkurence používá číslo doménové revize a HTTP 409. Polling nikdy nepřepisuje dirty formulář.

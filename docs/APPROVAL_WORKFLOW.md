@@ -41,3 +41,7 @@ Správce vidí celou frontu, spravuje střediska/data/allocations/approvery, pot
 ## Paperless tagy
 
 `QUEUE_REVIEW`, `NEEDS_REVIEW` a `RETURNED` používají tag kontroly správce; `AWAITING_APPROVAL` tag ke schválení; `APPROVED` tag schváleno; `REJECTED` tag zamítnuto. Mapování je konfigurovatelné. Business transakce se commitne před externím voláním; selhání zůstane v databázovém jobu s bounded retry.
+
+## Zobrazení a živá konzistence
+
+Detail skládá deterministický stepper `DONE / CURRENT / WAITING / BLOCKED / ERROR` ze stavu zdroje, validací, rozúčtování, kontroly originálu, assignments, schválení, exportu a potvrzení importu. Každý krok uvádí další akci nebo důvod blokace. Změna z jiné relace se projeví pollingem; při rozepsaném formuláři pouze vznikne upozornění a explicitní volba načíst novou revizi.

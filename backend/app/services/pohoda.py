@@ -196,7 +196,17 @@ class PohodaInvoiceXmlGenerator:
     def __init__(self, *, encoding: str = "Windows-1250") -> None:
         self.encoding = encoding
 
-    def generate(self, snapshot: dict[str, Any], *, accounting_unit_ico: str | None = None) -> bytes:
+    def generate(
+        self,
+        snapshot: dict[str, Any],
+        *,
+        accounting_unit_ico: str,
+        accounting_unit_key: str | None = None,
+    ) -> bytes:
+        if not accounting_unit_ico:
+            raise PohodaMappingError(
+                "Cílová účetní jednotka POHODA není nakonfigurována (POHODA_TARGET_ICO)."
+            )
         allocations = snapshot.get("allocations") or []
         if not allocations:
             raise PohodaMappingError("At least one allocation is required")
@@ -226,8 +236,9 @@ class PohodaInvoiceXmlGenerator:
         root.set("id", f"invoice-{snapshot['invoice_id']}-r{snapshot['revision_number']}")
         root.set("application", "paperless-invoice-approval")
         root.set("note", "Ruční import schválené přijaté faktury")
-        if accounting_unit_ico:
-            root.set("ico", accounting_unit_ico)
+        root.set("ico", accounting_unit_ico)
+        if accounting_unit_key:
+            root.set("key", accounting_unit_key)
 
         pack_item = etree.SubElement(root, _q(NS_DATA, "dataPackItem"))
         pack_item.set("version", "2.0")
@@ -338,12 +349,15 @@ def generate_invoice_xml(
     revision: InvoiceRevision,
     allocations: list[Allocation],
     *,
-    accounting_unit_ico: str | None = None,
+    accounting_unit_ico: str,
+    accounting_unit_key: str | None = None,
     encoding: str = "Windows-1250",
 ) -> bytes:
     snapshot = build_source_snapshot(revision, allocations)
     return PohodaInvoiceXmlGenerator(encoding=encoding).generate(
-        snapshot, accounting_unit_ico=accounting_unit_ico
+        snapshot,
+        accounting_unit_ico=accounting_unit_ico,
+        accounting_unit_key=accounting_unit_key,
     )
 
 

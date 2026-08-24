@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Approvals } from "./Approvals";
 import { InvoiceDetail } from "./InvoiceDetail";
@@ -95,5 +95,27 @@ describe("Stage B pages", () => {
     expect(screen.getByText(/Zdrojový dokument v Paperless chybí/)).toBeVisible();
     expect(screen.queryByTitle("Originální faktura")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Předat ke schválení" })).toBeDisabled();
+  });
+
+  it("preserves unsaved form data when polling returns a newer revision", async () => {
+    mockEmptyApi();
+    const first = { ...invoice, data: { supplier_name: "Původní" } };
+    const view = render(
+      <InvoiceDetail invoice={first} user={user} onBack={() => undefined} onRefresh={() => undefined} />,
+    );
+    const supplier = screen.getByLabelText("Dodavatel");
+    fireEvent.change(supplier, { target: { value: "Rozepsaná lokální hodnota" } });
+
+    view.rerender(
+      <InvoiceDetail
+        invoice={{ ...first, current_revision_number: 2, data: { supplier_name: "Nová hodnota ze serveru" } }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByText(/Na serveru je novější revize/)).toBeVisible();
+    expect(screen.getByLabelText("Dodavatel")).toHaveValue("Rozepsaná lokální hodnota");
   });
 });

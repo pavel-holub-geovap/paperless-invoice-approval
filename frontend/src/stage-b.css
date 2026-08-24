@@ -146,6 +146,46 @@
   font-size: 12px;
 }
 
+.workflow-stepper {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+}
+
+.workflow-stepper li {
+  border: 1px solid var(--line);
+  border-top: 4px solid #9aa8b2;
+  border-radius: 9px;
+  background: white;
+  padding: 10px;
+}
+
+.workflow-stepper li.step-done { border-top-color: #278255; }
+.workflow-stepper li.step-current { border-top-color: #1479b8; }
+.workflow-stepper li.step-blocked { border-top-color: #d08a00; }
+.workflow-stepper li.step-error { border-top-color: #c43b3b; }
+.workflow-stepper strong,
+.workflow-stepper span { display: block; margin-top: 7px; }
+.workflow-stepper span { color: var(--muted); font-size: 12px; }
+
+.field-invalid input,
+.field-invalid select,
+.field-invalid textarea {
+  border-color: #c43b3b;
+  box-shadow: 0 0 0 2px rgb(196 59 59 / 15%);
+}
+
+.field-error { color: #a32323 !important; font-weight: 700; }
+
+.audit-list details { margin-top: 5px; font-size: 12px; }
+.audit-list pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+button:disabled { cursor: wait; opacity: 0.65; }
+
 @media (max-width: 640px) {
   .metadata-grid {
     grid-template-columns: 1fr;

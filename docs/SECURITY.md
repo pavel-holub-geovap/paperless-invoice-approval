@@ -17,3 +17,9 @@ Reconciliation nesmí zaměnit výpadek za smazání: pouze konkrétní HTTP 404
 Correction smoke smí mazat pouze dvě syntetická Paperless ID, která sám právě vytvořil a zaznamenal. Cleanup nevyhledává ani nemaže uživatelské faktury. Report neobsahuje PDF bytes, OCR text, token ani heslo.
 
 Na testovací HTTP/IP topologii zůstává běžné Paperless přihlášení zapnuté jako nouzová cesta, dokud není OIDC prakticky ověřeno. Prostředí nesmí být vystaveno do nedůvěryhodné sítě. Před produkčním použitím jsou povinné TLS, bezpečné hostname, rotace všech testovacích secrets a least-privileged Paperless service account.
+
+## Korelace a bezpečnostně významné akce
+
+Každý HTTP požadavek dostává `X-Request-ID`; klientský identifikátor lze převzít, jinak vznikne UUID. Nové auditní události ukládají korelační ID a dostupné OIDC údaje actor subject, username a role. Stažení originálního PDF, POHODA XML a exportního ZIPu je auditováno. Paperless token ani obsah PDF se do auditních metadata neukládá.
+
+`POHODA_TARGET_ICO` a volitelný `POHODA_TARGET_KEY` jsou pouze serverová konfigurace. `.env.example` obsahuje prázdné hodnoty a skutečná konfigurace nesmí být commitována.

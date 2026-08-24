@@ -37,9 +37,9 @@ class Settings(BaseSettings):
     paperless_tag_ignored: str = "Ignorováno"
 
     ollama_base_url: str = "http://ollama:11434"
-    ollama_model: str = "qwen3:4b"
+    ollama_model: str = "qwen3:8b"
     ollama_num_ctx: int = 4096
-    ollama_timeout_seconds: int = 300
+    ollama_timeout_seconds: int = 900
     ollama_num_gpu: int = 0
     ollama_keep_alive: str = "5m"
     ai_extraction_enabled: bool = True
@@ -50,7 +50,9 @@ class Settings(BaseSettings):
     pohoda_xsd_path: Path = Path("../schemas/pohoda/2025-10-16/data.xsd")
     pohoda_xsd_bundle_version: str = "2025-10-16"
     pohoda_xml_encoding: str = "Windows-1250"
-    pohoda_generator_version: str = "pohoda-received-invoice.v2"
+    pohoda_generator_version: str = "pohoda-received-invoice.v3"
+    pohoda_target_ico: str = ""
+    pohoda_target_key: str | None = None
     allocation_tolerance: str = "0.01"
     session_ttl_seconds: int = 28800
     external_retry_attempts: int = 3
@@ -59,6 +61,20 @@ class Settings(BaseSettings):
     @classmethod
     def strip_trailing_slash(cls, value: str) -> str:
         return value.rstrip("/")
+
+    @field_validator("pohoda_target_ico")
+    @classmethod
+    def validate_pohoda_target_ico(cls, value: str) -> str:
+        compact = value.replace(" ", "").strip()
+        if compact and (not compact.isdigit() or len(compact) != 8):
+            raise ValueError("POHODA_TARGET_ICO must contain exactly 8 digits")
+        return compact
+
+    @field_validator("pohoda_target_key")
+    @classmethod
+    def normalize_pohoda_target_key(cls, value: str | None) -> str | None:
+        compact = (value or "").strip()
+        return compact or None
 
     @property
     def is_production(self) -> bool:

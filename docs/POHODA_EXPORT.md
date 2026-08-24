@@ -28,6 +28,8 @@ Správce může nahrát nejvýše 5 MiB response XML. Bezpečný parser ověří
 
 Před generováním se porovnává IČO dodavatele, dodavatelské číslo faktury, total a datum vystavení. Shoda vytvoří WARNING `POSSIBLE_DUPLICATE_INVOICE`; záznam se nemaže ani neslučuje.
 
-## Platební účet ve verzi v2
+## Platební účet ve verzi v3
 
-Generátor `pohoda-received-invoice.v2` před mapováním znovu deterministicky normalizuje data. Domácí účet `[prefix-]number/bank_code` se zapíše jako `typ:accountNo=[prefix-]number` a `typ:bankCode=bank_code`; lomítko ani celý kombinovaný řetězec se nikdy nedostane do obou elementů. IBAN/BIC zůstávají samostatnou podporovanou dvojicí podle existujícího mapovacího kontraktu. Každé nové generování vytvoří nový immutable artifact; v1 artifact se nepřepisuje.
+Generátor `pohoda-received-invoice.v3` před mapováním znovu deterministicky normalizuje data. Domácí účet `[prefix-]number/bank_code` se zapíše jako `typ:accountNo=[prefix-]number` a `typ:bankCode=bank_code`; lomítko ani celý kombinovaný řetězec se nikdy nedostane do obou elementů. IBAN/BIC zůstávají samostatnou podporovanou dvojicí podle existujícího mapovacího kontraktu. Každé nové generování vytvoří nový immutable artifact; starší artifact se nepřepisuje.
+
+Export fail-fast vyžaduje cílové IČO. Snapshot artefaktu ukládá `pohoda_target_ico` a informaci, zda byl nakonfigurován key. Historické chybné artefakty zůstávají beze změny kvůli auditní stopě; oprava vždy vytváří nový immutable artefakt.

@@ -60,3 +60,6 @@ Před prací zkontroluj `git status`, remote a branch. Pokud remote existuje, po
 12. Pouze skutečné Paperless HTTP 404 smí nastavit `source_status=MISSING`. Timeout, 5xx, síťová chyba ani auth chyba jsou synchronizační chyba, nikoli důkaz smazání.
 13. Ignorovaný nebo zdrojově chybějící doklad nesmí nově vstoupit do approval, exportu ani potvrzení importu. `MISSING` navíc blokuje PDF a ZIP.
 14. Český účet normalizuje pouze deterministická služba. POHODA `accountNo` nikdy nesmí obsahovat `/bank_code`; kód banky patří do samostatného elementu.
+15. `dataPack/@ico` je vždy cílová účetní jednotka z `POHODA_TARGET_ICO`, nikdy IČO dodavatele. `key` se bez explicitní konfigurace nevytváří.
+16. Mutace editovatelných dat, allocations a schvalovatelů kontrolují očekávanou revizi; stale klient dostane HTTP 409.
+17. Nové auditní události nesou korelační ID a dostupnou identitu uživatele. Auditují se i stažení PDF/XML/ZIP.

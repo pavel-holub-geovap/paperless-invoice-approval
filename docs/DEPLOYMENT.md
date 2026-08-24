@@ -49,7 +49,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Model určuje `OLLAMA_MODEL`; výchozí je `qwen3:4b`. `ollama-pull` ho stáhne do `ollama_data` a worker začne až po úspěšném dokončení. Konfigurace vynucuje jednu paralelní CPU inferenci (`OLLAMA_NUM_GPU=0`), teplotu 0, kontext 4096 a timeout 300 s. Před stažením modelu, po něm a během první inference zaznamenejte `free -h` a `docker stats`. Potom spusťte Stage D smoke test z `docs/TESTING.md` a ověřte golden accuracy i prompt injection.
+Model určuje `OLLAMA_MODEL`; výchozí je `qwen3:8b`. `ollama-pull` ho stáhne do `ollama_data` a worker začne až po úspěšném dokončení. Konfigurace vynucuje jednu paralelní CPU inferenci (`OLLAMA_NUM_GPU=0`), teplotu 0, kontext 4096 a timeout 900 s. Před stažením modelu, po něm a během první inference zaznamenejte `free -h` a `docker stats`. Potom spusťte Stage D smoke test z `docs/TESTING.md` a ověřte golden accuracy i prompt injection. OOM se řeší jako chyba, nikoli automatickým fallbackem.
 
 ## Etapy E–F: workflow a export
 
@@ -57,7 +57,7 @@ Projděte paralelní approvals, RETURN, REJECT a invalidaci revize. Nakonec ově
 
 ## Opravná migrace 0006
 
-Před `docker compose config` doplňte do chráněného serverového `.env` ne-secret hodnoty `PAPERLESS_TAG_DUPLICATE=Duplicita`, `PAPERLESS_TAG_IGNORED=Ignorováno` a `POHODA_GENERATOR_VERSION=pohoda-received-invoice.v2`. Potom použijte beze změny standardní pořadí:
+Před `docker compose config` doplňte do chráněného serverového `.env` ne-secret hodnoty `PAPERLESS_TAG_DUPLICATE=Duplicita`, `PAPERLESS_TAG_IGNORED=Ignorováno`, `POHODA_GENERATOR_VERSION=pohoda-received-invoice.v3` a správné cílové `POHODA_TARGET_ICO`. Volitelný `POHODA_TARGET_KEY` ponechte prázdný, pokud jej cílová jednotka výslovně nevyžaduje. Potom použijte beze změny standardní pořadí:
 
 ```text
 git pull --ff-only

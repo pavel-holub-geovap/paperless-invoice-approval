@@ -201,6 +201,11 @@ async def generate_export_artifact(
     reexport_reason: str | None = None,
 ) -> ExportArtifact:
     ensure_actionable(invoice, "be exported")
+    target_ico = settings.pohoda_target_ico.strip()
+    if not target_ico:
+        raise WorkflowError(
+            "Cílová účetní jednotka POHODA není nakonfigurována. Nastavte POHODA_TARGET_ICO."
+        )
     previous = latest_valid_artifact(db, invoice)
     is_reexport = previous is not None
     if is_reexport:
@@ -232,11 +237,17 @@ async def generate_export_artifact(
             else None,
             "approvals": _approval_snapshot(db, invoice),
             "possible_duplicate_invoice_ids": duplicate_ids,
+            "pohoda_target_ico": target_ico,
+            "pohoda_target_key_configured": bool(settings.pohoda_target_key),
         }
     )
 
     try:
-        xml = PohodaInvoiceXmlGenerator(encoding=settings.pohoda_xml_encoding).generate(snapshot)
+        xml = PohodaInvoiceXmlGenerator(encoding=settings.pohoda_xml_encoding).generate(
+            snapshot,
+            accounting_unit_ico=target_ico,
+            accounting_unit_key=settings.pohoda_target_key,
+        )
     except PohodaMappingError as exc:
         record_event(
             db,

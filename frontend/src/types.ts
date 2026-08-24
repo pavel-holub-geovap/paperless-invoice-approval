@@ -38,8 +38,8 @@ export type CostCenter = {
   name: string;
   pohoda_code: string;
   active: boolean;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type Validation = {
@@ -145,6 +145,8 @@ export type Invoice = {
     remaining: string;
   };
   pohoda_export?: PohodaExport;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type PohodaExport = {
@@ -161,6 +163,14 @@ export type PohodaExport = {
   validation_errors: { line?: number; column?: number; message: string; path?: string }[];
   imported_by?: string;
   imported_at?: string;
+  pohoda_target_ico?: string;
+  pohoda_target_key_configured?: boolean;
+};
+
+export type PohodaConfig = {
+  pohoda_target_ico?: string;
+  pohoda_target_key_configured: boolean;
+  identification: "ICO_ONLY" | "ICO_AND_KEY" | "NOT_CONFIGURED";
 };
 
 export type ApprovalTask = {
