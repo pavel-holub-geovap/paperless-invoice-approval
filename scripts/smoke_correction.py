@@ -190,6 +190,53 @@ async def main() -> None:
             await asyncio.sleep(2)
         require(duplicate_tag_present, "Paperless duplicate tag was not synchronized")
 
+        # A disposition must not remove the source document, and restoring it must
+        # be explicit and auditable. Re-apply the disposition afterwards so the
+        # remaining guard checks exercise an ignored invoice.
+        preserved_document = await paperless.get_document(created_document_ids[1])
+        require(
+            preserved_document.id == created_document_ids[1],
+            "Disposition unexpectedly removed the Paperless document",
+        )
+        restore = manager.post(
+            f"{base_url}/api/invoices/{second_row['id']}/restore",
+            headers=headers,
+            json={"comment": "Correction smoke: verify explicit restore"},
+        )
+        require(restore.status_code == 200, "Duplicate restore failed")
+        restored = restore.json()
+        require(restored["disposition"] == "ACTIVE", "Restore did not reactivate invoice")
+        audit = response_json(
+            manager.get(f"{base_url}/api/invoices/{second_row['id']}/audit"),
+            "duplicate restore audit",
+        )
+        require(
+            any(row["event_type"] == "INVOICE_RESTORED" for row in audit),
+            "Restore audit event is absent",
+        )
+        redisposition = manager.post(
+            f"{base_url}/api/invoices/{second_row['id']}/disposition",
+            headers=headers,
+            json={
+                "disposition": "IGNORED_DUPLICATE",
+                "reason": "correction smoke duplicate after restore",
+                "comment": "Correction smoke: re-ignore for workflow guard checks",
+                "duplicate_of_invoice_id": first_row["id"],
+            },
+        )
+        require(redisposition.status_code == 200, "Duplicate re-disposition failed")
+        ignored_submit_status = manager.post(
+            f"{base_url}/api/invoices/{second_row['id']}/submit",
+            headers=headers,
+        ).status_code
+        ignored_export_status = manager.post(
+            f"{base_url}/api/exports/invoices/{second_row['id']}/generate",
+            headers=headers,
+            json={"reason": "must be blocked for ignored duplicate"},
+        ).status_code
+        require(ignored_submit_status == 409, "Ignored invoice submission was not blocked")
+        require(ignored_export_status == 409, "Ignored invoice export was not blocked")
+
         await paperless._request("DELETE", f"/documents/{created_document_ids[0]}/")
         missing = wait_missing(manager, base_url, first_row["id"])
         missing_codes = {row["code"] for row in missing["validations"]}
@@ -226,6 +273,11 @@ async def main() -> None:
                 },
                 "duplicate_disposition": ignored["disposition"],
                 "duplicate_tag_present": duplicate_tag_present,
+                "paperless_preserved_after_disposition": True,
+                "duplicate_restore_disposition": restored["disposition"],
+                "duplicate_restore_audited": True,
+                "ignored_submit_http": ignored_submit_status,
+                "ignored_export_http": ignored_export_status,
                 "deleted_source_status": missing["source"],
                 "missing_validation": "SOURCE_DOCUMENT_MISSING" in missing_codes,
                 "missing_pdf_http": pdf_status,

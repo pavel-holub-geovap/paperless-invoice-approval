@@ -37,14 +37,12 @@ async def main() -> None:
         approval_rows = []
         for invoice in invoices:
             revision = invoice.current_revision
-            severities = Counter(
-                row.severity.value
-                for row in db.scalars(
-                    select(ValidationResult).where(
-                        ValidationResult.revision_id == revision.id
-                    )
-                ).all()
-            )
+            validation_rows = db.scalars(
+                select(ValidationResult).where(
+                    ValidationResult.revision_id == revision.id
+                )
+            ).all()
+            severities = Counter(row.severity.value for row in validation_rows)
             data = revision.data
             approval_rows.append(
                 {
@@ -73,6 +71,18 @@ async def main() -> None:
                     "iban": data.get("iban"),
                     "swift_bic": data.get("swift_bic"),
                     "validations": dict(severities),
+                    "validation_findings": [
+                        {
+                            "code": row.code,
+                            "severity": row.severity.value,
+                            "field": row.field_name,
+                            "expected": row.expected,
+                            "actual": row.actual,
+                            "details": row.details,
+                        }
+                        for row in validation_rows
+                        if row.severity.value != "OK"
+                    ],
                 }
             )
 
