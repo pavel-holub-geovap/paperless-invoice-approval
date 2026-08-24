@@ -19,6 +19,10 @@
 
 ## Reálné uživatelské faktury
 
+- Paperless dokument `11`, GIRITON faktura `25081151`, byl 2026-08-24 znovu vytěžen Qwen3 8B přes schema/prompt v3 a deterministicky doplněn z vytištěné VAT tabulky a sumáře. Dodavatel je `GIRITON Systems s.r.o.`, raw adresa `Hornosušská 1399/4 735 64 Havířov - Prostřední Suchá`, street `Hornosušská 1399/4`, ZIP `735 64`, city `Havířov - Prostřední Suchá`; účet je `2300122535/2010` rozdělený na `2300122535` a `2010`.
+- Přesné DPH řádky dokumentu 11 jsou hlavní základ `4065.00`, DPH `853.65`, gross `4918.65` a zaokrouhlení základ `0.29`, DPH `0.06`, gross `0.35`. Vytištěné součty jsou základ `4065.29`, DPH `853.71`, částka `4919.00`. Oba `VAT_ROW_OK` a všechny tři součtové kontroly jsou OK; `VAT_ROUNDING_ADJUSTMENT` je informativní WARNING, žádná DPH reconciliation není blocking.
+- Kandidát extraction revision 4 byl explicitně aplikován jako invoice revision 2, rozúčtován na středisko 200, potvrzen proti originálu a schválen skutečným `approver1`. Immutable artifact `fea7823e-b260-4b70-a166-591c34960f7e` je `XSD_VALID`, SHA-256 `4689d1a8d57001aebc2ed243defd4db86e53dd96e3b5300ed6efa16211186f28`; XML obsahuje přesnou adresu, účet/kód banky a součty 4065.29 + 853.71 = 4919.00. Import do POHODY nebyl potvrzen.
+
 - Paperless dokument `2`, `giritonsystems-26071092`, OCR 807 znaků: supplier `GIRITON Systems s.r.o.`, číslo/VS `26071092`, CZK. PDF uvádí účet `2300122535/2010`; revize 6 obsahuje raw `2300122535/2010`, prefix `null`, číslo `2300122535`, kód `2010`, IBAN/BIC `null`. PDF uvádí 3 960,00 + 831,60 = 4 791,60 a zaokrouhlení +0,40 na 4 792,00. Normalizovaná data mají total 4 792,00 a `VAT_TOTAL_MATH` WARNING s expected 4 791,60, actual 4 792,00, difference 0,40.
 - Paperless dokument `4`, `giritonsystems-26061111`, OCR 807 znaků: supplier `GIRITON Systems s.r.o.`, číslo/VS `26061111`, CZK. Revize 4 má stejné přesné rozdělení účtu. PDF uvádí 3 995,00 + 838,95 = 4 833,95 a zaokrouhlení +0,05 na 4 834,00. `VAT_TOTAL_MATH` je WARNING s expected 4 833,95, actual 4 834,00, difference 0,05.
 - Existující orphan Approval `2f24449b-55c8-4211-890e-66104f0a23d6`, Paperless ID `3`, vrací přímé HTTP 404. Záznam zůstal zachován jako `QUEUE_REVIEW + IGNORED_DUPLICATE + MISSING`, navázaný na fakturu dokumentu 2. Má právě jeden `SOURCE_DOCUMENT_MISSING` audit a blocking validaci; PDF, submit i export vracejí 409.
@@ -35,10 +39,10 @@
 
 ## Závěrečné automatické ověření
 
-- Backend: 87/87 testů; Ruff čistý.
-- Frontend: 5 testovacích souborů, 15/15 testů; TypeScript a produkční Vite build prošly. Regrese pokrývají i inline/sekční chyby, focus/scroll na první chybu, blokaci dvojitého uložení a schválení a zachování rozepsaného formuláře při nové serverové revizi.
+- Backend: 91/91 testů; Ruff čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix) a stále odmítá jiné neschématické hodnoty.
+- Frontend: 5 testovacích souborů, 16/16 testů; TypeScript a produkční Vite build prošly. Regrese pokrývají i sekční DPH/rounding varování, inline chyby, focus/scroll na první chybu, blokaci dvojitého uložení a schválení a zachování rozepsaného formuláře při nové serverové revizi.
 - Stage B: OIDC queue-manager/approver1, role, PDF a manažerský endpoint 403 pro approvera prošly.
-- Stage D/Qwen3 8B: skutečné inference proběhly na Paperless dokumentech 1, 2, 4 a 8. Model `qwen3:8b` má 5,2 GB, při načtení/inferenci použil nejvýše 6,991 GiB z limitu 7,324 GiB; host měl v nejnižším pozorovaném bodě přibližně 3,685 GiB dostupné RAM, bez OOM a bez fallbacku. Jednotlivé nové inference trvaly přibližně 265–357 s. Kandidáti se bez potvrzení neaplikovali a workflow zůstalo zachováno. U účtu model někdy ponechal kombinovaný tvar a prázdný bankovní kód; autoritou při aplikaci/exportu proto zůstává deterministický normalizátor. Prompt-injection kontrola prošla bez změny chráněných polí.
+- Stage D/Qwen3 8B: skutečné inference proběhly na Paperless dokumentech 1, 2, 4, 8 a 11. Poslední úplná regrese nad dokumentem 1 měla inference 258 136 ms a 254 989 ms, prompt-injection 262 097 ms, `AI_COMPLETED`, 12 OK / 0 WARNING / 0 blocking a zachovala stav `EXPORT_CREATED`. Kandidát se bez potvrzení neaplikoval a prompt injection nezměnila žádné pole. Modelové české částky s čárkou/procentem se před striktní Pydantic validací konzervativně normalizují.
 - Stage E: allocations 700/510 Kč, tři assignments, RETURN/REJECT/REOPEN, invalidace, idempotentní/souběžné approvals, 403 a Paperless tagy prošly; skončilo `APPROVED`.
 - Stage F: re-approval, XSD-valid generování/re-export, XML/PDF/ZIP hashe, response parser a bankovní XML semantics prošly; skončilo `EXPORT_CREATED`.
 - Živá aktualizace: samostatná session `approver1` schválila úkol, zatímco manager session zůstala otevřená bez ručního reloadu; polling změnu zobrazil po 116 ms. Následný cleanup schválil zbývající úkoly a Stage F vytvořila aktuální export.

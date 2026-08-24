@@ -60,7 +60,7 @@ docker compose run --rm --no-deps \
   worker python /smoke/smoke_stage_d.py
 ```
 
-Golden sada má 21 porovnávaných hodnot včetně tří polí DPH řádku. Report uvádí `correct`, `wrong`, `missing`, první/opakovaný čas inference a validační souhrn. Prompt-injection test zvlášť porovná napadený běh s baseline stejného OCR; nesmí změnit pole, na která útok míří, ani obsahovat útočníkův dodavatel nebo XML, a ostatní generativní rozdíly explicitně vypíše. Současně zaznamenejte `free -h` a `docker stats --no-stream` před stažením modelu, po stažení a během inference.
+Golden sada odpovídá schema v3 a má 25 porovnávaných hodnot včetně raw/strukturované adresy a čtyř polí DPH řádku. Report uvádí `correct`, `wrong`, `missing`, první/opakovaný čas inference a validační souhrn. Prompt-injection test zvlášť porovná napadený běh s baseline stejného OCR; nesmí změnit pole, na která útok míří, ani obsahovat útočníkův dodavatel nebo XML, a ostatní generativní rozdíly explicitně vypíše. Smoke čeká standardně až 1 200 sekund na pomalou lokální inferenci; limit lze změnit přes `STAGE_D_AI_TIMEOUT_SECONDS`. Současně zaznamenejte `free -h` a `docker stats --no-stream` před stažením modelu, po stažení a během inference.
 
 ## Schvalovací integrační test (Etapa E)
 
@@ -122,3 +122,5 @@ Nový read-mostly smoke `scripts/smoke_correction_iteration.py` ověřuje obě �
 `scripts/smoke_live_refresh.py` drží otevřenou manažerskou OIDC session, provede schválení v oddělené approver session a stejným polling endpointem jako React ověří změnu counteru bez reloadu. Nakonec dokončí zbývající syntetická schválení.
 
 `scripts/smoke_giriton_address_vat.py` spouští append-only Qwen3 8B kandidáty nad dostupnými skutečnými GIRITON dokumenty. Vypíše normalizovanou dodavatelskou adresu, banku, VAT/rounding řádky, deklarované součty a všechny VAT severity; kandidáty automaticky neaplikuje a zachovává workflow. `GIRITON_INVOICE_NUMBER` a `GIRITON_SMOKE_COUNT` omezí cíle, `GIRITON_SKIP_EXTRACTION=1` provede pouze read-only přepočet posledního kandidáta aktuální deterministickou vrstvou.
+
+`scripts/smoke_giriton_apply_export.py` aplikuje jen předem ověřený kandidát faktury `25081151`, vytvoří novou revizi, jedno rozúčtování, přiřadí `approver1`, provede skutečné OIDC schválení a připraví fakturu k exportu. `scripts/smoke_giriton_export_current.py` je následný idempotentní export/read-only verifier: ověří immutable artifact, XSD, přesnou adresu, banku a součty bez potvrzení importu do POHODY.

@@ -1,9 +1,12 @@
 {
-  "schema_version": "invoice-extraction.v1",
+  "schema_version": "invoice-extraction.v3",
   "supplier_name": "TESTOVACÍ DODAVATEL s.r.o.",
   "supplier_ico": "00000019",
   "supplier_dic": "CZ00000019",
-  "supplier_address": "Fiktivní 123, 100 00 Praha",
+  "supplier_address_raw": "Fiktivní 123, 100 00 Praha",
+  "supplier_street": "Fiktivní 123",
+  "supplier_city": "Praha",
+  "supplier_zip": "100 00",
   "invoice_number": "TEST-2026-0001",
   "variable_symbol": "20260001",
   "issue_date": "2026-08-20",
@@ -18,7 +21,8 @@
     {
       "vat_rate": "21",
       "taxable_base": "1000.00",
-      "vat_amount": "210.00"
+      "vat_amount": "210.00",
+      "gross_amount": "1210.00"
     }
   ],
   "total_without_vat": "1000.00",
