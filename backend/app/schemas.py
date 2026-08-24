@@ -71,12 +71,13 @@ class VatLineExtraction(BaseModel):
     vat_rate: Decimal | None
     taxable_base: Decimal | None
     vat_amount: Decimal | None
+    gross_amount: Decimal | None = None
     adjustment_type: Literal["ROUNDING"] | None = None
     source_text: str | None
 
     @model_validator(mode="after")
     def provenance_for_values(self) -> VatLineExtraction:
-        if any(value is not None for value in (self.vat_rate, self.taxable_base, self.vat_amount)) and not (
+        if any(value is not None for value in (self.vat_rate, self.taxable_base, self.vat_amount, self.gross_amount)) and not (
             self.source_text and self.source_text.strip()
         ):
             raise ValueError("A non-empty VAT line requires source_text provenance")
@@ -88,7 +89,7 @@ class InvoiceExtractionV1(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["invoice-extraction.v2"]
+    schema_version: Literal["invoice-extraction.v3"]
     supplier_name: TextEvidence
     supplier_ico: TextEvidence
     supplier_dic: TextEvidence

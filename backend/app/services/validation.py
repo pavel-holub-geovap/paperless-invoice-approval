@@ -329,6 +329,7 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
             base = as_decimal(row.get("taxable_base", row.get("base")))
             vat = as_decimal(row.get("vat_amount", row.get("vat")))
             rate = as_decimal(row.get("vat_rate", row.get("rate")))
+            gross = as_decimal(row.get("gross_amount", row.get("gross")))
             if base is None or vat is None or rate is None:
                 results.append(
                     _result(
@@ -341,6 +342,18 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
             expected_vat = (base * rate / Decimal("100")).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
+            if gross is not None and abs(base + vat - gross) > MONEY_TOLERANCE:
+                results.append(
+                    _result(
+                        "VAT_ROW_GROSS_MATH",
+                        ValidationSeverity.WARNING,
+                        f"Základ a DPH řádku {index + 1} neodpovídají řádkovému celkem.",
+                        "vat_lines",
+                        expected=str(base + vat),
+                        actual=str(gross),
+                        details={"row": index + 1, "difference": str(gross - base - vat)},
+                    )
+                )
             source_text = str(row.get("source_text") or "")
             is_rounding = row.get("adjustment_type") == "ROUNDING" or bool(
                 re.search(r"\b(?:zaokrouhlení|zaokr\.?|rounding)\b", source_text, re.IGNORECASE)

@@ -21,7 +21,7 @@ Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schvále
 3. Postupujte po etapách podle `docs/DEPLOYMENT.md`. Výchozí Compose v Etapě D spouští také CPU-only Ollamu a jednorázově stáhne nakonfigurovaný model.
 4. Na testovací VM otevřete Approval na `http://172.30.172.167/`, Paperless na `http://172.30.172.167:8000/` a Keycloak na `http://172.30.172.167:8081/`.
 
-Etapy B/C synchronizují metadata, tagy a OCR text z Paperless REST API do samostatné approval databáze. Originální PDF se do ní neukládá a UI jej načítá přes autorizovanou backend proxy. Etapa D posílá OCR do lokální Ollamy, přijímá pouze striktní `invoice-extraction.v2`, ukládá každý běh append-only a výsledek ověřuje deterministicky. AI technický stav nikdy nenahrazuje obchodní workflow stav.
+Etapy B/C synchronizují metadata, tagy a OCR text z Paperless REST API do samostatné approval databáze. Originální PDF se do ní neukládá a UI jej načítá přes autorizovanou backend proxy. Etapa D posílá OCR do lokální Ollamy, přijímá pouze striktní `invoice-extraction.v3`, ukládá každý běh append-only a výsledek ověřuje deterministicky. AI technický stav nikdy nenahrazuje obchodní workflow stav.
 
 Etapa E přidává konfigurovatelná střediska, Decimal rozúčtování, povinnou kontrolu originálu a paralelní assignmenty navázané na konkrétní revizi, středisko a částku. `RETURN` vrací celou fakturu správci, `REJECT` ji globálně zamítá a `REOPEN` vytváří novou auditovanou revizi. Významná změna dat, allocations nebo approverů invaliduje všechna dřívější rozhodnutí bez mazání historie. Podrobný kontrakt je v [docs/APPROVAL_WORKFLOW.md](docs/APPROVAL_WORKFLOW.md).
 

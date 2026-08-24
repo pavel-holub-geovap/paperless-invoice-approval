@@ -44,6 +44,23 @@ def extraction_to_invoice_data(payload: InvoiceExtractionV1) -> dict[str, Any]:
         return value
 
     currency = scalar("currency")
+    vat_lines: list[dict[str, Any]] = []
+    for row in payload.vat_lines:
+        normalized_row = row.model_dump(mode="json")
+        normalized_row["adjustment_type"] = row.adjustment_type or (
+            "ROUNDING"
+            if row.source_text and re.search(r"\b(?:zaokrouhlení|zaokr\.?|rounding)\b", row.source_text, re.IGNORECASE)
+            else None
+        )
+        if row.taxable_base is not None and row.gross_amount is not None:
+            derived_vat = row.gross_amount - row.taxable_base
+            if row.vat_amount is None or abs(row.taxable_base + row.vat_amount - row.gross_amount) > Decimal("0.02"):
+                normalized_row["vat_amount_extracted"] = (
+                    str(row.vat_amount) if row.vat_amount is not None else None
+                )
+                normalized_row["vat_amount"] = str(derived_vat)
+                normalized_row["normalization"] = "gross_amount_minus_taxable_base"
+        vat_lines.append(normalized_row)
     data = normalize_supplier_address({
         "supplier_name": scalar("supplier_name"),
         "supplier_ico": scalar("supplier_ico"),
@@ -62,17 +79,7 @@ def extraction_to_invoice_data(payload: InvoiceExtractionV1) -> dict[str, Any]:
         "bank_code": scalar("bank_code"),
         "iban": scalar("iban"),
         "swift_bic": scalar("swift_bic"),
-        "vat_lines": [
-            {
-                **row.model_dump(mode="json"),
-                "adjustment_type": row.adjustment_type or (
-                    "ROUNDING"
-                    if row.source_text and re.search(r"\b(?:zaokrouhlení|zaokr\.?|rounding)\b", row.source_text, re.IGNORECASE)
-                    else None
-                ),
-            }
-            for row in payload.vat_lines
-        ],
+        "vat_lines": vat_lines,
         "total_without_vat": scalar("total_without_vat"),
         "total_vat": scalar("total_vat"),
         "total_amount": scalar("total_amount"),
@@ -385,13 +392,17 @@ def apply_ai_extraction(
         legacy_address = stored_payload.pop("supplier_address", {"value": None, "source_text": None})
         stored_payload.update(
             {
-                "schema_version": "invoice-extraction.v2",
+                "schema_version": "invoice-extraction.v3",
                 "supplier_address_raw": legacy_address,
                 "supplier_street": {"value": None, "source_text": None},
                 "supplier_city": {"value": None, "source_text": None},
                 "supplier_zip": {"value": None, "source_text": None},
             }
         )
+    elif stored_payload.get("schema_version") == "invoice-extraction.v2":
+        stored_payload["schema_version"] = "invoice-extraction.v3"
+    for row in stored_payload.get("vat_lines", []):
+        row.setdefault("gross_amount", None)
     payload = InvoiceExtractionV1.model_validate(stored_payload)
     data = extraction_to_invoice_data(payload)
     update_invoice_data(

@@ -19,7 +19,7 @@ def giriton_payload() -> dict:
         "735 64 Havířov - Prostřední Suchá"
     )
     return {
-        "schema_version": "invoice-extraction.v2",
+        "schema_version": "invoice-extraction.v3",
         "supplier_name": evidence("GIRITON Systems s.r.o.", supplier_block),
         "supplier_ico": evidence("28652240", "IČ 28652240"),
         "supplier_dic": evidence("CZ28652240", "DIČ CZ28652240"),
@@ -43,14 +43,16 @@ def giriton_payload() -> dict:
             {
                 "vat_rate": "21",
                 "taxable_base": "4065.00",
-                "vat_amount": "853.65",
+                "vat_amount": "853.71",
+                "gross_amount": "4918.65",
                 "adjustment_type": None,
                 "source_text": "Základ 4 065,00 DPH 21 % 853,65 Celkem 4 918,65",
             },
             {
                 "vat_rate": "21",
                 "taxable_base": "0.29",
-                "vat_amount": "0.06",
+                "vat_amount": "0.35",
+                "gross_amount": "0.35",
                 "adjustment_type": "ROUNDING",
                 "source_text": "Zaokrouhlení 0,29 0,06 0,35",
             },
@@ -78,6 +80,9 @@ def test_giriton_address_rounding_and_declared_totals_are_preserved() -> None:
     assert data["total_amount"] == "4919.00"
     assert data["vat_lines"][0]["vat_amount"] == "853.65"
     assert data["vat_lines"][1]["vat_amount"] == "0.06"
+    assert data["vat_lines"][0]["vat_amount_extracted"] == "853.71"
+    assert data["vat_lines"][1]["vat_amount_extracted"] == "0.35"
+    assert data["vat_lines"][1]["normalization"] == "gross_amount_minus_taxable_base"
     assert data["vat_lines"][1]["adjustment_type"] == "ROUNDING"
 
     validations = validate_invoice_data(data)

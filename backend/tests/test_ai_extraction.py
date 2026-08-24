@@ -25,7 +25,7 @@ def structured(supplier: str = "TESTOVACÍ DODAVATEL s.r.o.") -> dict:
         return {"value": value, "source_text": source if value is not None else None}
 
     return {
-        "schema_version": "invoice-extraction.v2",
+        "schema_version": "invoice-extraction.v3",
         "supplier_name": evidence(supplier, supplier),
         "supplier_ico": evidence("00000019", "IČO: 00000019"),
         "supplier_dic": evidence("CZ00000019", "DIČ: CZ00000019"),
@@ -43,7 +43,7 @@ def structured(supplier: str = "TESTOVACÍ DODAVATEL s.r.o.") -> dict:
         "bank_code": evidence("0000", "Účet: 0000000000/0000"),
         "iban": evidence(None, None),
         "swift_bic": evidence(None, None),
-        "vat_lines": [{"vat_rate": "21", "taxable_base": "1000.00", "vat_amount": "210.00", "source_text": "DPH / VAT 21 % 210,00 Kč"}],
+        "vat_lines": [{"vat_rate": "21", "taxable_base": "1000.00", "vat_amount": "210.00", "gross_amount": "1210.00", "source_text": "DPH / VAT 21 % 210,00 Kč"}],
         "total_without_vat": evidence("1000.00", "Základ DPH / Net 1 000,00 Kč"),
         "total_vat": evidence("210.00", "DPH / VAT 21 % 210,00 Kč"),
         "total_amount": evidence("1210.00", "CELKEM / TOTAL 1 210,00 Kč"),

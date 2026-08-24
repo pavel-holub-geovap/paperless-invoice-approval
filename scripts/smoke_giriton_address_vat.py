@@ -74,7 +74,7 @@ def main() -> None:
             completed = wait_for_run(manager, base_url, current["id"], after_revision)
             run = completed["ai"]["latest"]
             require(run["model"] == "qwen3:8b", "Unexpected model")
-            require(run["schema_version"] == "invoice-extraction.v2", "Unexpected schema")
+            require(run["schema_version"] == "invoice-extraction.v3", "Unexpected schema")
             normalized = extraction_to_invoice_data(
                 InvoiceExtractionV1.model_validate(run["parsed_result"])
             )
