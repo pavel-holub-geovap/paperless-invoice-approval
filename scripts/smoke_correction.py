@@ -163,6 +163,7 @@ async def main() -> None:
         )
         require(disposition.status_code == 200, "Duplicate disposition failed")
         ignored = disposition.json()
+        ignored_disposition = ignored["disposition"]["status"]
         active_rows = response_json(
             manager.get(f"{base_url}/api/invoices", params={"view": "active"}),
             "active queue",
@@ -205,7 +206,10 @@ async def main() -> None:
         )
         require(restore.status_code == 200, "Duplicate restore failed")
         restored = restore.json()
-        require(restored["disposition"] == "ACTIVE", "Restore did not reactivate invoice")
+        require(
+            restored["disposition"]["status"] == "ACTIVE",
+            "Restore did not reactivate invoice",
+        )
         audit = response_json(
             manager.get(f"{base_url}/api/invoices/{second_row['id']}/audit"),
             "duplicate restore audit",
@@ -271,10 +275,10 @@ async def main() -> None:
                         "swift_bic",
                     )
                 },
-                "duplicate_disposition": ignored["disposition"],
+                "duplicate_disposition": ignored_disposition,
                 "duplicate_tag_present": duplicate_tag_present,
                 "paperless_preserved_after_disposition": True,
-                "duplicate_restore_disposition": restored["disposition"],
+                "duplicate_restore_disposition": restored["disposition"]["status"],
                 "duplicate_restore_audited": True,
                 "ignored_submit_http": ignored_submit_status,
                 "ignored_export_http": ignored_export_status,
