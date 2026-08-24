@@ -40,6 +40,7 @@ def main() -> None:
     base_url = os.environ["APP_BASE_URL"].rstrip("/")
     requested_number = os.environ.get("GIRITON_INVOICE_NUMBER", "").strip()
     count = int(os.environ.get("GIRITON_SMOKE_COUNT", "2"))
+    skip_extraction = os.environ.get("GIRITON_SKIP_EXTRACTION") == "1"
     manager = login(
         base_url, "queue-manager", os.environ["TEST_QUEUE_MANAGER_PASSWORD"]
     )
@@ -65,18 +66,23 @@ def main() -> None:
         report: list[dict[str, Any]] = []
         for current in selected:
             latest = current["ai"].get("latest")
-            after_revision = latest["extraction_revision"] if latest else 0
-            queued = manager.post(
-                f"{base_url}/api/invoices/{current['id']}/ai-extractions",
-                headers={"X-CSRF-Token": user["csrf_token"]},
-            )
-            require(queued.status_code == 202, f"Queue returned HTTP {queued.status_code}")
-            completed = wait_for_run(manager, base_url, current["id"], after_revision)
+            if skip_extraction:
+                require(latest and latest["status"] == "AI_COMPLETED", "No completed extraction")
+                completed = current
+            else:
+                after_revision = latest["extraction_revision"] if latest else 0
+                queued = manager.post(
+                    f"{base_url}/api/invoices/{current['id']}/ai-extractions",
+                    headers={"X-CSRF-Token": user["csrf_token"]},
+                )
+                require(queued.status_code == 202, f"Queue returned HTTP {queued.status_code}")
+                completed = wait_for_run(manager, base_url, current["id"], after_revision)
             run = completed["ai"]["latest"]
             require(run["model"] == "qwen3:8b", "Unexpected model")
             require(run["schema_version"] == "invoice-extraction.v3", "Unexpected schema")
+            parsed = run["parsed_result"]
             normalized = extraction_to_invoice_data(
-                InvoiceExtractionV1.model_validate(run["parsed_result"])
+                InvoiceExtractionV1.model_validate(parsed), completed["paperless"]["ocr_text"]
             )
             vat_validations = [
                 row for row in run.get("validation_results", [])
@@ -90,6 +96,10 @@ def main() -> None:
                     "extraction_revision": run["extraction_revision"],
                     "duration_ms": run["duration_ms"],
                     "candidate_applied": run["applied"],
+                    "raw_evidence": {
+                        key: parsed.get(key)
+                        for key in ("total_without_vat", "total_vat", "total_amount")
+                    },
                     "normalized": {
                         key: normalized.get(key)
                         for key in (

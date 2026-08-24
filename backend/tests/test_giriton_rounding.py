@@ -8,6 +8,22 @@ from app.services.extraction import extraction_to_invoice_data
 from app.services.pohoda import NS_INV, NS_TYP, generate_invoice_xml
 from app.services.validation import validate_invoice_data
 
+GIRITON_OCR = """Obsah Faktura 25081151
+DODAVATEL ODBĚRATEL
+GIRITON Systems s.r.o. GEOVAP, spol. s r.o.
+Hornosušská 1399/4 Čechovo nábřeží 1790
+735 64 Havířov - Prostřední Suchá 530 03 Pardubice
+Ř DPH CENA CELKEM S DPH
+Docházka GIRITON, období 2025/08 . Aktivních uživatelů: 103 , 21 % 4 065,00 Kč 4 918,65 Kč
+neaktivních uživatelů: 3 .
+Zaokrouhlení 21 % 0,29 Kč 0,35 Kč
+4 065,29 Kč
+Sumář
+Celkem bez DPH
+DPH 21 % 853,71 Kč
+4 919,00 KčCena
+"""
+
 
 def evidence(value, source):
     return {"value": value, "source_text": source if value is not None else None}
@@ -65,7 +81,9 @@ def giriton_payload() -> dict:
 
 
 def test_giriton_address_rounding_and_declared_totals_are_preserved() -> None:
-    data = extraction_to_invoice_data(InvoiceExtractionV1.model_validate(giriton_payload()))
+    data = extraction_to_invoice_data(
+        InvoiceExtractionV1.model_validate(giriton_payload()), GIRITON_OCR
+    )
 
     assert data["supplier_address_raw"] == (
         "Hornosušská 1399/4 735 64 Havířov - Prostřední Suchá"
@@ -80,9 +98,8 @@ def test_giriton_address_rounding_and_declared_totals_are_preserved() -> None:
     assert data["total_amount"] == "4919.00"
     assert data["vat_lines"][0]["vat_amount"] == "853.65"
     assert data["vat_lines"][1]["vat_amount"] == "0.06"
-    assert data["vat_lines"][0]["vat_amount_extracted"] == "853.71"
-    assert data["vat_lines"][1]["vat_amount_extracted"] == "0.35"
-    assert data["vat_lines"][1]["normalization"] == "gross_amount_minus_taxable_base"
+    assert data["vat_lines"][0]["normalization"] == "printed_ocr_vat_table"
+    assert data["vat_lines"][1]["normalization"] == "printed_ocr_vat_table"
     assert data["vat_lines"][1]["adjustment_type"] == "ROUNDING"
 
     validations = validate_invoice_data(data)
@@ -92,7 +109,9 @@ def test_giriton_address_rounding_and_declared_totals_are_preserved() -> None:
 
 
 def test_giriton_pohoda_xml_uses_structured_address_and_reconciled_vat() -> None:
-    data = extraction_to_invoice_data(InvoiceExtractionV1.model_validate(giriton_payload()))
+    data = extraction_to_invoice_data(
+        InvoiceExtractionV1.model_validate(giriton_payload()), GIRITON_OCR
+    )
     revision = InvoiceRevision(
         invoice_id="00000000-0000-0000-0000-000000000151", number=1, data=data
     )

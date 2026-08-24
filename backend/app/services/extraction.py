@@ -25,6 +25,7 @@ from app.models import (
 from app.schemas import EvidenceValue, InvoiceExtractionV1
 from app.services.audit import record_event
 from app.services.bank_accounts import normalize_payment_data
+from app.services.invoice_amounts import reconcile_printed_invoice_amounts
 from app.services.jobs import enqueue_job
 from app.services.supplier_addresses import normalize_supplier_address
 from app.services.validation import run_validations, validate_invoice_data
@@ -33,7 +34,9 @@ from app.services.workflow import update_invoice_data
 AI_JOB_TYPE = "AI_EXTRACT_INVOICE"
 
 
-def extraction_to_invoice_data(payload: InvoiceExtractionV1) -> dict[str, Any]:
+def extraction_to_invoice_data(
+    payload: InvoiceExtractionV1, ocr_text: str | None = None
+) -> dict[str, Any]:
     def scalar(field: str) -> Any:
         evidence = getattr(payload, field)
         value = evidence.value
@@ -85,10 +88,12 @@ def extraction_to_invoice_data(payload: InvoiceExtractionV1) -> dict[str, Any]:
         "total_amount": scalar("total_amount"),
         "description": scalar("description"),
     })
-    return normalize_payment_data(data)
+    return normalize_payment_data(reconcile_printed_invoice_amounts(data, ocr_text))
 
 
-def _evidence(payload: InvoiceExtractionV1) -> dict[str, tuple[Any, str | None]]:
+def _evidence(
+    payload: InvoiceExtractionV1, normalized_data: dict[str, Any] | None = None
+) -> dict[str, tuple[Any, str | None]]:
     result: dict[str, tuple[Any, str | None]] = {}
     for field in (
         "supplier_name",
@@ -121,10 +126,11 @@ def _evidence(payload: InvoiceExtractionV1) -> dict[str, tuple[Any, str | None]]
             value = value.isoformat()
         result[field] = (value, item.source_text)
     result["vat_lines"] = (
-        [row.model_dump(mode="json") for row in payload.vat_lines],
+        (normalized_data or {}).get("vat_lines")
+        or [row.model_dump(mode="json") for row in payload.vat_lines],
         " | ".join(row.source_text for row in payload.vat_lines if row.source_text) or None,
     )
-    normalized = extraction_to_invoice_data(payload)
+    normalized = normalized_data or extraction_to_invoice_data(payload)
     for field in ("supplier_address_raw", "supplier_street", "supplier_city", "supplier_zip"):
         source = getattr(payload, field).source_text
         result[field] = (normalized.get(field), source)
@@ -265,13 +271,17 @@ def start_ai_extraction(db: Session, extraction: AIExtraction) -> None:
 
 
 def _replace_current_evidence(
-    db: Session, invoice: Invoice, extraction: AIExtraction, payload: InvoiceExtractionV1
+    db: Session,
+    invoice: Invoice,
+    extraction: AIExtraction,
+    payload: InvoiceExtractionV1,
+    normalized_data: dict[str, Any] | None = None,
 ) -> None:
     revision = invoice.current_revision
     if revision is None:
         raise ValueError("Invoice has no current revision")
     db.execute(delete(ExtractedField).where(ExtractedField.revision_id == revision.id))
-    for field, (value, source_text) in _evidence(payload).items():
+    for field, (value, source_text) in _evidence(payload, normalized_data).items():
         db.add(
             ExtractedField(
                 revision_id=revision.id,
@@ -290,7 +300,7 @@ def complete_ai_extraction(
 ) -> list[ValidationResult]:
     invoice = extraction.invoice
     payload = result.payload
-    data = extraction_to_invoice_data(payload)
+    data = extraction_to_invoice_data(payload, invoice.paperless_ocr_text)
     candidate_validations = validate_invoice_data(data)
     extraction.raw_response = result.raw_response
     extraction.parsed_result = payload.model_dump(mode="json")
@@ -320,7 +330,7 @@ def complete_ai_extraction(
     )
     if auto_apply:
         current.data = data
-        _replace_current_evidence(db, invoice, extraction, payload)
+        _replace_current_evidence(db, invoice, extraction, payload, data)
         extraction.applied = True
         extraction.applied_at = datetime.now(UTC)
         extraction.applied_by = "system"
@@ -404,7 +414,7 @@ def apply_ai_extraction(
     for row in stored_payload.get("vat_lines", []):
         row.setdefault("gross_amount", None)
     payload = InvoiceExtractionV1.model_validate(stored_payload)
-    data = extraction_to_invoice_data(payload)
+    data = extraction_to_invoice_data(payload, invoice.paperless_ocr_text)
     update_invoice_data(
         db,
         invoice,
@@ -412,7 +422,7 @@ def apply_ai_extraction(
         actor,
         comment=f"Potvrzeno použití AI extrakce {extraction.extraction_revision}",
     )
-    _replace_current_evidence(db, invoice, extraction, payload)
+    _replace_current_evidence(db, invoice, extraction, payload, data)
     run_validations(db, invoice, actor)
     extraction.applied = True
     extraction.applied_at = datetime.now(UTC)
