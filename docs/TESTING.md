@@ -118,3 +118,5 @@ Při reálném 8B testu zaznamenejte velikost modelu, `free -h` před načtením
 Nový read-mostly smoke `scripts/smoke_correction_iteration.py` ověřuje obě řazení podle source timestampu, stale HTTP 409, cílovou konfiguraci POHODA, request ID a audit stažení PDF. Spouští se stejně jako ostatní skripty v worker image s read-only mountem adresáře `scripts`.
 
 `scripts/smoke_qwen8_multi.py` spouští nové append-only kandidátní extrakce na třech existujících dostupných fakturách, vyžaduje metadata `model=qwen3:8b`, vypíše účetní pole a ověří, že se business workflow nezměnilo.
+
+`scripts/smoke_live_refresh.py` drží otevřenou manažerskou OIDC session, provede schválení v oddělené approver session a stejným polling endpointem jako React ověří změnu counteru bez reloadu. Nakonec dokončí zbývající syntetická schválení.
