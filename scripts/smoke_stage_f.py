@@ -99,6 +99,16 @@ def xml_semantics(xml: bytes, expected: dict[str, Any]) -> dict[str, Any]:
         address_values["city"] == expected["supplier_city"], "Supplier city changed"
     )
     require(address_values["zip"] == expected["supplier_zip"], "Supplier ZIP changed")
+    payment = root.find(".//inv:paymentAccount", NS)
+    require(payment is not None, "POHODA paymentAccount is missing")
+    bank = {
+        "accountNo": payment.findtext("typ:accountNo", namespaces=NS),
+        "bankCode": payment.findtext("typ:bankCode", namespaces=NS),
+    }
+    require(bank["accountNo"] == expected["bank_account"], "POHODA accountNo changed")
+    require(bank["bankCode"] == expected["bank_code"], "POHODA bankCode changed")
+    require("/" not in (bank["accountNo"] or ""), "POHODA accountNo contains bank code")
+    require("/" not in (bank["bankCode"] or ""), "POHODA bankCode contains account")
     items: list[dict[str, str]] = []
     for item in root.findall(".//inv:invoiceItem", NS):
         base = Decimal(
@@ -124,7 +134,12 @@ def xml_semantics(xml: bytes, expected: dict[str, Any]) -> dict[str, Any]:
         "Item total is wrong",
     )
     require(xml.decode("windows-1250"), "XML cannot be decoded as Windows-1250")
-    return {"invoice_type": invoice_type, "address": address_values, "items": items}
+    return {
+        "invoice_type": invoice_type,
+        "address": address_values,
+        "bank": bank,
+        "items": items,
+    }
 
 
 def main() -> None:
@@ -384,6 +399,7 @@ def main() -> None:
                     "encoding": second["encoding"],
                     "artifact_id": second["id"],
                     "source_artifact_id": first["id"],
+                    "export_revision_in_chain": 2,
                     "xml_bytes": len(xml_response.content),
                     "xml_sha256": second["xml_sha256"],
                     "pdf_bytes": len(pdf.content),
