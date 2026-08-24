@@ -24,24 +24,26 @@
 - Existující orphan Approval `2f24449b-55c8-4211-890e-66104f0a23d6`, Paperless ID `3`, vrací přímé HTTP 404. Záznam zůstal zachován jako `QUEUE_REVIEW + IGNORED_DUPLICATE + MISSING`, navázaný na fakturu dokumentu 2. Má právě jeden `SOURCE_DOCUMENT_MISSING` audit a blocking validaci; PDF, submit i export vracejí 409.
 - Po smoke cleanup jsou v Paperless 3 dokumenty a v Approval 7 auditních invoice záznamů: `AVAILABLE=3`, `MISSING=4`, `ACTIVE=5`, `IGNORED_DUPLICATE=2`, `IGNORED_OTHER=0`. Další missing řádky jsou výhradně vlastní syntetické dokumenty vytvořené a smazané smoke testy; každý má právě jeden source-missing audit.
 
-## Nový POHODA artefakt pro ruční import
+## Aktuální POHODA artefakt pro ruční import
 
-- Invoice `8d630d0f-28a3-42ee-bdb1-84ce9c35292c`, Paperless ID 1, invoice revision 45.
-- Nový immutable re-export artifact: `39097d07-4672-4709-9a7c-d73653079755`; source artifact `abc9be80-6c5a-4fc8-8493-75c7cd3d3918`; druhý export v tomto řetězci.
-- Stažení po přihlášení: `/api/exports/artifacts/39097d07-4672-4709-9a7c-d73653079755/xml`.
-- XML: Windows-1250, 3 065 B, SHA-256 `0f661538d4768af882221bac2401b8ace6c9a1f7f83ba5913cc950900b379d9b`, `XSD_VALID`, XSD bundle `2025-10-16`, generator v2.
-- Ověřená bankovní XML pole: `typ:accountNo=0000000000`, `typ:bankCode=0000`. Původní artefakty zůstaly immutable a dostupné jako historie.
-- Batch `EXP-2026-000003` (`9d56b1a8-d468-464b-93d5-8335b85901b1`) má SHA-256 `5f478f226a4642c251b45f91fa2f3a4dc049c2939cfc28eb27e6b7a6b2302e65`. Import do POHODY nebyl potvrzen; čeká na ruční test.
+- Invoice `8d630d0f-28a3-42ee-bdb1-84ce9c35292c`, Paperless ID 1, invoice revision 59.
+- Aktuální immutable re-export artifact: `bd7fddd2-a0b2-4282-9e3b-2f39d0de840c`; source artifact `f9aa83bb-4a1d-4623-8cdf-58b4bd043f53`. Předchozí artefakty zůstaly immutable a dostupné jako historie.
+- Stažení po přihlášení: `/api/exports/artifacts/bd7fddd2-a0b2-4282-9e3b-2f39d0de840c/xml`.
+- XML: Windows-1250, 3 080 B, SHA-256 `c079a47c7fd5db7c22da5a44c1b141760d51abcd4a9792f3de6f6dd5b67db442`, `XSD_VALID`, XSD bundle `2025-10-16`, generátor `pohoda-received-invoice.v3`.
+- Cílová účetní jednotka je explicitně `dataPack/@ico=15049248`, prázdný `key` se negeneruje. Dodavatel zůstává odděleně v `invoiceHeader/partnerIdentity` (`ICO=00000019`, `DIC=CZ00000019`). Ověřená bankovní pole jsou `typ:accountNo=0000000000`, `typ:bankCode=0000`.
+- Rozúčtování 700/510 Kč používá střediska 200/300. Batch `31d0793d-a463-4df3-bf3b-8b81daf318cc` má ZIP SHA-256 `8a79909a...`. Odpověď POHODA byla bezpečně parsována; import nebyl potvrzen a čeká na ruční test.
 
 ## Závěrečné automatické ověření
 
-- Backend: 84/84 testů; Ruff čistý.
-- Frontend: 5 testovacích souborů, 11/11 testů; TypeScript a produkční Vite build prošly.
+- Backend: 87/87 testů; Ruff čistý.
+- Frontend: 5 testovacích souborů, 15/15 testů; TypeScript a produkční Vite build prošly. Regrese pokrývají i inline/sekční chyby, focus/scroll na první chybu, blokaci dvojitého uložení a schválení a zachování rozepsaného formuláře při nové serverové revizi.
 - Stage B: OIDC queue-manager/approver1, role, PDF a manažerský endpoint 403 pro approvera prošly.
-- Historická Stage D: dvě skutečné inference `qwen3:4b`, bezpečná neaplikovaná re-extrakce a prompt-injection kontrola prošly; historické záznamy se nemění. Nové běhy používají výchozí `qwen3:8b`.
+- Stage D/Qwen3 8B: skutečné inference proběhly na Paperless dokumentech 1, 2, 4 a 8. Model `qwen3:8b` má 5,2 GB, při načtení/inferenci použil nejvýše 6,991 GiB z limitu 7,324 GiB; host měl v nejnižším pozorovaném bodě přibližně 3,685 GiB dostupné RAM, bez OOM a bez fallbacku. Jednotlivé nové inference trvaly přibližně 265–357 s. Kandidáti se bez potvrzení neaplikovali a workflow zůstalo zachováno. U účtu model někdy ponechal kombinovaný tvar a prázdný bankovní kód; autoritou při aplikaci/exportu proto zůstává deterministický normalizátor. Prompt-injection kontrola prošla bez změny chráněných polí.
 - Stage E: allocations 700/510 Kč, tři assignments, RETURN/REJECT/REOPEN, invalidace, idempotentní/souběžné approvals, 403 a Paperless tagy prošly; skončilo `APPROVED`.
 - Stage F: re-approval, XSD-valid generování/re-export, XML/PDF/ZIP hashe, response parser a bankovní XML semantics prošly; skončilo `EXPORT_CREATED`.
+- Živá aktualizace: samostatná session `approver1` schválila úkol, zatímco manager session zůstala otevřená bez ručního reloadu; polling změnu zobrazil po 116 ms. Následný cleanup schválil zbývající úkoly a Stage F vytvořila aktuální export.
+- Audit: mutace a stažení nesou subject, username, role, revizi a korelační ID. Ověřeny byly mimo jiné `INVOICE_FIELD_CHANGED`, `APPROVED`, `XML_GENERATION_REQUESTED`, `EXPORT_DOWNLOADED`, `PDF_DOWNLOADED` a `ZIP_DOWNLOADED`.
 - Opravný smoke: vlastní ID 6/7 prošla Paperless upload → OCR 911/911 → Approval → AI COMPLETED; parser opravil `19-2000145399/0800`, duplicita byla otagována, skryta, blokována, obnovena s auditem a znovu vyřazena. Po odstranění pouze vlastních Paperless ID nastavila reconciliation `MISSING`; PDF/submit/export vrátily 409.
 - Deployment proběhl přes `git pull --ff-only`, `docker compose config --quiet`, build, `up -d`, migraci a reconciliation bez mazání databází, auditů nebo volumes.
 
-Opravná iterace přidala korelační audit stažení a mutací, ochranu stale revizí, workflow stepper, inline chyby a pending stavy, Prague timestamps a polling bez přepisování rozepsaných dat. Konkrétní provozní měření a smoke výsledky se doplní po deploymentu.
+Opravná iterace přidala korelační audit stažení a mutací, ochranu stale revizí, workflow stepper, inline chyby a pending stavy, Prague timestamps a polling bez přepisování rozepsaných dat. Skutečné OIDC, Paperless, Qwen3 8B, souběžné session a POHODA exportní smoke testy prošly.
