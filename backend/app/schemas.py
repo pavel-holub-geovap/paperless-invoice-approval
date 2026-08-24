@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models import (
     AIExtractionStatus,
@@ -61,8 +62,35 @@ class DateEvidence(EvidenceValue):
     value: date | None
 
 
+_LOCALIZED_DECIMAL = re.compile(
+    r"^[+-]?(?:\d{1,3}(?:[ .\u00a0]\d{3})+|\d+)(?:[.,]\d+)?\s*(?:%|Kč|CZK|EUR)?$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_localized_decimal(value: Any) -> Any:
+    """Accept only unambiguous localized numeric strings emitted by the LLM."""
+    if not isinstance(value, str) or not _LOCALIZED_DECIMAL.fullmatch(value.strip()):
+        return value
+    normalized = re.sub(r"\s*(?:%|Kč|CZK|EUR)\s*$", "", value.strip(), flags=re.IGNORECASE)
+    normalized = normalized.replace(" ", "").replace("\u00a0", "")
+    if "," in normalized and "." in normalized:
+        if normalized.rfind(",") > normalized.rfind("."):
+            normalized = normalized.replace(".", "").replace(",", ".")
+        else:
+            normalized = normalized.replace(",", "")
+    elif "," in normalized:
+        normalized = normalized.replace(",", ".")
+    return normalized
+
+
 class DecimalEvidence(EvidenceValue):
     value: Decimal | None
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def localized_decimal(cls, value: Any) -> Any:
+        return _normalize_localized_decimal(value)
 
 
 class VatLineExtraction(BaseModel):
@@ -74,6 +102,11 @@ class VatLineExtraction(BaseModel):
     gross_amount: Decimal | None = None
     adjustment_type: Literal["ROUNDING"] | None = None
     source_text: str | None
+
+    @field_validator("vat_rate", "taxable_base", "vat_amount", "gross_amount", mode="before")
+    @classmethod
+    def localized_decimals(cls, value: Any) -> Any:
+        return _normalize_localized_decimal(value)
 
     @model_validator(mode="after")
     def provenance_for_values(self) -> VatLineExtraction:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -89,6 +90,38 @@ async def test_ollama_request_is_cpu_deterministic_and_delimits_prompt_injection
     finally:
         await client.close()
     assert extracted.payload.total_amount.value == 1210
+
+
+@pytest.mark.asyncio
+async def test_ollama_accepts_unambiguous_czech_decimal_strings() -> None:
+    payload = structured()
+    payload["vat_lines"][0].update(
+        vat_rate="21%",
+        taxable_base="1 000,00 Kč",
+        vat_amount="210,00",
+        gross_amount="1.210,00",
+    )
+    payload["total_without_vat"]["value"] = "1 000,00 CZK"
+    payload["total_vat"]["value"] = "210,00 Kč"
+    payload["total_amount"]["value"] = "1 210,00"
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200, json={"message": {"content": json.dumps(payload)}}
+        )
+    )
+    client = OllamaClient(Settings(ollama_base_url="http://ollama.test"), transport)
+    try:
+        extracted = await client.extract_invoice("OCR")
+    finally:
+        await client.close()
+    row = extracted.payload.vat_lines[0]
+    assert (row.vat_rate, row.taxable_base, row.vat_amount, row.gross_amount) == (
+        Decimal("21"),
+        Decimal("1000.00"),
+        Decimal("210.00"),
+        Decimal("1210.00"),
+    )
+    assert extracted.payload.total_amount.value == Decimal("1210.00")
 
 
 @pytest.mark.asyncio
