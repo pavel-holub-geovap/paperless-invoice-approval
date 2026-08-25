@@ -14,6 +14,7 @@ from app.integrations.ollama import (
     InvalidJSON,
     OllamaClient,
     OllamaExtractionResult,
+    OllamaRequestRejected,
     SchemaValidationFailed,
 )
 from app.models import AIExtractionStatus, AuditEvent, InvoiceStatus
@@ -91,8 +92,11 @@ async def test_ollama_request_is_cpu_deterministic_and_delimits_prompt_injection
         body = json.loads(request.content)
         assert body["options"] == {"temperature": 0, "num_ctx": 4096, "num_gpu": 0}
         assert body["stream"] is False and body["think"] is False
-        assert body["format"]["title"] == "InvoiceExtractionRawV1"
         assert body["format"]["additionalProperties"] is False
+        assert "$defs" not in body["format"]
+        assert body["format"]["properties"]["total_amount"]["properties"]["value"] == {
+            "type": ["string", "null"]
+        }
         assert injection in body["messages"][1]["content"]
         assert body["messages"][1]["content"].endswith("JSON podle schématu.")
         assert "NEDŮVĚRYHODNÝ VSTUP" in body["messages"][0]["content"]
@@ -264,6 +268,25 @@ async def test_invalid_ollama_json_has_stable_error_code() -> None:
     finally:
         await client.close()
     assert caught.value.code == "INVALID_JSON"
+
+
+@pytest.mark.asyncio
+async def test_ollama_structured_schema_rejection_keeps_server_detail() -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            400,
+            text='{"error":"failed to parse grammar"}',
+        )
+    )
+    client = OllamaClient(Settings(ollama_base_url="http://ollama.test"), transport)
+    try:
+        with pytest.raises(OllamaRequestRejected) as caught:
+            await client.extract_invoice("OCR")
+    finally:
+        await client.close()
+
+    assert caught.value.code == "OLLAMA_REQUEST_REJECTED"
+    assert "failed to parse grammar" in str(caught.value)
 
 
 def test_extraction_history_never_overwrites_without_confirmation(db) -> None:

@@ -118,7 +118,7 @@ class VatLineExtraction(BaseModel):
         return self
 
 
-type RawScalar = str | int | Decimal | bool | None
+type RawScalar = str | None
 
 
 class RawEvidenceValue(BaseModel):
@@ -169,6 +169,50 @@ class InvoiceExtractionRawV1(BaseModel):
     total_vat: RawEvidenceValue
     total_amount: RawEvidenceValue
     description: RawEvidenceValue
+
+
+def ollama_raw_json_schema() -> dict[str, Any]:
+    """Flattened schema accepted by Ollama's constrained grammar compiler."""
+    nullable_string = {"type": ["string", "null"]}
+    evidence = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["value", "source_text"],
+        "properties": {
+            "value": nullable_string,
+            "source_text": nullable_string,
+        },
+    }
+    evidence_fields = [
+        field
+        for field in InvoiceExtractionRawV1.model_fields
+        if field not in {"schema_version", "vat_lines"}
+    ]
+    vat_fields = [
+        "vat_rate",
+        "taxable_base",
+        "vat_amount",
+        "gross_amount",
+        "adjustment_type",
+        "source_text",
+    ]
+    vat_line = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": vat_fields,
+        "properties": {field: nullable_string for field in vat_fields},
+    }
+    properties = {field: evidence for field in evidence_fields}
+    properties.update(
+        schema_version={"type": "string", "enum": ["invoice-extraction.v3"]},
+        vat_lines={"type": "array", "items": vat_line},
+    )
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["schema_version", *evidence_fields, "vat_lines"],
+        "properties": properties,
+    }
 
 
 class InvoiceExtractionV1(BaseModel):

@@ -8,7 +8,12 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.integrations.ollama import OllamaClient, OllamaError, SchemaValidationFailed
+from app.integrations.ollama import (
+    OllamaClient,
+    OllamaError,
+    OllamaRequestRejected,
+    SchemaValidationFailed,
+)
 from app.integrations.paperless import PaperlessClient, PaperlessError, PaperlessNotFound
 from app.models import (
     AIExtraction,
@@ -193,8 +198,10 @@ async def process_one(paperless: PaperlessClient, ollama: OllamaClient | None) -
         with SessionLocal.begin() as db:
             persisted = db.get(ProcessingJob, job_id)
             if persisted:
-                terminal_schema_failure = isinstance(exc, SchemaValidationFailed)
-                fail_job(persisted, exc, retryable=not terminal_schema_failure)
+                terminal_ai_failure = isinstance(
+                    exc, (SchemaValidationFailed, OllamaRequestRejected)
+                )
+                fail_job(persisted, exc, retryable=not terminal_ai_failure)
                 extraction_id = job_payload.get("ai_extraction_id")
                 extraction = db.get(AIExtraction, extraction_id) if extraction_id else None
                 if extraction is not None:

@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings
-from app.schemas import InvoiceExtractionRawV1, InvoiceExtractionV1
+from app.schemas import InvoiceExtractionV1, ollama_raw_json_schema
 from app.services.extraction_normalization import (
     ExtractionNormalizationFailed,
     normalize_raw_extraction,
@@ -69,6 +69,10 @@ class InvalidJSON(OllamaError):
     code = "INVALID_JSON"
 
 
+class OllamaRequestRejected(OllamaError):
+    code = "OLLAMA_REQUEST_REJECTED"
+
+
 class SchemaValidationFailed(OllamaError):
     code = "SCHEMA_VALIDATION_FAILED"
 
@@ -118,7 +122,7 @@ class OllamaClient:
         await self.client.aclose()
 
     async def extract_invoice(self, ocr_text: str) -> OllamaExtractionResult:
-        schema: dict[str, Any] = InvoiceExtractionRawV1.model_json_schema()
+        schema = ollama_raw_json_schema()
         schema_contract = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
         started = time.perf_counter()
         messages = [
@@ -171,7 +175,14 @@ class OllamaClient:
                     raise OllamaUnavailable(
                         "Ollama or the configured model is unavailable"
                     ) from exc
-                raise OllamaError(f"Ollama returned HTTP {exc.response.status_code}") from exc
+                response_detail = exc.response.text.strip()[:1000]
+                if exc.response.status_code == 400:
+                    raise OllamaRequestRejected(
+                        f"Ollama rejected structured output (HTTP 400): {response_detail}"
+                    ) from exc
+                raise OllamaError(
+                    f"Ollama returned HTTP {exc.response.status_code}: {response_detail}"
+                ) from exc
 
             try:
                 response_body = response.json()

@@ -47,7 +47,7 @@ def test_ambiguous_or_invalid_amount_is_not_guessed(raw: str) -> None:
 def test_blank_nullable_values_and_postal_code_are_normalized() -> None:
     raw = structured()
     raw["swift_bic"] = {"value": "   ", "source_text": "   "}
-    raw["supplier_zip"] = {"value": 14000, "source_text": "PSČ 14000"}
+    raw["supplier_zip"] = {"value": "14000", "source_text": "PSČ 14000"}
 
     payload, result = normalize_raw_extraction(raw)
 
