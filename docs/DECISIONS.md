@@ -71,6 +71,7 @@ LLM poskytuje hodnotu a evidence, nikoli strukturu českého clearingového úč
 ## ADR-018: Cílová identita POHODA, 8B model a polling
 
 - `dataPack/@ico` je povinná cílová účetní jednotka ze serverové konfigurace; `key` je pouze explicitní volba.
+- XSD stav a sémantika cílové účetní jednotky jsou nezávislé výsledky. `XSD_VALID` neznamená `TARGET_UNIT_VALID`; download a ZIP znovu ověřují hash i cílové atributy immutable bytes.
 - Výchozí extrakční model je Qwen3 8B bez automatického fallbacku. Historické běhy zůstávají nedotčené.
 - Pro živou aktualizaci byl zvolen polling; websocket infrastruktura by nepřinesla úměrný přínos.
 - Optimistická konkurence používá číslo doménové revize a HTTP 409. Polling nikdy nepřepisuje dirty formulář.

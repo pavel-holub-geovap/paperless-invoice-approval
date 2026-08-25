@@ -166,6 +166,11 @@ export type PohodaExport = {
   imported_at?: string;
   pohoda_target_ico?: string;
   pohoda_target_key_configured?: boolean;
+  pohoda_target_validation?: {
+    status: "TARGET_UNIT_VALID" | "TARGET_UNIT_INVALID" | "NOT_RECORDED";
+    actual_ico?: string;
+    errors: string[];
+  };
 };
 
 export type PohodaConfig = {

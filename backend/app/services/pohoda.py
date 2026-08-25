@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
@@ -21,6 +22,52 @@ CENT = Decimal("0.01")
 
 class PohodaMappingError(ValueError):
     pass
+
+
+def validate_pohoda_target_unit(
+    xml_bytes: bytes,
+    *,
+    expected_ico: str,
+    key_configured: bool = False,
+    expected_key_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Validate the serialized dataPack target independently from its XSD."""
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+    errors: list[str] = []
+    actual_ico: str | None = None
+    actual_key: str | None = None
+    try:
+        root = etree.fromstring(xml_bytes, parser)
+        if root.tag != _q(NS_DATA, "dataPack"):
+            errors.append("XML root is not dat:dataPack")
+        actual_ico = root.get("ico")
+        actual_key = root.get("key")
+    except etree.XMLSyntaxError as exc:
+        errors.append(f"Serialized XML cannot be parsed: {exc}")
+
+    if not expected_ico:
+        errors.append("POHODA_TARGET_ICO is not configured")
+    elif actual_ico != expected_ico:
+        errors.append(
+            f"dat:dataPack/@ico must equal POHODA_TARGET_ICO {expected_ico}; "
+            f"serialized value is {actual_ico or 'missing'}"
+        )
+    if key_configured:
+        if not actual_key:
+            errors.append("dat:dataPack/@key is missing although POHODA_TARGET_KEY is configured")
+        elif expected_key_sha256 and hashlib.sha256(actual_key.encode()).hexdigest() != expected_key_sha256:
+            errors.append("dat:dataPack/@key differs from the configured POHODA_TARGET_KEY")
+    elif actual_key is not None:
+        errors.append("dat:dataPack/@key must be absent when POHODA_TARGET_KEY is not configured")
+
+    return {
+        "status": "TARGET_UNIT_INVALID" if errors else "TARGET_UNIT_VALID",
+        "expected_ico": expected_ico or None,
+        "actual_ico": actual_ico,
+        "key_configured": key_configured,
+        "actual_key_present": actual_key is not None,
+        "errors": errors,
+    }
 
 
 def _q(namespace: str, name: str) -> str:

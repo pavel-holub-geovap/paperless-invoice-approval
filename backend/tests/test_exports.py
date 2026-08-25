@@ -6,9 +6,11 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from lxml import etree
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.routes.exports import download_xml_artifact
 from app.config import Settings
 from app.models import (
     Allocation,
@@ -20,11 +22,13 @@ from app.models import (
     UserIdentity,
     ValidationResult,
 )
+from app.schemas import CurrentUser
 from app.services.exports import (
     create_export_batch,
     generate_export_artifact,
     mark_batch_imported,
     store_pohoda_response,
+    validate_immutable_artifact_xml,
 )
 from app.services.validation import run_validations
 from app.services.workflow import (
@@ -57,6 +61,8 @@ async def test_export_fails_when_target_accounting_unit_is_not_configured(
             invoice,
             "manager",
         )
+    assert list(db.scalars(select(ExportArtifact)).all()) == []
+    assert list(tmp_path.rglob("*.xml")) == []
 
 
 def approved_invoice(
@@ -72,8 +78,8 @@ def approved_invoice(
         invoice,
         {
             "supplier_name": "Dodavatel s.r.o.",
-            "supplier_ico": "27082440",
-            "supplier_dic": "CZ27082440",
+            "supplier_ico": "28652240",
+            "supplier_dic": "CZ28652240",
             "supplier_street": "Testovací 1",
             "supplier_city": "Praha",
             "supplier_zip": "100 00",
@@ -180,6 +186,22 @@ async def test_export_zip_and_explicit_import_are_separate_states(
     assert artifact.source_snapshot["revision_id"] == invoice.current_revision.id
     assert artifact.xml_sha256 == hashlib.sha256(Path(artifact.xml_path).read_bytes()).hexdigest()
     assert artifact.pdf_sha256 == hashlib.sha256(await FakePaperless().download_pdf(501)).hexdigest()
+    serialized_xml = Path(artifact.xml_path).read_bytes()
+    root = etree.fromstring(serialized_xml)
+    supplier_ico = root.xpath(
+        "string(//inv:partnerIdentity/typ:address/typ:ico)",
+        namespaces={
+            "inv": "http://www.stormware.cz/schema/version_2/invoice.xsd",
+            "typ": "http://www.stormware.cz/schema/version_2/type.xsd",
+        },
+    )
+    assert root.tag == "{http://www.stormware.cz/schema/version_2/data.xsd}dataPack"
+    assert root.attrib["ico"] == "15049248"
+    assert root.get("key") is None
+    assert supplier_ico == "28652240"
+    assert supplier_ico != root.attrib["ico"]
+    assert artifact.source_snapshot["pohoda_target_ico"] == "15049248"
+    assert artifact.source_snapshot["pohoda_target_validation"]["status"] == "TARGET_UNIT_VALID"
     with zipfile.ZipFile(batch.archive_path) as archive:
         names = archive.namelist()
         assert any(name.endswith(".pdf") for name in names)
@@ -193,6 +215,41 @@ async def test_export_zip_and_explicit_import_are_separate_states(
     assert batch.imported_at is not None
     assert invoice.imported_export_id == artifact.id
     assert invoice.imported_to_pohoda_by == "manager"
+
+
+@pytest.mark.asyncio
+async def test_download_returns_exact_semantically_validated_artifact_bytes(
+    db: Session, tmp_path: Path
+) -> None:
+    invoice = approved_invoice(db, 505, "DOWNLOAD-TARGET", "DL")
+    xsd = Path(__file__).resolve().parents[2] / "schemas" / "pohoda" / "2025-10-16" / "data.xsd"
+    settings = Settings(
+        export_archive_dir=tmp_path,
+        pohoda_xsd_path=xsd,
+        pohoda_target_ico="15049248",
+    )
+    artifact = await generate_export_artifact(
+        db, settings, FakePaperless(), invoice, "manager"
+    )
+    db.flush()
+    stored = Path(artifact.xml_path).read_bytes()
+    response = download_xml_artifact(
+        artifact.id,
+        db,
+        CurrentUser(subject="manager", username="manager", roles=["QUEUE_MANAGER"]),
+        settings,
+    )
+    assert response.body == stored
+    assert hashlib.sha256(response.body).hexdigest() == artifact.xml_sha256
+    assert etree.fromstring(response.body).attrib["ico"] == "15049248"
+
+    missing_target = etree.fromstring(stored)
+    del missing_target.attrib["ico"]
+    with pytest.raises(WorkflowError, match="hash mismatch"):
+        validate_immutable_artifact_xml(
+            artifact,
+            etree.tostring(missing_target, encoding="Windows-1250"),
+        )
 
 
 @pytest.mark.asyncio

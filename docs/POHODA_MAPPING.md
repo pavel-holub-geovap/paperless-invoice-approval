@@ -44,3 +44,5 @@ Pro syntetickou fakturu s jedinou sazbou 21 % vzniknou přesně dvě účetní p
 ## Identifikace účetní jednotky
 
 `dat:dataPack/@ico` se plní pouze z `POHODA_TARGET_ICO` a identifikuje účetní jednotku, do které se balíček importuje. `supplier_ico` se mapuje pouze do `inv:partnerIdentity/typ:address/typ:ico`. Tyto hodnoty se v testech záměrně liší. `dat:dataPack/@key` vznikne pouze při explicitním `POHODA_TARGET_KEY`; generátor žádný náhodný klíč nevytváří.
+
+Regresní test parsuje skutečně serializované XML a používá rozdílné hodnoty `dataPack/@ico=15049248` a `partnerIdentity/address/ico=28652240`. Vedle XSD se výsledek označí samostatně jako `TARGET_UNIT_VALID`; bez tohoto výsledku nelze považovat cílovou jednotku za ověřenou.

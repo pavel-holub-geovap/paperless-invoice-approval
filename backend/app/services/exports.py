@@ -36,6 +36,7 @@ from app.services.pohoda import (
     PohodaMappingError,
     build_source_snapshot,
     parse_pohoda_response,
+    validate_pohoda_target_unit,
     validate_xml_detailed,
 )
 from app.services.workflow import WorkflowError, all_required_approved, transition
@@ -63,6 +64,28 @@ def _safe_path(root: Path, *parts: str) -> Path:
 
 def _sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def validate_immutable_artifact_xml(artifact: ExportArtifact, xml: bytes) -> dict[str, object]:
+    """Verify immutable bytes and their POHODA target before download or batching."""
+    if _sha256(xml) != artifact.xml_sha256:
+        raise WorkflowError("Immutable XML artifact hash mismatch")
+    snapshot = artifact.source_snapshot
+    target_ico = str(snapshot.get("pohoda_target_ico") or "")
+    if not target_ico:
+        raise WorkflowError("XML artifact has no recorded POHODA target accounting unit")
+    result = validate_pohoda_target_unit(
+        xml,
+        expected_ico=target_ico,
+        key_configured=bool(snapshot.get("pohoda_target_key_configured")),
+        expected_key_sha256=snapshot.get("pohoda_target_key_sha256"),
+    )
+    if result["status"] != "TARGET_UNIT_VALID":
+        raise WorkflowError(
+            "POHODA target-unit semantic validation failed: "
+            + "; ".join(result["errors"])
+        )
+    return result
 
 
 def _active_allocations(db: Session, invoice: Invoice) -> list[Allocation]:
@@ -239,6 +262,9 @@ async def generate_export_artifact(
             "possible_duplicate_invoice_ids": duplicate_ids,
             "pohoda_target_ico": target_ico,
             "pohoda_target_key_configured": bool(settings.pohoda_target_key),
+            "pohoda_target_key_sha256": _sha256(settings.pohoda_target_key.encode())
+            if settings.pohoda_target_key
+            else None,
         }
     )
 
@@ -257,6 +283,25 @@ async def generate_export_artifact(
             metadata={"mapping_error": str(exc)},
         )
         raise WorkflowError(str(exc)) from exc
+    target_validation = validate_pohoda_target_unit(
+        xml,
+        expected_ico=target_ico,
+        key_configured=bool(settings.pohoda_target_key),
+        expected_key_sha256=snapshot["pohoda_target_key_sha256"],
+    )
+    snapshot["pohoda_target_validation"] = target_validation
+    if target_validation["status"] != "TARGET_UNIT_VALID":
+        record_event(
+            db,
+            "POHODA_TARGET_VALIDATION_FAILED",
+            actor=actor,
+            invoice=invoice,
+            metadata={"errors": target_validation["errors"]},
+        )
+        raise WorkflowError(
+            "POHODA target-unit semantic validation failed: "
+            + "; ".join(target_validation["errors"])
+        )
     errors = validate_xml_detailed(xml, settings.pohoda_xsd_path)
     pdf = await paperless.download_pdf(invoice.paperless_document_id)
     artifact_id = new_id()
@@ -312,6 +357,17 @@ async def generate_export_artifact(
             "xsd_bundle_version": artifact.xsd_bundle_version,
         },
     )
+    record_event(
+        db,
+        "POHODA_TARGET_VALIDATION_PASSED",
+        actor=actor,
+        invoice=invoice,
+        metadata={
+            "export_id": artifact.id,
+            "pohoda_target_ico": target_ico,
+            "key_configured": bool(settings.pohoda_target_key),
+        },
+    )
     if is_reexport:
         record_event(
             db,
@@ -353,8 +409,7 @@ async def create_export_batch(
             raise WorkflowError("Export artifact does not belong to the current revision")
         xml_path = Path(artifact.xml_path)
         xml = xml_path.read_bytes()
-        if _sha256(xml) != artifact.xml_sha256:
-            raise WorkflowError("Immutable XML artifact hash mismatch")
+        validate_immutable_artifact_xml(artifact, xml)
         pdf = await paperless.download_pdf(invoice.paperless_document_id)
         if _sha256(pdf) != artifact.pdf_sha256:
             raise WorkflowError("Paperless PDF changed since XML snapshot generation")

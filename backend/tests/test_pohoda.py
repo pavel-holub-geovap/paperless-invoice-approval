@@ -14,6 +14,7 @@ from app.services.pohoda import (
     PohodaMappingError,
     generate_invoice_xml,
     parse_pohoda_response,
+    validate_pohoda_target_unit,
     validate_xml_detailed,
 )
 
@@ -30,8 +31,8 @@ def revision(*, vat_lines: list[dict[str, str]], total: str) -> InvoiceRevision:
         number=1,
         data={
             "supplier_name": "Řešení ščěřžýáíé s.r.o.",
-            "supplier_ico": "27082440",
-            "supplier_dic": "CZ27082440",
+            "supplier_ico": "28652240",
+            "supplier_dic": "CZ28652240",
             "supplier_street": "Testovací 1",
             "supplier_city": "Praha",
             "supplier_zip": "100 00",
@@ -100,13 +101,40 @@ def test_received_invoice_semantics_address_payment_and_encoding() -> None:
     assert address.xpath("string(typ:street)", namespaces=NS) == "Testovací 1"
     assert address.xpath("string(typ:city)", namespaces=NS) == "Praha"
     assert address.xpath("string(typ:zip)", namespaces=NS) == "100 00"
-    assert address.xpath("string(typ:ico)", namespaces=NS) == "27082440"
-    assert address.xpath("string(typ:dic)", namespaces=NS) == "CZ27082440"
+    assert address.xpath("string(typ:ico)", namespaces=NS) == "28652240"
+    assert address.xpath("string(typ:dic)", namespaces=NS) == "CZ28652240"
     assert root.xpath("string(//inv:paymentAccount/typ:accountNo)", namespaces=NS) == "123456789"
     assert root.xpath("string(//inv:paymentAccount/typ:bankCode)", namespaces=NS) == "0100"
     assert root.get("ico") == TARGET_ICO
     assert root.get("key") is None
     assert root.get("ico") != address.xpath("string(typ:ico)", namespaces=NS)
+
+
+def test_xsd_validity_does_not_replace_target_unit_semantic_validation() -> None:
+    row = revision(
+        vat_lines=[{"vat_rate": "21", "taxable_base": "100.00", "vat_amount": "21.00"}],
+        total="121.00",
+    )
+    root = document(
+        generate_invoice_xml(
+            row,
+            [allocation(row, "IT", "121.00")],
+            accounting_unit_ico=TARGET_ICO,
+        )
+    )
+    del root.attrib["ico"]
+    xml_without_target = etree.tostring(
+        root, xml_declaration=True, encoding="Windows-1250"
+    )
+
+    assert validate_xml_detailed(xml_without_target, XSD) == []
+    target = validate_pohoda_target_unit(
+        xml_without_target,
+        expected_ico=TARGET_ICO,
+    )
+    assert target["status"] == "TARGET_UNIT_INVALID"
+    assert target["actual_ico"] is None
+    assert "serialized value is missing" in target["errors"][0]
 
 
 def test_one_centre_one_rate() -> None:

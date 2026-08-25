@@ -288,6 +288,10 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
                 "pohoda_target_key_configured": latest_export.source_snapshot.get(
                     "pohoda_target_key_configured", False
                 ),
+                "pohoda_target_validation": latest_export.source_snapshot.get(
+                    "pohoda_target_validation",
+                    {"status": "NOT_RECORDED", "errors": []},
+                ),
             }
             if latest_export
             else None

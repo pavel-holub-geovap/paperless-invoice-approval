@@ -115,6 +115,14 @@ Automatické testy ověřují rozdílné IČO dodavatele a cílové účetní je
 
 Při reálném 8B testu zaznamenejte velikost modelu, `free -h` před načtením, po načtení a maximum během inference, dobu každé inference a metadata nových extraction běhů. Neprovádějte fallback na 4B.
 
+Kritický POHODA target smoke vytvoří nový immutable re-export GIRITON faktury, stáhne jej běžným autentizovaným download endpointem, ověří hash a parsuje finální XML. Vyžaduje `dataPack/@ico=15049248`, nepřítomný `@key` bez konfigurace a dodavatelské `partnerIdentity/address/ico=28652240`:
+
+```text
+docker compose run --rm --no-deps --env-from-file .env \
+  -v "$PWD/scripts:/smoke:ro" \
+  worker python /smoke/smoke_pohoda_target_unit.py
+```
+
 Nový read-mostly smoke `scripts/smoke_correction_iteration.py` ověřuje obě řazení podle source timestampu, stale HTTP 409, cílovou konfiguraci POHODA, request ID a audit stažení PDF. Spouští se stejně jako ostatní skripty v worker image s read-only mountem adresáře `scripts`.
 
 `scripts/smoke_qwen8_multi.py` spouští nové append-only kandidátní extrakce na třech existujících dostupných fakturách, vyžaduje metadata `model=qwen3:8b`, vypíše účetní pole a ověří, že se business workflow nezměnilo.

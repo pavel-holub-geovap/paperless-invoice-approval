@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -28,6 +28,7 @@ from app.services.exports import (
     mark_artifact_imported,
     mark_batch_imported,
     store_pohoda_response,
+    validate_immutable_artifact_xml,
 )
 from app.services.workflow import WorkflowError
 
@@ -61,6 +62,10 @@ def _artifact_out(row: ExportArtifact) -> dict[str, Any]:
         "pohoda_target_ico": row.source_snapshot.get("pohoda_target_ico"),
         "pohoda_target_key_configured": row.source_snapshot.get(
             "pohoda_target_key_configured", False
+        ),
+        "pohoda_target_validation": row.source_snapshot.get(
+            "pohoda_target_validation",
+            {"status": "NOT_RECORDED", "errors": []},
         ),
     }
 
@@ -186,26 +191,43 @@ def download_xml_artifact(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
-) -> FileResponse:
+) -> Response:
     _manager(user)
     artifact = db.get(ExportArtifact, artifact_id)
     if artifact is None:
         raise HTTPException(status_code=404, detail="Export artifact not found")
     if artifact.status.value != "XSD_VALID":
         raise HTTPException(status_code=409, detail="XSD-invalid XML cannot be downloaded")
+    path = _checked_artifact_path(artifact, settings)
+    xml = path.read_bytes()
+    try:
+        target_validation = validate_immutable_artifact_xml(artifact, xml)
+    except WorkflowError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     invoice = db.get(Invoice, artifact.invoice_id)
     record_event(
         db,
         "EXPORT_DOWNLOADED",
         actor=user.subject,
         invoice=invoice,
-        metadata={"export_artifact_id": artifact.id},
+        metadata={
+            "export_artifact_id": artifact.id,
+            "xml_sha256": artifact.xml_sha256,
+            "pohoda_target_ico": target_validation["actual_ico"],
+            "pohoda_target_validation": target_validation["status"],
+        },
     )
     db.commit()
-    return FileResponse(
-        _checked_artifact_path(artifact, settings),
+    return Response(
+        content=xml,
         media_type="application/xml",
-        filename=f"pohoda-{artifact.invoice_id}-r{artifact.source_snapshot['revision_number']}.xml",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="pohoda-{artifact.invoice_id}-'
+                f'r{artifact.source_snapshot["revision_number"]}.xml"'
+            ),
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
