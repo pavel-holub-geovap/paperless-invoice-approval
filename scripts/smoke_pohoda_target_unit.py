@@ -85,17 +85,14 @@ def main() -> None:
             old_download_http = old_download.status_code
             if old_download.status_code == 200:
                 old_data_pack_ico = ET.fromstring(old_download.content).get("ico")
-        artifact = response_json(
-            api(
-                manager,
-                "POST",
-                f"{base_url}/api/exports/invoices/{invoice_id}/generate",
-                user,
-                payload={"reason": "Oprava cílové účetní jednotky dataPack/@ico"},
-                expected=201,
-            ),
-            "new POHODA target artifact",
-        )
+        artifact = api(
+            manager,
+            "POST",
+            f"{base_url}/api/exports/invoices/{invoice_id}/generate",
+            user,
+            payload={"reason": "Oprava cílové účetní jednotky dataPack/@ico"},
+            expected=201,
+        ).json()
         require(artifact["id"] != old_artifact_id, "A new immutable artifact was not created")
         require(artifact["status"] == "XSD_VALID", "New artifact is not XSD-valid")
         require(
