@@ -40,6 +40,7 @@ def extraction_to_invoice_data(
     payload: InvoiceExtractionV1, ocr_text: str | None = None
 ) -> dict[str, Any]:
     payload = reconcile_extraction_dates(payload, ocr_text)
+
     def scalar(field: str) -> Any:
         evidence = getattr(payload, field)
         value = evidence.value
@@ -55,42 +56,47 @@ def extraction_to_invoice_data(
         normalized_row = row.model_dump(mode="json")
         normalized_row["adjustment_type"] = row.adjustment_type or (
             "ROUNDING"
-            if row.source_text and re.search(r"\b(?:zaokrouhlení|zaokr\.?|rounding)\b", row.source_text, re.IGNORECASE)
+            if row.source_text
+            and re.search(r"\b(?:zaokrouhlení|zaokr\.?|rounding)\b", row.source_text, re.IGNORECASE)
             else None
         )
         if row.taxable_base is not None and row.gross_amount is not None:
             derived_vat = row.gross_amount - row.taxable_base
-            if row.vat_amount is None or abs(row.taxable_base + row.vat_amount - row.gross_amount) > Decimal("0.02"):
+            if row.vat_amount is None or abs(
+                row.taxable_base + row.vat_amount - row.gross_amount
+            ) > Decimal("0.02"):
                 normalized_row["vat_amount_extracted"] = (
                     str(row.vat_amount) if row.vat_amount is not None else None
                 )
                 normalized_row["vat_amount"] = str(derived_vat)
                 normalized_row["normalization"] = "gross_amount_minus_taxable_base"
         vat_lines.append(normalized_row)
-    data = normalize_supplier_address({
-        "supplier_name": scalar("supplier_name"),
-        "supplier_ico": scalar("supplier_ico"),
-        "supplier_dic": scalar("supplier_dic"),
-        "supplier_address_raw": scalar("supplier_address_raw"),
-        "supplier_street": scalar("supplier_street"),
-        "supplier_city": scalar("supplier_city"),
-        "supplier_zip": scalar("supplier_zip"),
-        "invoice_number": scalar("invoice_number"),
-        "variable_symbol": scalar("variable_symbol"),
-        "issue_date": scalar("issue_date"),
-        "taxable_supply_date": scalar("taxable_supply_date"),
-        "due_date": scalar("due_date"),
-        "currency": str(currency).upper() if currency else None,
-        "bank_account": scalar("bank_account"),
-        "bank_code": scalar("bank_code"),
-        "iban": scalar("iban"),
-        "swift_bic": scalar("swift_bic"),
-        "vat_lines": vat_lines,
-        "total_without_vat": scalar("total_without_vat"),
-        "total_vat": scalar("total_vat"),
-        "total_amount": scalar("total_amount"),
-        "description": scalar("description"),
-    })
+    data = normalize_supplier_address(
+        {
+            "supplier_name": scalar("supplier_name"),
+            "supplier_ico": scalar("supplier_ico"),
+            "supplier_dic": scalar("supplier_dic"),
+            "supplier_address_raw": scalar("supplier_address_raw"),
+            "supplier_street": scalar("supplier_street"),
+            "supplier_city": scalar("supplier_city"),
+            "supplier_zip": scalar("supplier_zip"),
+            "invoice_number": scalar("invoice_number"),
+            "variable_symbol": scalar("variable_symbol"),
+            "issue_date": scalar("issue_date"),
+            "taxable_supply_date": scalar("taxable_supply_date"),
+            "due_date": scalar("due_date"),
+            "currency": str(currency).upper() if currency else None,
+            "bank_account": scalar("bank_account"),
+            "bank_code": scalar("bank_code"),
+            "iban": scalar("iban"),
+            "swift_bic": scalar("swift_bic"),
+            "vat_lines": vat_lines,
+            "total_without_vat": scalar("total_without_vat"),
+            "total_vat": scalar("total_vat"),
+            "total_amount": scalar("total_amount"),
+            "description": scalar("description"),
+        }
+    )
     return normalize_payment_data(reconcile_printed_invoice_amounts(data, ocr_text))
 
 
@@ -202,9 +208,7 @@ def _validation_summary(rows: list[ValidationResult]) -> dict[str, int]:
     return {
         "ok": sum(row.severity == ValidationSeverity.OK for row in rows),
         "warning": sum(row.severity == ValidationSeverity.WARNING for row in rows),
-        "blocking_error": sum(
-            row.severity == ValidationSeverity.BLOCKING_ERROR for row in rows
-        ),
+        "blocking_error": sum(row.severity == ValidationSeverity.BLOCKING_ERROR for row in rows),
     }
 
 
@@ -338,7 +342,11 @@ def complete_ai_extraction(
     data = extraction_to_invoice_data(payload, invoice.paperless_ocr_text)
     candidate_validations = validate_invoice_data(data)
     extraction.raw_response = result.raw_response
+    extraction.raw_attempts_json = result.raw_attempts
     extraction.parsed_result = payload.model_dump(mode="json")
+    extraction.schema_validation_errors_json = result.schema_validation_errors
+    extraction.normalization_result_json = result.normalization_result
+    extraction.corrective_retry_count = result.retry_count
     extraction.validation_results_json = [_validation_json(row) for row in candidate_validations]
     extraction.validation_summary = _validation_summary(candidate_validations)
     extraction.duration_ms = result.duration_ms
@@ -491,9 +499,22 @@ def mark_ai_extraction_failed(
     code: str,
     message: str,
     final: bool,
+    raw_response: str | None = None,
+    raw_attempts: list[dict[str, Any]] | None = None,
+    schema_validation_errors: list[dict[str, Any]] | None = None,
+    duration_ms: int | None = None,
 ) -> None:
     extraction.error_code = code
     extraction.error_message = message[:4000]
+    if raw_response is not None:
+        extraction.raw_response = raw_response
+    if raw_attempts is not None:
+        extraction.raw_attempts_json = raw_attempts
+        extraction.corrective_retry_count = max(0, len(raw_attempts) - 1)
+    if schema_validation_errors is not None:
+        extraction.schema_validation_errors_json = schema_validation_errors
+    if duration_ms is not None:
+        extraction.duration_ms = duration_ms
     if final:
         extraction.status = AIExtractionStatus.AI_FAILED
         extraction.completed_at = datetime.now(UTC)

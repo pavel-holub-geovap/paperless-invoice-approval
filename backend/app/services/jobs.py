@@ -18,7 +18,9 @@ def enqueue_job(
     payload: dict[str, Any] | None = None,
     max_attempts: int = 3,
 ) -> ProcessingJob:
-    existing = db.scalar(select(ProcessingJob).where(ProcessingJob.idempotency_key == idempotency_key))
+    existing = db.scalar(
+        select(ProcessingJob).where(ProcessingJob.idempotency_key == idempotency_key)
+    )
     if existing:
         return existing
     job = ProcessingJob(
@@ -62,10 +64,10 @@ def complete_job(job: ProcessingJob) -> None:
     job.last_error = None
 
 
-def fail_job(job: ProcessingJob, error: Exception) -> None:
+def fail_job(job: ProcessingJob, error: Exception, *, retryable: bool = True) -> None:
     job.last_error = str(error)[:4000]
     job.locked_until = None
-    if job.attempts >= job.max_attempts:
+    if not retryable or job.attempts >= job.max_attempts:
         job.status = JobStatus.FAILED
     else:
         job.status = JobStatus.PENDING

@@ -110,11 +110,65 @@ class VatLineExtraction(BaseModel):
 
     @model_validator(mode="after")
     def provenance_for_values(self) -> VatLineExtraction:
-        if any(value is not None for value in (self.vat_rate, self.taxable_base, self.vat_amount, self.gross_amount)) and not (
-            self.source_text and self.source_text.strip()
-        ):
+        if any(
+            value is not None
+            for value in (self.vat_rate, self.taxable_base, self.vat_amount, self.gross_amount)
+        ) and not (self.source_text and self.source_text.strip()):
             raise ValueError("A non-empty VAT line requires source_text provenance")
         return self
+
+
+type RawScalar = str | int | Decimal | bool | None
+
+
+class RawEvidenceValue(BaseModel):
+    """Strict structural boundary while preserving the LLM's scalar formatting."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: RawScalar
+    source_text: str | None
+
+
+class RawVatLineExtraction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    vat_rate: RawScalar
+    taxable_base: RawScalar
+    vat_amount: RawScalar
+    gross_amount: RawScalar = None
+    adjustment_type: str | None = None
+    source_text: str | None
+
+
+class InvoiceExtractionRawV1(BaseModel):
+    """Known Qwen JSON shape before deterministic accounting normalization."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["invoice-extraction.v3"]
+    supplier_name: RawEvidenceValue
+    supplier_ico: RawEvidenceValue
+    supplier_dic: RawEvidenceValue
+    supplier_address_raw: RawEvidenceValue
+    supplier_street: RawEvidenceValue
+    supplier_city: RawEvidenceValue
+    supplier_zip: RawEvidenceValue
+    invoice_number: RawEvidenceValue
+    variable_symbol: RawEvidenceValue
+    issue_date: RawEvidenceValue
+    taxable_supply_date: RawEvidenceValue
+    due_date: RawEvidenceValue
+    currency: RawEvidenceValue
+    bank_account: RawEvidenceValue
+    bank_code: RawEvidenceValue
+    iban: RawEvidenceValue
+    swift_bic: RawEvidenceValue
+    vat_lines: list[RawVatLineExtraction]
+    total_without_vat: RawEvidenceValue
+    total_vat: RawEvidenceValue
+    total_amount: RawEvidenceValue
+    description: RawEvidenceValue
 
 
 class InvoiceExtractionV1(BaseModel):

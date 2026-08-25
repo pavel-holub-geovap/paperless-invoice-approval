@@ -68,6 +68,23 @@ export type AIExtraction = {
   candidate_data?: Record<string, unknown>;
   error_code?: string;
   error_message?: string;
+  schema_validation_errors?: Array<{
+    stage: string;
+    attempt: number;
+    path: string;
+    type: string;
+    message: string;
+    expected: string;
+    actual: unknown;
+    actual_type: string;
+  }>;
+  normalization_result?: {
+    raw_schema_version?: string;
+    canonical_schema_version?: string;
+    changes?: Array<{ path: string; raw: unknown; normalized: unknown }>;
+  };
+  corrective_retry_count?: number;
+  raw_response_preserved?: boolean;
   queued_at: string;
   started_at?: string;
   completed_at?: string;

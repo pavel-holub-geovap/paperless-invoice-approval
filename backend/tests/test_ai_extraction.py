@@ -10,12 +10,18 @@ from sqlalchemy import select
 
 from app.api.routes.invoices import serialize_invoice
 from app.config import Settings
-from app.integrations.ollama import InvalidJSON, OllamaClient, OllamaExtractionResult
+from app.integrations.ollama import (
+    InvalidJSON,
+    OllamaClient,
+    OllamaExtractionResult,
+    SchemaValidationFailed,
+)
 from app.models import AIExtractionStatus, AuditEvent, InvoiceStatus
 from app.schemas import InvoiceExtractionV1
 from app.services.extraction import (
     apply_ai_extraction,
     complete_ai_extraction,
+    mark_ai_extraction_failed,
     queue_ai_extraction,
 )
 from app.services.workflow import create_invoice, update_invoice_data
@@ -44,7 +50,15 @@ def structured(supplier: str = "TESTOVACÍ DODAVATEL s.r.o.") -> dict:
         "bank_code": evidence("0000", "Účet: 0000000000/0000"),
         "iban": evidence(None, None),
         "swift_bic": evidence(None, None),
-        "vat_lines": [{"vat_rate": "21", "taxable_base": "1000.00", "vat_amount": "210.00", "gross_amount": "1210.00", "source_text": "DPH / VAT 21 % 210,00 Kč"}],
+        "vat_lines": [
+            {
+                "vat_rate": "21",
+                "taxable_base": "1000.00",
+                "vat_amount": "210.00",
+                "gross_amount": "1210.00",
+                "source_text": "DPH / VAT 21 % 210,00 Kč",
+            }
+        ],
         "total_without_vat": evidence("1000.00", "Základ DPH / Net 1 000,00 Kč"),
         "total_vat": evidence("210.00", "DPH / VAT 21 % 210,00 Kč"),
         "total_amount": evidence("1210.00", "CELKEM / TOTAL 1 210,00 Kč"),
@@ -77,7 +91,8 @@ async def test_ollama_request_is_cpu_deterministic_and_delimits_prompt_injection
         body = json.loads(request.content)
         assert body["options"] == {"temperature": 0, "num_ctx": 4096, "num_gpu": 0}
         assert body["stream"] is False and body["think"] is False
-        assert body["format"] == "json"
+        assert body["format"]["title"] == "InvoiceExtractionRawV1"
+        assert body["format"]["additionalProperties"] is False
         assert injection in body["messages"][1]["content"]
         assert body["messages"][1]["content"].endswith("JSON podle schématu.")
         assert "NEDŮVĚRYHODNÝ VSTUP" in body["messages"][0]["content"]
@@ -85,12 +100,16 @@ async def test_ollama_request_is_cpu_deterministic_and_delimits_prompt_injection
         assert "Nikdy nekopíruj Datum vystavení" in body["messages"][0]["content"]
         return httpx.Response(200, json={"message": {"content": json.dumps(structured())}})
 
-    client = OllamaClient(Settings(ollama_base_url="http://ollama.test"), httpx.MockTransport(handler))
+    client = OllamaClient(
+        Settings(ollama_base_url="http://ollama.test"), httpx.MockTransport(handler)
+    )
     try:
         extracted = await client.extract_invoice(injection)
     finally:
         await client.close()
     assert extracted.payload.total_amount.value == 1210
+    assert extracted.retry_count == 0
+    assert extracted.raw_attempts[0]["validation_errors"] == []
 
 
 @pytest.mark.asyncio
@@ -106,9 +125,7 @@ async def test_ollama_accepts_unambiguous_czech_decimal_strings() -> None:
     payload["total_vat"]["value"] = "210,00 Kč"
     payload["total_amount"]["value"] = "1 210,00"
     transport = httpx.MockTransport(
-        lambda request: httpx.Response(
-            200, json={"message": {"content": json.dumps(payload)}}
-        )
+        lambda request: httpx.Response(200, json={"message": {"content": json.dumps(payload)}})
     )
     client = OllamaClient(Settings(ollama_base_url="http://ollama.test"), transport)
     try:
@@ -123,6 +140,116 @@ async def test_ollama_accepts_unambiguous_czech_decimal_strings() -> None:
         Decimal("1210.00"),
     )
     assert extracted.payload.total_amount.value == Decimal("1210.00")
+    assert any(
+        row["path"] == "total_amount"
+        and row["raw"] == "1 210,00"
+        and row["normalized"] == "1210.00"
+        for row in extracted.normalization_result["changes"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_schema_failure_gets_one_feedback_retry_and_preserves_both_raw_outputs() -> None:
+    invalid = structured()
+    invalid["total_with_vat"] = invalid.pop("total_amount")
+    invalid["payment_method"] = {"value": "card", "source_text": "Visa"}
+    valid = structured()
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        requests.append(body)
+        payload = invalid if len(requests) == 1 else valid
+        return httpx.Response(200, json={"message": {"content": json.dumps(payload)}})
+
+    client = OllamaClient(
+        Settings(ollama_base_url="http://ollama.test"), httpx.MockTransport(handler)
+    )
+    try:
+        extracted = await client.extract_invoice("OCR")
+    finally:
+        await client.close()
+
+    assert len(requests) == 2
+    assert "Previous structured output failed validation" in requests[1]["messages"][-1]["content"]
+    assert extracted.retry_count == 1
+    assert len(extracted.raw_attempts) == 2
+    assert json.loads(extracted.raw_response)["total_with_vat"]["value"] == "1210.00"
+    paths = {row["path"] for row in extracted.schema_validation_errors}
+    assert {"total_amount", "total_with_vat", "payment_method"} <= paths
+    assert extracted.payload.total_amount.value == Decimal("1210")
+
+
+@pytest.mark.asyncio
+async def test_unrepairable_schema_failure_is_precise_and_stops_after_one_retry() -> None:
+    invalid = structured()
+    invalid["total_with_vat"] = invalid.pop("total_amount")
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={"message": {"content": json.dumps(invalid)}})
+
+    client = OllamaClient(
+        Settings(ollama_base_url="http://ollama.test"), httpx.MockTransport(handler)
+    )
+    try:
+        with pytest.raises(SchemaValidationFailed) as caught:
+            await client.extract_invoice("OCR")
+    finally:
+        await client.close()
+
+    assert calls == 2
+    assert len(caught.value.raw_attempts) == 2
+    assert caught.value.raw_response is not None
+    first = caught.value.errors[0]
+    assert first["path"] == "total_amount"
+    assert first["type"] == "missing"
+    assert first["expected"] == "required field"
+    assert first["actual_type"] == "dict"
+
+
+def test_failed_schema_diagnostics_and_raw_attempts_are_persisted(db) -> None:
+    invoice = create_invoice(db, 17)
+    invoice.paperless_ocr_text = "OCR"
+    extraction = queue_ai_extraction(db, invoice, Settings(ollama_model="qwen3:8b"))
+    errors = [
+        {
+            "stage": "raw_schema",
+            "attempt": 2,
+            "path": "total_amount",
+            "type": "missing",
+            "message": "Field required",
+            "expected": "required field",
+            "actual": {"total_with_vat": {"value": "469,00"}},
+            "actual_type": "dict",
+        }
+    ]
+    attempts = [
+        {"attempt": 1, "raw_response": '{"total_with_vat":"469,00"}', "validation_errors": errors},
+        {"attempt": 2, "raw_response": '{"total_with_vat":"469.00"}', "validation_errors": errors},
+    ]
+
+    mark_ai_extraction_failed(
+        db,
+        extraction,
+        code="SCHEMA_VALIDATION_FAILED",
+        message="AI vrátila hodnotu v neočekávaném formátu: total_amount",
+        final=True,
+        raw_response=attempts[0]["raw_response"],
+        raw_attempts=attempts,
+        schema_validation_errors=errors,
+        duration_ms=123,
+    )
+    db.flush()
+
+    assert extraction.raw_response == attempts[0]["raw_response"]
+    assert extraction.raw_attempts_json == attempts
+    assert extraction.schema_validation_errors_json == errors
+    assert extraction.corrective_retry_count == 1
+    assert extraction.duration_ms == 123
+    assert extraction.status == AIExtractionStatus.AI_FAILED
 
 
 @pytest.mark.asyncio
@@ -164,7 +291,9 @@ def test_extraction_history_never_overwrites_without_confirmation(db) -> None:
     db.flush()
     assert second.applied
     assert invoice.current_revision.data["supplier_name"] == "ZMĚNĚNÝ DODAVATEL"
-    events = db.scalars(select(AuditEvent.event_type).where(AuditEvent.invoice_id == invoice.id)).all()
+    events = db.scalars(
+        select(AuditEvent.event_type).where(AuditEvent.invoice_id == invoice.id)
+    ).all()
     assert events.count("AI_EXTRACTION_APPLIED") == 1
     assert "AI_REEXTRACTION_APPLIED" in events
     assert "AI_REEXTRACTION_REQUESTED" in events
@@ -195,9 +324,7 @@ def test_first_extraction_populates_detail_current_values_and_evidence(db) -> No
 def test_gmtech_duzp_correction_creates_revision_and_extraction_linked_audit(db) -> None:
     invoice = create_invoice(db, 14)
     invoice.paperless_ocr_text = (
-        "Datum vystavení: 08.07.2026\n"
-        "Datum splatnosti: 07.08.2026\n"
-        "Datum zd. plnění: 30.06.2026"
+        "Datum vystavení: 08.07.2026\nDatum splatnosti: 07.08.2026\nDatum zd. plnění: 30.06.2026"
     )
     update_invoice_data(
         db,

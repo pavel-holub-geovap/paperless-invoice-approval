@@ -121,11 +121,15 @@ def _require_current_revision(invoice: Invoice, expected_revision: int | None) -
 
 def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
     revision = invoice.current_revision
-    allocations = [row for row in invoice.allocations if row.revision_id == revision.id and row.active]
+    allocations = [
+        row for row in invoice.allocations if row.revision_id == revision.id and row.active
+    ]
     validations = db.scalars(
         select(ValidationResult).where(ValidationResult.revision_id == revision.id)
     ).all()
-    ai_history = sorted(invoice.ai_extractions, key=lambda row: row.extraction_revision, reverse=True)
+    ai_history = sorted(
+        invoice.ai_extractions, key=lambda row: row.extraction_revision, reverse=True
+    )
     latest_ai = ai_history[0] if ai_history else None
     total, allocated, remaining = allocation_totals(db, invoice)
     latest_export = db.scalar(
@@ -149,6 +153,10 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             "validation_summary": row.validation_summary,
             "error_code": row.error_code,
             "error_message": row.error_message,
+            "schema_validation_errors": row.schema_validation_errors_json,
+            "normalization_result": row.normalization_result_json,
+            "corrective_retry_count": row.corrective_retry_count,
+            "raw_response_preserved": row.raw_response is not None,
             "queued_at": row.queued_at,
             "started_at": row.started_at,
             "completed_at": row.completed_at,
@@ -168,6 +176,7 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             except (TypeError, ValueError):
                 result["candidate_data"] = None
         return result
+
     return {
         "id": invoice.id,
         "paperless_document_id": invoice.paperless_document_id,
@@ -282,9 +291,7 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
                 "source_export_id": latest_export.source_export_id,
                 "imported_by": latest_export.imported_by,
                 "imported_at": latest_export.imported_at,
-                "pohoda_target_ico": latest_export.source_snapshot.get(
-                    "pohoda_target_ico"
-                ),
+                "pohoda_target_ico": latest_export.source_snapshot.get("pohoda_target_ico"),
                 "pohoda_target_key_configured": latest_export.source_snapshot.get(
                     "pohoda_target_key_configured", False
                 ),
@@ -464,7 +471,9 @@ async def proxy_pdf(
         metadata={"paperless_document_id": invoice.paperless_document_id},
     )
     db.commit()
-    return Response(pdf, media_type="application/pdf", headers={"Cache-Control": "private, no-store"})
+    return Response(
+        pdf, media_type="application/pdf", headers={"Cache-Control": "private, no-store"}
+    )
 
 
 @router.post("/{invoice_id}/disposition")
@@ -718,7 +727,11 @@ def invoice_audit(
 ) -> list[dict[str, Any]]:
     invoice = _invoice_or_404(db, invoice_id)
     _viewer(db, invoice, user)
-    events = db.scalars(select(AuditEvent).where(AuditEvent.invoice_id == invoice_id).order_by(AuditEvent.created_at)).all()
+    events = db.scalars(
+        select(AuditEvent)
+        .where(AuditEvent.invoice_id == invoice_id)
+        .order_by(AuditEvent.created_at)
+    ).all()
     return [
         {
             "id": row.id,

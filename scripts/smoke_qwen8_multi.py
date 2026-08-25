@@ -46,7 +46,7 @@ def detail(client, base_url: str, invoice_id: str) -> dict[str, Any]:
 def wait_for_run(
     client, base_url: str, invoice_id: str, after_revision: int
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + 900
+    deadline = time.monotonic() + 1900
     while time.monotonic() < deadline:
         current = detail(client, base_url, invoice_id)
         latest = current["ai"]["latest"]
@@ -66,6 +66,11 @@ def main() -> None:
     base_url = os.environ["APP_BASE_URL"].rstrip("/")
     count = int(os.environ.get("QWEN8_SMOKE_COUNT", "3"))
     excluded = int(os.environ.get("QWEN8_EXCLUDE_DOCUMENT_ID", "0"))
+    requested_ids = [
+        int(value)
+        for value in os.environ.get("QWEN8_DOCUMENT_IDS", "").split(",")
+        if value.strip()
+    ]
     manager = login(
         base_url,
         "queue-manager",
@@ -81,6 +86,8 @@ def main() -> None:
         for row in rows:
             if row["paperless_document_id"] == excluded:
                 continue
+            if requested_ids and row["paperless_document_id"] not in requested_ids:
+                continue
             current = detail(manager, base_url, row["id"])
             if (
                 current["source"]["status"] == "AVAILABLE"
@@ -88,9 +95,17 @@ def main() -> None:
                 and current["paperless"]["ocr_text"]
             ):
                 candidates.append(current)
-            if len(candidates) == count:
+            if len(candidates) == (len(requested_ids) or count):
                 break
-        require(len(candidates) == count, f"Only {len(candidates)} usable invoices found")
+        expected_count = len(requested_ids) or count
+        require(
+            len(candidates) == expected_count,
+            f"Only {len(candidates)} of {expected_count} usable invoices found",
+        )
+        if requested_ids:
+            candidates.sort(
+                key=lambda row: requested_ids.index(row["paperless_document_id"])
+            )
 
         report: list[dict[str, Any]] = []
         for current in candidates:
@@ -113,11 +128,21 @@ def main() -> None:
                 queued.status_code == 202,
                 f"Queue extraction returned {queued.status_code}: {queued.text[:300]}",
             )
-            completed = wait_for_run(
-                manager, base_url, current["id"], after_revision
-            )
+            completed = wait_for_run(manager, base_url, current["id"], after_revision)
             run = completed["ai"]["latest"]
             require(run["model"] == "qwen3:8b", "New extraction did not use Qwen3 8B")
+            require(
+                run["schema_version"] == "invoice-extraction.v3",
+                "Canonical schema version is wrong",
+            )
+            require(
+                run["raw_response_preserved"], "Raw Qwen response was not preserved"
+            )
+            require(
+                run["normalization_result"].get("raw_schema_version")
+                == "invoice-extraction.raw.v1",
+                "Raw schema normalization metadata is missing",
+            )
             require(completed["status"] == status_before, "Candidate changed workflow")
             parsed = run.get("parsed_result") or {}
             report.append(
@@ -128,6 +153,16 @@ def main() -> None:
                     "model": run["model"],
                     "extraction_revision": run["extraction_revision"],
                     "duration_ms": run["duration_ms"],
+                    "schema_version": run["schema_version"],
+                    "raw_schema_version": run["normalization_result"].get(
+                        "raw_schema_version"
+                    ),
+                    "corrective_retry_count": run["corrective_retry_count"],
+                    "prior_schema_errors": run["schema_validation_errors"],
+                    "normalization_changes": run["normalization_result"].get(
+                        "changes", []
+                    ),
+                    "canonical_validation": "PASSED",
                     "workflow_preserved": completed["status"],
                     "extracted": {field: value(parsed, field) for field in FIELDS},
                 }

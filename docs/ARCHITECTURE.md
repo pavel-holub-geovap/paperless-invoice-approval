@@ -35,7 +35,7 @@ Worker při každém discovery cyklu navíc reconciliuje všechny uložené `pap
 
 ## AI extrakce a validace
 
-Worker před každým během znovu načte OCR z Paperless REST API. Ollama dostane nedůvěryhodný OCR text oddělený značkami a striktní JSON schema. Pydantic odmítne chybějící nebo neznámá pole; hodnoty mohou být explicitně `null`. Každý běh ukládá model, schema/prompt verzi, raw response, parsed JSON, provenance, dobu, chybu a validační snapshot do `ai_extractions`. První běh lze aplikovat automaticky jen na prázdnou revizi; re-extrakce zůstane kandidátem do explicitního potvrzení.
+Worker před každým během znovu načte OCR z Paperless REST API. Ollama dostane nedůvěryhodný OCR text oddělený značkami a constrained `InvoiceExtractionRawV1` JSON schema. Tok je výslovně `RawV1 → konzervativní normalizace → InvoiceExtractionV1 → účetní validace`; kanonický model se kvůli odchylkám LLM neuvolňuje. Pydantic odmítne chybějící nebo neznámá pole; hodnoty mohou být explicitně `null`. Každý běh ukládá model, schema/prompt verzi, všechny raw pokusy, přesné schema errors, normalizační mapu, parsed JSON, provenance, dobu, chybu a validační snapshot do `ai_extractions`. První běh lze aplikovat automaticky jen na prázdnou revizi; re-extrakce zůstane kandidátem do explicitního potvrzení.
 
 Deterministická validační služba používá `Decimal`, český checksum IČO, formát DIČ/VS, ISO datum a měnu, matematiku DPH a součtů, účet, IBAN mod-97 a BIC. Před normalizací navíc sváže české označené datumové řádky OCR s jejich vlastními poli a provenance; DUZP bez explicitního popisku zůstává `null`. LLM nevytváří XML/SQL, workflow stav, cost center ani approvera. Detailní kontrakt je v `docs/AI_EXTRACTION.md`.
 

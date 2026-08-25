@@ -120,7 +120,9 @@ class UserIdentity(Base):
     roles: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class OidcSession(Base):
@@ -193,7 +195,9 @@ class Invoice(Base):
     imported_to_pohoda_by: Mapped[str | None] = mapped_column(String(255))
     imported_export_id: Mapped[str | None] = mapped_column(String(36), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
     revisions: Mapped[list[InvoiceRevision]] = relationship(
         back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceRevision.number"
@@ -207,7 +211,9 @@ class Invoice(Base):
 
     @property
     def current_revision(self) -> InvoiceRevision | None:
-        return next((r for r in reversed(self.revisions) if r.number == self.current_revision_number), None)
+        return next(
+            (r for r in reversed(self.revisions) if r.number == self.current_revision_number), None
+        )
 
 
 class InvoiceRevision(Base):
@@ -215,7 +221,9 @@ class InvoiceRevision(Base):
     __table_args__ = (UniqueConstraint("invoice_id", "number", name="uq_invoice_revision"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
+    invoice_id: Mapped[str] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True
+    )
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_by: Mapped[str] = mapped_column(String(255), default="system")
@@ -231,7 +239,9 @@ class ExtractedField(Base):
     __table_args__ = (UniqueConstraint("revision_id", "field_name", name="uq_extracted_field"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    revision_id: Mapped[str] = mapped_column(ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True)
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True
+    )
     field_name: Mapped[str] = mapped_column(String(100), nullable=False)
     value: Mapped[Any | None] = mapped_column(JSON)
     source_text: Mapped[str | None] = mapped_column(Text)
@@ -243,7 +253,9 @@ class ValidationResult(Base):
     __tablename__ = "validation_results"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    revision_id: Mapped[str] = mapped_column(ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True)
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True
+    )
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     severity: Mapped[ValidationSeverity] = mapped_column(
         Enum(ValidationSeverity, native_enum=False), index=True
@@ -278,7 +290,17 @@ class AIExtraction(Base):
         Enum(AIExtractionStatus, native_enum=False), nullable=False, index=True
     )
     raw_response: Mapped[str | None] = mapped_column(Text)
+    raw_attempts_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
     parsed_result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    schema_validation_errors_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    normalization_result_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    corrective_retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     validation_results_json: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, default=list, nullable=False
     )
@@ -308,7 +330,9 @@ class CostCenter(Base):
     pohoda_code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class Allocation(Base):
@@ -326,8 +350,12 @@ class Allocation(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
-    revision_id: Mapped[str] = mapped_column(ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True)
+    invoice_id: Mapped[str] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True
+    )
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True
+    )
     cost_center_id: Mapped[str] = mapped_column(ForeignKey("cost_centers.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     percentage: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
@@ -336,7 +364,9 @@ class Allocation(Base):
     created_by: Mapped[str] = mapped_column(String(255), default="system", nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
     invoice: Mapped[Invoice] = relationship(back_populates="allocations")
     cost_center: Mapped[CostCenter] = relationship()
@@ -347,14 +377,23 @@ class ApprovalAssignment(Base):
     __tablename__ = "approval_assignments"
     __table_args__ = (
         UniqueConstraint(
-            "revision_id", "allocation_id", "approver_subject", name="uq_revision_allocation_approver"
+            "revision_id",
+            "allocation_id",
+            "approver_subject",
+            name="uq_revision_allocation_approver",
         ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
-    revision_id: Mapped[str] = mapped_column(ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True)
-    allocation_id: Mapped[str] = mapped_column(ForeignKey("allocations.id", ondelete="CASCADE"), index=True)
+    invoice_id: Mapped[str] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True
+    )
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True
+    )
+    allocation_id: Mapped[str] = mapped_column(
+        ForeignKey("allocations.id", ondelete="CASCADE"), index=True
+    )
     approver_subject: Mapped[str] = mapped_column(String(255), index=True)
     required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[ApprovalAssignmentStatus] = mapped_column(
@@ -417,7 +456,9 @@ class AuditEvent(Base):
     new_value: Mapped[Any | None] = mapped_column(JSON)
     comment: Mapped[str | None] = mapped_column(Text)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
 
 
 class ProcessingJob(Base):
@@ -433,11 +474,15 @@ class ProcessingJob(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
-    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class SystemHeartbeat(Base):
@@ -445,7 +490,9 @@ class SystemHeartbeat(Base):
 
     name: Mapped[str] = mapped_column(String(100), primary_key=True)
     details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class ExportBatch(Base):
@@ -471,7 +518,9 @@ class ExportBatchItem(Base):
     __table_args__ = (UniqueConstraint("batch_id", "invoice_id", name="uq_batch_invoice"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    batch_id: Mapped[str] = mapped_column(ForeignKey("export_batches.id", ondelete="CASCADE"), index=True)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("export_batches.id", ondelete="CASCADE"), index=True
+    )
     invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id"), index=True)
     revision_id: Mapped[str] = mapped_column(ForeignKey("invoice_revisions.id"))
     export_artifact_id: Mapped[str | None] = mapped_column(

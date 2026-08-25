@@ -150,6 +150,53 @@ describe("Stage B pages", () => {
     expect(screen.getByText("AI zdroj: DODAVATEL GIRITON Systems s.r.o.")).toBeVisible();
   });
 
+  it("shows precise manager diagnostics for a failed raw schema value", async () => {
+    mockEmptyApi();
+    render(
+      <InvoiceDetail
+        invoice={{
+          ...invoice,
+          ai_status: "AI_FAILED",
+          ai: {
+            history: [],
+            latest: {
+              id: "extraction-1",
+              extraction_revision: 1,
+              model: "qwen3:8b",
+              schema_version: "invoice-extraction.v3",
+              prompt_version: "invoice-extraction.cs-en.v5",
+              status: "AI_FAILED",
+              error_code: "SCHEMA_VALIDATION_FAILED",
+              error_message: "AI vrátila hodnotu v neočekávaném formátu.",
+              schema_validation_errors: [{
+                stage: "canonical_schema",
+                attempt: 2,
+                path: "vat_lines.0.vat_rate",
+                type: "decimal_parsing",
+                message: "Input should be a valid decimal",
+                expected: "decimal",
+                actual: "21%",
+                actual_type: "str",
+              }],
+              corrective_retry_count: 1,
+              raw_response_preserved: true,
+              queued_at: "2026-08-25T13:00:00Z",
+              applied: false,
+              requires_confirmation: false,
+            },
+          },
+        }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByText(/AI vrátila hodnotu v neočekávaném formátu:/)).toBeVisible();
+    expect(screen.getByText("DPH sazba").closest("li")).toHaveTextContent('"21%"');
+    expect(screen.getByText(/Raw odpověď zachována: ano/)).toHaveTextContent("opravný retry: 1");
+  });
+
   it("shows GMtech dates in Czech format and submits ISO values", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

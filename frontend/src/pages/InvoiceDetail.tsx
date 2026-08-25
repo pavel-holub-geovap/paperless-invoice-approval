@@ -56,6 +56,20 @@ const auditLabels: Record<string, string> = {
   PDF_DOWNLOADED: "Stažen originální PDF",
   ZIP_DOWNLOADED: "Stažen exportní ZIP",
 };
+const schemaFieldLabels: Record<string, string> = {
+  vat_rate: "DPH sazba",
+  taxable_base: "Základ DPH",
+  vat_amount: "Částka DPH",
+  gross_amount: "Částka s DPH",
+  issue_date: "Datum vystavení",
+  taxable_supply_date: "DUZP",
+  due_date: "Splatnost",
+  total_without_vat: "Základ bez DPH",
+  total_vat: "DPH celkem",
+  total_amount: "Celkem",
+};
+const schemaFieldLabel = (path: string) => schemaFieldLabels[path.split(".").at(-1) || path] || path;
+const diagnosticValue = (value: unknown) => value === undefined ? "—" : JSON.stringify(value);
 
 type StepState = "DONE" | "CURRENT" | "WAITING" | "BLOCKED" | "ERROR";
 
@@ -237,7 +251,7 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
         <div className="card ai-card"><div className="card-title"><div><h2>AI extrakce</h2><p>Technický stav je oddělený od workflow faktury.</p></div><StatusBadge value={invoice.ai_status}/></div>
           {latestAI ? <>
             <dl className="metadata-grid"><div><dt>Model</dt><dd>{latestAI.model}</dd></div><div><dt>Verze</dt><dd>{latestAI.schema_version} · {latestAI.prompt_version}</dd></div><div><dt>Doba inference</dt><dd>{latestAI.duration_ms != null ? `${(latestAI.duration_ms / 1000).toFixed(2)} s` : "—"}</dd></div><div><dt>Běh</dt><dd>#{latestAI.extraction_revision}{latestAI.applied ? " · použit" : latestAI.requires_confirmation ? " · čeká na potvrzení" : ""}</dd></div></dl>
-            {latestAI.error_message && <div className="alert danger"><strong>{latestAI.error_code}</strong>: {latestAI.error_message}</div>}
+            {latestAI.error_message && <div className="alert danger"><strong>{latestAI.error_code}</strong>: {latestAI.error_message}{latestAI.schema_validation_errors?.length ? <><p>AI vrátila hodnotu v neočekávaném formátu:</p><ul>{latestAI.schema_validation_errors.map((item,index)=><li key={`${item.attempt}-${item.path}-${index}`}><strong>{schemaFieldLabel(item.path)}</strong>: {diagnosticValue(item.actual)} · očekáváno {item.expected} · {item.message} (pokus {item.attempt})</li>)}</ul><small>Raw odpověď zachována: {latestAI.raw_response_preserved?"ano":"ne"} · opravný retry: {latestAI.corrective_retry_count||0}</small></> : null}</div>}
             {latestAI.parsed_result && <details className="candidate"><summary>Strukturovaný výsledek běhu #{latestAI.extraction_revision}</summary><dl>{Object.entries(latestAI.parsed_result).filter(([key])=>key!=="schema_version").map(([key,value])=><div key={key}><dt>{key}</dt><dd>{shown(value && typeof value === "object" && "value" in value ? (value as {value: unknown}).value : value)}</dd></div>)}</dl></details>}
             {latestAI.requires_confirmation && candidateDifferences.length > 0 && <details className="candidate"><summary>Porovnat kandidát s aktuálními údaji ({candidateDifferences.length})</summary><dl>{candidateDifferences.map((row)=><div key={row.key}><dt>{row.label}</dt><dd>aktuálně: {shown(row.current)} → kandidát: {shown(row.candidate)}</dd></div>)}</dl></details>}
             {latestAI.requires_confirmation && isManager && <button className="button warning" disabled={Boolean(pending)} onClick={()=>{if(window.confirm("Nová extrakce nahradí rozdílné pracovní údaje, vytvoří novou revizi a audit. Ruční změny nebudou přepsány bez tohoto potvrzení. Pokračovat?")) void call("ai-apply", `/invoices/${invoice.id}/ai-extractions/${latestAI.id}/apply`,{method:"POST",body:JSON.stringify({confirm_overwrite:true})},"Kandidát byl převzat do nové revize.")}}>{pending==="ai-apply"?"Přebírám…":"Použít novou extrakci"}</button>}
