@@ -25,6 +25,7 @@ describe("Stage E pages", () => {
     expect(screen.getByRole("button", { name: "Schválit" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Vrátit" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Zamítnout" })).toBeVisible();
+    expect(screen.getByText("03.09.2026")).toBeVisible();
   });
 
   it("renders configurable cost centers", async () => {

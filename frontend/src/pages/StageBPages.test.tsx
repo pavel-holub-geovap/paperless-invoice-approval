@@ -150,6 +150,78 @@ describe("Stage B pages", () => {
     expect(screen.getByText("AI zdroj: DODAVATEL GIRITON Systems s.r.o.")).toBeVisible();
   });
 
+  it("shows GMtech dates in Czech format and submits ISO values", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <InvoiceDetail
+        invoice={{
+          ...invoice,
+          data: {
+            issue_date: "2026-07-08",
+            taxable_supply_date: "2026-06-30",
+            due_date: "2026-08-07",
+          },
+          extracted_fields: [{
+            field_name: "taxable_supply_date",
+            value: "2026-06-30",
+            source_text: "Datum zd. plnění: 30.06.2026",
+          }],
+        }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: /^Datum vystavení/ })).toHaveValue("08.07.2026");
+    expect(screen.getByRole("textbox", { name: /^DUZP/ })).toHaveValue("30.06.2026");
+    expect(screen.getByRole("textbox", { name: /^Splatnost/ })).toHaveValue("07.08.2026");
+    expect(screen.getByText("AI zdroj: Datum zd. plnění: 30.06.2026")).toBeVisible();
+
+    fireEvent.change(screen.getByRole("textbox", { name: /^DUZP/ }), {
+      target: { value: "01.07.2026" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Uložit změny" }));
+    await waitFor(() => {
+      const patchCall = fetchMock.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(patchCall).toBeDefined();
+      const body = JSON.parse(String(patchCall?.[1]?.body));
+      expect(body.changes.taxable_supply_date).toBe("2026-07-01");
+      expect(body.changes.issue_date).toBe("2026-07-08");
+      expect(body.changes.due_date).toBe("2026-08-07");
+    });
+  });
+
+  it("shows an inline error and does not submit an impossible Czech date", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <InvoiceDetail
+        invoice={{ ...invoice, data: { taxable_supply_date: "2026-06-30" } }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: /^DUZP/ }), {
+      target: { value: "31.02.2026" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Uložit změny" }));
+
+    expect(await screen.findByText("Zadané datum neexistuje.")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: /^DUZP/ })).toHaveAttribute("aria-invalid", "true");
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  });
+
   it("shows field and allocation errors next to their sections", async () => {
     mockEmptyApi();
     render(

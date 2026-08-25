@@ -37,7 +37,9 @@ Worker při každém discovery cyklu navíc reconciliuje všechny uložené `pap
 
 Worker před každým během znovu načte OCR z Paperless REST API. Ollama dostane nedůvěryhodný OCR text oddělený značkami a striktní JSON schema. Pydantic odmítne chybějící nebo neznámá pole; hodnoty mohou být explicitně `null`. Každý běh ukládá model, schema/prompt verzi, raw response, parsed JSON, provenance, dobu, chybu a validační snapshot do `ai_extractions`. První běh lze aplikovat automaticky jen na prázdnou revizi; re-extrakce zůstane kandidátem do explicitního potvrzení.
 
-Deterministická validační služba používá `Decimal`, český checksum IČO, formát DIČ/VS, ISO datum a měnu, matematiku DPH a součtů, účet, IBAN mod-97 a BIC. LLM nevytváří XML/SQL, workflow stav, cost center ani approvera. Detailní kontrakt je v `docs/AI_EXTRACTION.md`.
+Deterministická validační služba používá `Decimal`, český checksum IČO, formát DIČ/VS, ISO datum a měnu, matematiku DPH a součtů, účet, IBAN mod-97 a BIC. Před normalizací navíc sváže české označené datumové řádky OCR s jejich vlastními poli a provenance; DUZP bez explicitního popisku zůstává `null`. LLM nevytváří XML/SQL, workflow stav, cost center ani approvera. Detailní kontrakt je v `docs/AI_EXTRACTION.md`.
+
+Backend, databáze, API a POHODA XML používají ISO datum. React má jedinou prezentační vrstvu `formatDateCs`/`formatDateTimeCs` a kontrolovaný `CzechDateInput`, takže uživatel datum vidí a zadává jako `DD.MM.YYYY`; před odesláním se validní kalendářní datum převádí zpět na ISO.
 
 Český domácí účet prochází jedinou normalizační službou. Kombinovaný vstup `[prefix-]account/bank_code` se rozloží bez hádání číslic; původní text zůstane v `bank_account_raw`. Dodavatelská adresa se strukturuje primárně modelem a konzervativně normalizuje pouze z dodavatelského adresního bloku, nikdy z celého OCR. Volitelný modulo-11 checksum i matematické VAT reconciliation kontroly včetně řádku jsou review WARNING; pouze neplatný/neúplný VAT formát zůstává blocking. `ROUNDING` řádek se eviduje explicitně a deklarované částky se výpočtem nepřepisují.
 

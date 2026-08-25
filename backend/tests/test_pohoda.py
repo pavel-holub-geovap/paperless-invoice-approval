@@ -110,6 +110,32 @@ def test_received_invoice_semantics_address_payment_and_encoding() -> None:
     assert root.get("ico") != address.xpath("string(typ:ico)", namespaces=NS)
 
 
+def test_gmtech_dates_remain_iso_in_pohoda_xml() -> None:
+    row = revision(
+        vat_lines=[{"vat_rate": "21", "taxable_base": "100.00", "vat_amount": "21.00"}],
+        total="121.00",
+    )
+    row.data.update(
+        {
+            "issue_date": "2026-07-08",
+            "taxable_supply_date": "2026-06-30",
+            "due_date": "2026-08-07",
+        }
+    )
+    xml = generate_invoice_xml(
+        row,
+        [allocation(row, "IT", "121.00")],
+        accounting_unit_ico=TARGET_ICO,
+    )
+    root = document(xml)
+
+    assert validate_xml_detailed(xml, XSD) == []
+    assert root.xpath("string(//inv:date)", namespaces=NS) == "2026-07-08"
+    assert root.xpath("string(//inv:dateTax)", namespaces=NS) == "2026-06-30"
+    assert root.xpath("string(//inv:dateDue)", namespaces=NS) == "2026-08-07"
+    assert b"30.06.2026" not in xml
+
+
 def test_xsd_validity_does_not_replace_target_unit_semantic_validation() -> None:
     row = revision(
         vat_lines=[{"vat_rate": "21", "taxable_base": "100.00", "vat_amount": "21.00"}],

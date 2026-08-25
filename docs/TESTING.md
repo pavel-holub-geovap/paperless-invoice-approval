@@ -153,3 +153,15 @@ docker compose run --rm --no-deps --env-from-file .env \
 ```
 
 Browser musí bez F5 prokázat hodnoty přímo v input elementech. Automatická frontend regrese simuluje stejnou revizi s prázdnými daty během `AI_PROCESSING`, následný serverový snapshot s daty a také dirty draft při refetchi.
+
+## Regrese DUZP a českých datumů
+
+Doménové testy pokrývají oddělené Datum vystavení, DUZP a splatnost, varianty `DUZP`, `Datum zd. plnění`, `Datum zdan. plnění`, `Datum uskutečnění zdanitelného plnění` a chybějící DUZP jako `null`. Frontend ověřuje ISO → `DD.MM.YYYY`, český vstup → ISO API payload a inline odmítnutí `31.02.2026`. POHODA regrese parsuje XML a vyžaduje ISO `date`, `dateTax` a `dateDue`.
+
+Skutečná oprava GMtech dokumentu 14 se provede jednou po nasazení; skript zachová starou extrakci, spustí nový Qwen3 8B kandidát, aplikuje jej standardním API a ověří DB, API, evidence i extraction-linked `FIELD_CHANGED` audit:
+
+```text
+docker compose run --rm --no-deps --env-from-file .env \
+  -v "$PWD/scripts:/smoke:ro" \
+  worker python /smoke/smoke_gmtech_dates.py
+```

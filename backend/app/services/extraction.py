@@ -27,6 +27,7 @@ from app.schemas import EvidenceValue, InvoiceExtractionV1
 from app.services.audit import record_event
 from app.services.bank_accounts import normalize_payment_data
 from app.services.invoice_amounts import reconcile_printed_invoice_amounts
+from app.services.invoice_dates import reconcile_extraction_dates
 from app.services.jobs import enqueue_job
 from app.services.supplier_addresses import normalize_supplier_address
 from app.services.validation import run_validations, validate_invoice_data
@@ -38,6 +39,7 @@ AI_JOB_TYPE = "AI_EXTRACT_INVOICE"
 def extraction_to_invoice_data(
     payload: InvoiceExtractionV1, ocr_text: str | None = None
 ) -> dict[str, Any]:
+    payload = reconcile_extraction_dates(payload, ocr_text)
     def scalar(field: str) -> Any:
         evidence = getattr(payload, field)
         value = evidence.value
@@ -332,7 +334,7 @@ def complete_ai_extraction(
     result: OllamaExtractionResult,
 ) -> list[ValidationResult]:
     invoice = extraction.invoice
-    payload = result.payload
+    payload = reconcile_extraction_dates(result.payload, invoice.paperless_ocr_text)
     data = extraction_to_invoice_data(payload, invoice.paperless_ocr_text)
     candidate_validations = validate_invoice_data(data)
     extraction.raw_response = result.raw_response
@@ -432,7 +434,11 @@ def apply_ai_extraction(
         raise ValueError("Applying re-extraction requires explicit overwrite confirmation")
 
     data = stored_extraction_to_invoice_data(extraction, invoice.paperless_ocr_text)
-    payload = _stored_extraction_payload(extraction)
+    payload = reconcile_extraction_dates(
+        _stored_extraction_payload(extraction),
+        invoice.paperless_ocr_text,
+    )
+    previous_data = dict(invoice.current_revision.data) if invoice.current_revision else {}
     update_invoice_data(
         db,
         invoice,
@@ -446,6 +452,24 @@ def apply_ai_extraction(
     extraction.applied_at = datetime.now(UTC)
     extraction.applied_by = actor
     extraction.requires_confirmation = False
+    for field, new_value in data.items():
+        old_value = previous_data.get(field)
+        if old_value == new_value:
+            continue
+        record_event(
+            db,
+            "FIELD_CHANGED",
+            actor=actor,
+            invoice=invoice,
+            old_value={field: old_value},
+            new_value={field: new_value},
+            metadata={
+                "entity": "invoice",
+                "field": field,
+                "ai_extraction_id": extraction.id,
+                "extraction_revision": extraction.extraction_revision,
+            },
+        )
     record_event(
         db,
         "AI_REEXTRACTION_APPLIED",

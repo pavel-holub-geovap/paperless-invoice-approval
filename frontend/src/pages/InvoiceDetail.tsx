@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, money, pragueDateTime } from "../lib/api";
 import type { AuditEvent, CostCenter, Invoice, PohodaConfig, User, UserReference } from "../types";
+import { CzechDateInput } from "../components/CzechDateInput";
 import { StatusBadge } from "../components/StatusBadge";
+import { formatDateCs, parseDateCs } from "../lib/dates";
 
 const editableFields = [
   ["supplier_name", "Dodavatel"], ["supplier_ico", "IČO"], ["supplier_dic", "DIČ"], ["supplier_address_raw", "Adresa – původní text"], ["invoice_number", "Číslo faktury"],
@@ -11,7 +13,11 @@ const editableFields = [
   ["total_without_vat", "Základ bez DPH"], ["total_vat", "DPH celkem"], ["total_amount", "Celkem"], ["description", "Popis"],
 ] as const;
 
-const formFromInvoice = (invoice: Invoice) => Object.fromEntries(editableFields.map(([key]) => [key, String(invoice.data[key] ?? (key === "supplier_address_raw" ? invoice.data.supplier_address : undefined) ?? "")]));
+const dateFields = new Set(["issue_date", "taxable_supply_date", "due_date"]);
+const formFromInvoice = (invoice: Invoice) => Object.fromEntries(editableFields.map(([key]) => {
+  const value = invoice.data[key] ?? (key === "supplier_address_raw" ? invoice.data.supplier_address : undefined);
+  return [key, dateFields.has(key) && value ? formatDateCs(String(value)) : String(value ?? "")];
+}));
 
 const draftSnapshot = (invoice: Invoice) => JSON.stringify({
   revision: invoice.current_revision_number,
@@ -153,7 +159,19 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
     } finally { setPending(""); }
   };
   const saveData = () => {
-    const changes = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v === "" ? null : v]));
+    const dateErrors: Record<string, string> = {};
+    const changes = Object.fromEntries(Object.entries(form).map(([key, value]) => {
+      if (!dateFields.has(key)) return [key, value === "" ? null : value];
+      const parsed = parseDateCs(value);
+      if (parsed.error) dateErrors[key] = parsed.error;
+      return [key, parsed.iso];
+    }));
+    if (Object.keys(dateErrors).length) {
+      setFieldErrors(dateErrors);
+      const first = Object.keys(dateErrors)[0];
+      window.setTimeout(() => document.querySelector<HTMLElement>(`[data-field="${first}"]`)?.focus(), 0);
+      return;
+    }
     void call("data", `/invoices/${invoice.id}`, { method: "PATCH", body: JSON.stringify({ changes, expected_revision: hydratedRevision.current }) }, "Fakturační údaje byly uloženy.");
   };
   const saveAllocations = () => {
@@ -213,7 +231,7 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
         </div>
         <div className="card"><div className="card-title"><div><h2>Evidence a dispozice</h2><p>Nezávislé na workflow; historický stav se při ignorování nemění.</p></div><StatusBadge value={invoice.disposition.status}/></div>
           {Array.isArray(duplicateCandidates) && duplicateCandidates.length > 0 && <div className="alert warning"><strong>Možná duplicita</strong>{duplicateCandidates.map((candidate, index) => { const row = candidate as {invoice_id?:string;matched_fields?:string[]}; return <p key={row.invoice_id || index}><a href={`/invoices/${row.invoice_id}`} target="_blank" rel="noreferrer">Otevřít kandidátní fakturu</a> · shoda: {(row.matched_fields || []).join(", ")}</p>; })}</div>}
-          {invoice.disposition.status === "ACTIVE" ? <p>Faktura je aktivní.</p> : <dl className="metadata-grid"><div><dt>Důvod</dt><dd>{invoice.disposition.reason || "—"}</dd></div><div><dt>Rozhodl</dt><dd>{invoice.disposition.actor || "—"}</dd></div><div><dt>Čas</dt><dd>{invoice.disposition.changed_at ? new Date(invoice.disposition.changed_at).toLocaleString("cs-CZ") : "—"}</dd></div><div><dt>Duplicita faktury</dt><dd>{invoice.disposition.duplicate_of_invoice_id || "—"}</dd></div></dl>}
+          {invoice.disposition.status === "ACTIVE" ? <p>Faktura je aktivní.</p> : <dl className="metadata-grid"><div><dt>Důvod</dt><dd>{invoice.disposition.reason || "—"}</dd></div><div><dt>Rozhodl</dt><dd>{invoice.disposition.actor || "—"}</dd></div><div><dt>Čas</dt><dd>{pragueDateTime(invoice.disposition.changed_at)}</dd></div><div><dt>Duplicita faktury</dt><dd>{invoice.disposition.duplicate_of_invoice_id || "—"}</dd></div></dl>}
           {isManager && <div className="disposition-actions">{invoice.disposition.status === "ACTIVE" ? <><button className="button warning" disabled={Boolean(pending)} onClick={markDuplicate}>Označit jako duplicitu</button><button className="button secondary" disabled={Boolean(pending)} onClick={ignoreOther}>Označit jako nepotřebnou</button></> : <button className="button secondary" disabled={Boolean(pending)} onClick={() => void call("restore", `/invoices/${invoice.id}/restore`, { method: "POST", body: JSON.stringify({ comment: "Obnoveno ve frontě" }) }, "Dokument byl vrácen do aktivní fronty.")}>{pending==="restore"?"Obnovuji…":"Obnovit do aktivní fronty"}</button>}</div>}
         </div>
         <div className="card ai-card"><div className="card-title"><div><h2>AI extrakce</h2><p>Technický stav je oddělený od workflow faktury.</p></div><StatusBadge value={invoice.ai_status}/></div>
@@ -230,7 +248,7 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
         <div className="card"><div className="card-title"><div><h2>OCR text</h2><p>{invoice.paperless.ocr_text.length.toLocaleString("cs-CZ")} znaků · zdroj pro LLM je nedůvěryhodný vstup</p></div></div><pre className="ocr-text">{invoice.paperless.ocr_text || "Paperless zatím nevrátil OCR text."}</pre></div>
         <div className="card"><div className="card-title"><h2>Fakturační údaje</h2>{isManager&&<button className="button secondary" disabled={Boolean(pending)} onClick={saveData}>{pending==="data"?"Ukládám…":"Uložit změny"}</button>}</div>
           <dl className="metadata-grid"><div><dt>Účet – původní hodnota</dt><dd>{shown(invoice.data.bank_account_raw)}</dd></div><div><dt>Předčíslí</dt><dd>{shown(invoice.data.bank_account_prefix)}</dd></div><div><dt>Číslo účtu</dt><dd>{shown(invoice.data.bank_account_number)}</dd></div><div><dt>Kód banky</dt><dd>{shown(invoice.data.bank_code)}</dd></div></dl>
-          <div className="form-grid">{editableFields.map(([key, label]) => {const fieldMessage=fieldErrors[key]||validationByField[key]?.message;return <label key={key} className={fieldMessage?"field-invalid":""}>{label}<input data-field={key} aria-invalid={Boolean(fieldMessage)} disabled={!isManager||Boolean(pending)} value={form[key]} onChange={(e)=>{setForm({...form,[key]:e.target.value});setDirty(true);setFieldErrors({...fieldErrors,[key]:""})}} />{fieldMessage&&<small className="field-error">{fieldMessage}</small>}{evidence[key] && <small title={evidence[key]}>AI zdroj: {evidence[key]}</small>}</label>})}</div>
+          <div className="form-grid">{editableFields.map(([key, label]) => {const fieldMessage=fieldErrors[key]||validationByField[key]?.message;const change=(value:string)=>{setForm({...form,[key]:value});setDirty(true);setFieldErrors({...fieldErrors,[key]:""})};return <label key={key} className={fieldMessage?"field-invalid":""}>{label}{dateFields.has(key)?<CzechDateInput field={key} invalid={Boolean(fieldMessage)} disabled={!isManager||Boolean(pending)} value={form[key]} onChange={change}/>:<input data-field={key} aria-invalid={Boolean(fieldMessage)} disabled={!isManager||Boolean(pending)} value={form[key]} onChange={(event)=>change(event.target.value)} />}{fieldMessage&&<small className="field-error">{fieldMessage}</small>}{evidence[key] && <small title={evidence[key]}>AI zdroj: {evidence[key]}</small>}</label>})}</div>
         </div>
         <div className="card vat-card"><div className="card-title"><div><h2>DPH a zaokrouhlení</h2><p>Hodnoty vytištěné na faktuře zůstávají autoritativní; přepočet je pouze kontrola.</p></div></div>
           <dl className="metadata-grid"><div><dt>Základ z faktury</dt><dd>{money(String(invoice.data.total_without_vat||""),String(invoice.data.currency||"CZK"))}</dd></div><div><dt>DPH z faktury</dt><dd>{money(String(invoice.data.total_vat||""),String(invoice.data.currency||"CZK"))}</dd></div><div><dt>Celkem z faktury</dt><dd>{money(String(invoice.data.total_amount||""),String(invoice.data.currency||"CZK"))}</dd></div></dl>

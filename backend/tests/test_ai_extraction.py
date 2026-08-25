@@ -18,7 +18,7 @@ from app.services.extraction import (
     complete_ai_extraction,
     queue_ai_extraction,
 )
-from app.services.workflow import create_invoice
+from app.services.workflow import create_invoice, update_invoice_data
 
 
 def structured(supplier: str = "TESTOVACÍ DODAVATEL s.r.o.") -> dict:
@@ -82,6 +82,7 @@ async def test_ollama_request_is_cpu_deterministic_and_delimits_prompt_injection
         assert body["messages"][1]["content"].endswith("JSON podle schématu.")
         assert "NEDŮVĚRYHODNÝ VSTUP" in body["messages"][0]["content"]
         assert '"schema_version"' in body["messages"][0]["content"]
+        assert "Nikdy nekopíruj Datum vystavení" in body["messages"][0]["content"]
         return httpx.Response(200, json={"message": {"content": json.dumps(structured())}})
 
     client = OllamaClient(Settings(ollama_base_url="http://ollama.test"), httpx.MockTransport(handler))
@@ -189,6 +190,58 @@ def test_first_extraction_populates_detail_current_values_and_evidence(db) -> No
         "value": "TESTOVACÍ DODAVATEL s.r.o.",
         "source_text": "TESTOVACÍ DODAVATEL s.r.o.",
     }
+
+
+def test_gmtech_duzp_correction_creates_revision_and_extraction_linked_audit(db) -> None:
+    invoice = create_invoice(db, 14)
+    invoice.paperless_ocr_text = (
+        "Datum vystavení: 08.07.2026\n"
+        "Datum splatnosti: 07.08.2026\n"
+        "Datum zd. plnění: 30.06.2026"
+    )
+    update_invoice_data(
+        db,
+        invoice,
+        {"taxable_supply_date": "2026-07-08"},
+        "system",
+    )
+    extraction = queue_ai_extraction(db, invoice, Settings(ollama_model="qwen3:8b"))
+    wrong_model_payload = structured("GMtech s.r.o.")
+    wrong_model_payload["issue_date"] = {
+        "value": "2026-07-08",
+        "source_text": "Datum vystavení: 08.07.2026",
+    }
+    wrong_model_payload["taxable_supply_date"] = {
+        "value": "2026-07-08",
+        "source_text": "Datum vystavení: 08.07.2026",
+    }
+    wrong_model_payload["due_date"] = {
+        "value": "2026-08-07",
+        "source_text": "Datum splatnosti: 07.08.2026",
+    }
+    complete_ai_extraction(db, extraction, result(wrong_model_payload))
+
+    assert extraction.parsed_result["taxable_supply_date"] == {
+        "value": "2026-06-30",
+        "source_text": "Datum zd. plnění: 30.06.2026",
+    }
+    apply_ai_extraction(db, invoice, extraction, "manager", confirm_overwrite=True)
+    db.flush()
+    assert invoice.current_revision.data["issue_date"] == "2026-07-08"
+    assert invoice.current_revision.data["taxable_supply_date"] == "2026-06-30"
+    assert invoice.current_revision.data["due_date"] == "2026-08-07"
+    event = db.scalar(
+        select(AuditEvent).where(
+            AuditEvent.invoice_id == invoice.id,
+            AuditEvent.event_type == "FIELD_CHANGED",
+            AuditEvent.metadata_json["field"].as_string() == "taxable_supply_date",
+        )
+    )
+    assert event is not None
+    assert event.old_value == {"taxable_supply_date": "2026-07-08"}
+    assert event.new_value == {"taxable_supply_date": "2026-06-30"}
+    assert event.metadata_json["ai_extraction_id"] == extraction.id
+    assert event.metadata_json["extraction_revision"] == extraction.extraction_revision
 
 
 def test_invoice_detail_serializes_ai_invoice_revision(db) -> None:

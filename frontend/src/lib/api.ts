@@ -1,4 +1,5 @@
 import type { User } from "../types";
+import { formatDateCs, formatDateTimeCs } from "./dates";
 
 let currentUser: User | null = null;
 
@@ -39,15 +40,9 @@ export function money(value?: string | number, currency = "CZK") {
 }
 
 export function shortDate(value?: string) {
-  return value ? new Intl.DateTimeFormat("cs-CZ").format(new Date(value)) : "—";
+  return formatDateCs(value);
 }
 
 export function pragueDateTime(value?: string) {
-  return value
-    ? new Intl.DateTimeFormat("cs-CZ", {
-        dateStyle: "medium",
-        timeStyle: "medium",
-        timeZone: "Europe/Prague",
-      }).format(new Date(value))
-    : "—";
+  return formatDateTimeCs(value);
 }

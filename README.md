@@ -35,6 +35,8 @@ Nový POHODA export vyžaduje serverovou hodnotu `POHODA_TARGET_ICO`. Jde o IČO
 
 Dashboard a detail se průběžně obnovují pollingem. Mutace používají očekávané číslo revize; konflikt vrací HTTP 409 a rozepsaná data v prohlížeči zůstávají zachována.
 
+Datumy zůstávají v databázi, API a POHODA XML ve formátu ISO. Uživatelské UI je jednotně zobrazuje a přijímá jako `DD.MM.YYYY`; neexistující datum se odmítne inline. Extrakce rozlišuje Datum vystavení, explicitní české varianty DUZP a Datum splatnosti včetně samostatné provenance a chybějící DUZP neodhaduje.
+
 Testovací Paperless používá vlastní PostgreSQL databázi, Redis a persistentní volumes a nesmí sdílet produkční data ani tokeny. Postup je v [docs/PAPERLESS_INTEGRATION.md](docs/PAPERLESS_INTEGRATION.md) a OIDC v [docs/PAPERLESS_KEYCLOAK.md](docs/PAPERLESS_KEYCLOAK.md).
 
 ## Vývoj
