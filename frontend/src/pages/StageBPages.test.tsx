@@ -108,7 +108,7 @@ describe("Stage B pages", () => {
 
     view.rerender(
       <InvoiceDetail
-        invoice={{ ...first, current_revision_number: 2, data: { supplier_name: "Nová hodnota ze serveru" } }}
+        invoice={{ ...first, data: { supplier_name: "Nová hodnota ze serveru" } }}
         user={user}
         onBack={() => undefined}
         onRefresh={() => undefined}
@@ -117,6 +117,37 @@ describe("Stage B pages", () => {
 
     expect(await screen.findByText(/Na serveru je novější revize/)).toBeVisible();
     expect(screen.getByLabelText("Dodavatel")).toHaveValue("Rozepsaná lokální hodnota");
+  });
+
+  it("hydrates empty inputs when first AI extraction populates the same revision", async () => {
+    mockEmptyApi();
+    const processing = { ...invoice, ai_status: "AI_PROCESSING" as const, data: {} };
+    const view = render(
+      <InvoiceDetail invoice={processing} user={user} onBack={() => undefined} onRefresh={() => undefined} />,
+    );
+    expect(screen.getByLabelText("Dodavatel")).toHaveValue("");
+    expect(screen.getByLabelText("IČO")).toHaveValue("");
+
+    view.rerender(
+      <InvoiceDetail
+        invoice={{
+          ...processing,
+          ai_status: "AI_COMPLETED",
+          data: { supplier_name: "GIRITON Systems s.r.o.", supplier_ico: "28652240" },
+          extracted_fields: [
+            { field_name: "supplier_name", value: "GIRITON Systems s.r.o.", source_text: "DODAVATEL GIRITON Systems s.r.o." },
+            { field_name: "supplier_ico", value: "28652240", source_text: "IČO 28652240" },
+          ],
+        }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: /^Dodavatel/ })).toHaveValue("GIRITON Systems s.r.o."));
+    expect(screen.getByRole("textbox", { name: /^IČO/ })).toHaveValue("28652240");
+    expect(screen.getByText("AI zdroj: DODAVATEL GIRITON Systems s.r.o.")).toBeVisible();
   });
 
   it("shows field and allocation errors next to their sections", async () => {

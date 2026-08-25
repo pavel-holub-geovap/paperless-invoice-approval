@@ -59,6 +59,6 @@ Browser nikdy nevidí Paperless token ani client secret. Backend drží náhodn�
 
 ## Konzistence klienta a audit požadavků
 
-Frontend používá polling (dashboard 5 s, otevřený detail 3 s, úkoly 5 s) a po mutaci okamžitý refetch. Editační payload nese `expected_revision`; backend při nesouladu vrací HTTP 409 `STALE_REVISION`. Lokální dirty stav se pollingem nehydratuje.
+Frontend používá polling (dashboard 5 s, otevřený detail 3 s, úkoly 5 s) a po mutaci okamžitý refetch. Editační payload nese `expected_revision`; backend při nesouladu vrací HTTP 409 `STALE_REVISION`. Serverový detail a lokální formulářový draft jsou oddělené: čistý draft se hydratuje při změně editovatelných serverových dat i uvnitř stejné revize, zatímco dirty draft se pollingem nepřepisuje a uživatel dostane explicitní volbu načíst serverovou verzi. Číslo revize samo není hydratační signál, protože první AI auto-apply naplňuje počáteční revizi 1.
 
 Middleware přiděluje nebo přebírá `X-Request-ID`. Auditní služba jej spolu s `actor_username` a `actor_roles` přidává do JSON metadata. POHODA generátor odděluje dodavatele ve zdrojové revizi od cílové účetní jednotky v serverové konfiguraci.

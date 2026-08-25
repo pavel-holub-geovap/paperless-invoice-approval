@@ -151,7 +151,6 @@ def test_extraction_history_never_overwrites_without_confirmation(db) -> None:
     assert invoice.status == InvoiceStatus.QUEUE_REVIEW
     assert invoice.ai_status == AIExtractionStatus.AI_COMPLETED
     assert invoice.current_revision.data["supplier_name"] == "TESTOVACÍ DODAVATEL s.r.o."
-
     second = queue_ai_extraction(db, invoice, settings, actor="manager", reextraction=True)
     complete_ai_extraction(db, second, result(structured("ZMĚNĚNÝ DODAVATEL")))
     assert second.extraction_revision == 2
@@ -165,8 +164,31 @@ def test_extraction_history_never_overwrites_without_confirmation(db) -> None:
     assert second.applied
     assert invoice.current_revision.data["supplier_name"] == "ZMĚNĚNÝ DODAVATEL"
     events = db.scalars(select(AuditEvent.event_type).where(AuditEvent.invoice_id == invoice.id)).all()
-    assert events.count("AI_EXTRACTION_APPLIED") == 2
+    assert events.count("AI_EXTRACTION_APPLIED") == 1
+    assert "AI_REEXTRACTION_APPLIED" in events
     assert "AI_REEXTRACTION_REQUESTED" in events
+
+
+def test_first_extraction_populates_detail_current_values_and_evidence(db) -> None:
+    invoice = create_invoice(db, 2)
+    invoice.paperless_ocr_text = "OCR"
+    extraction = queue_ai_extraction(db, invoice, Settings())
+    complete_ai_extraction(db, extraction, result(structured()))
+    db.flush()
+
+    detail = serialize_invoice(db, invoice)
+    assert detail["current_revision_number"] == 1
+    assert detail["data"]["supplier_name"] == "TESTOVACÍ DODAVATEL s.r.o."
+    assert detail["data"]["supplier_ico"] == "00000019"
+    assert detail["ai"]["latest"]["candidate_data"]["supplier_name"] == (
+        "TESTOVACÍ DODAVATEL s.r.o."
+    )
+    evidence = {row["field_name"]: row for row in detail["extracted_fields"]}
+    assert evidence["supplier_name"] == {
+        "field_name": "supplier_name",
+        "value": "TESTOVACÍ DODAVATEL s.r.o.",
+        "source_text": "TESTOVACÍ DODAVATEL s.r.o.",
+    }
 
 
 def test_invoice_detail_serializes_ai_invoice_revision(db) -> None:

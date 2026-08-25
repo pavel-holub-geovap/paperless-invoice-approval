@@ -7,11 +7,20 @@ const editableFields = [
   ["supplier_name", "Dodavatel"], ["supplier_ico", "IČO"], ["supplier_dic", "DIČ"], ["supplier_address_raw", "Adresa – původní text"], ["invoice_number", "Číslo faktury"],
   ["supplier_street", "Ulice pro POHODU"], ["supplier_city", "Město pro POHODU"], ["supplier_zip", "PSČ pro POHODU"],
   ["variable_symbol", "Variabilní symbol"], ["issue_date", "Datum vystavení"], ["taxable_supply_date", "DUZP"],
-  ["due_date", "Splatnost"], ["currency", "Měna"], ["bank_account", "Účet [prefix-]číslo"], ["bank_code", "Kód banky"], ["iban", "IBAN"], ["swift_bic", "SWIFT/BIC"],
+  ["due_date", "Splatnost"], ["currency", "Měna"], ["bank_account_raw", "Účet – původní hodnota"], ["bank_account_prefix", "Předčíslí účtu"], ["bank_account_number", "Číslo účtu"], ["bank_code", "Kód banky"], ["iban", "IBAN"], ["swift_bic", "SWIFT/BIC"],
   ["total_without_vat", "Základ bez DPH"], ["total_vat", "DPH celkem"], ["total_amount", "Celkem"], ["description", "Popis"],
 ] as const;
 
 const formFromInvoice = (invoice: Invoice) => Object.fromEntries(editableFields.map(([key]) => [key, String(invoice.data[key] ?? (key === "supplier_address_raw" ? invoice.data.supplier_address : undefined) ?? "")]));
+
+const draftSnapshot = (invoice: Invoice) => JSON.stringify({
+  revision: invoice.current_revision_number,
+  data: Object.fromEntries(editableFields.map(([key]) => [key, invoice.data[key] ?? null])),
+  allocations: invoice.allocations.map((row) => ({
+    id: row.id, amount: row.amount, percentage: row.percentage ?? null, note: row.note ?? null,
+    vat_breakdown: row.vat_breakdown, approvers: row.assignments.map((item) => item.approver_subject),
+  })),
+});
 
 function shown(value: unknown): string {
   if (value == null || value === "") return "—";
@@ -21,6 +30,8 @@ function shown(value: unknown): string {
 
 const auditLabels: Record<string, string> = {
   DOCUMENT_DISCOVERED: "Dokument nalezen v Paperless",
+  AI_EXTRACTION_APPLIED: "Použita první AI extrakce",
+  AI_REEXTRACTION_APPLIED: "Použita nová AI extrakce",
   INVOICE_FIELD_CHANGED: "Změněn údaj faktury",
   FIELD_CHANGED: "Změněn údaj faktury (historický záznam)",
   REVISION_CREATED: "Vytvořena nová revize",
@@ -77,22 +88,30 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
   const [sectionError, setSectionError] = useState("");
   const [pohodaConfig, setPohodaConfig] = useState<PohodaConfig | null>(null);
   const hydratedRevision = useRef(invoice.current_revision_number);
+  const hydratedSnapshot = useRef(draftSnapshot(invoice));
   const hydrate = (next: Invoice) => {
     setForm(formFromInvoice(next));
     setAllocationRows(next.allocations.map((a)=>({cost_center_id:a.cost_center.id,amount:String(a.amount),percentage:String(a.percentage??""),note:a.note??"",vat_breakdown:JSON.stringify(a.vat_breakdown??[])})));
     setApproverChoices(Object.fromEntries(next.allocations.map((a)=>[a.id,a.assignments.map((x)=>x.approver_subject)])));
     hydratedRevision.current = next.current_revision_number;
+    hydratedSnapshot.current = draftSnapshot(next);
     setDirty(false);
     setServerUpdateAvailable(false);
   };
   useEffect(() => { void Promise.all([api<CostCenter[]>("/cost-centers"), api<UserReference[]>("/users?role=APPROVER"), api<AuditEvent[]>(`/invoices/${invoice.id}/audit`), api<PohodaConfig>("/exports/config")]).then(([c,a,h,p])=>{setCentres(c);setApprovers(a);setAudit(h);setPohodaConfig(p)}); }, [invoice.id, invoice.current_revision_number]);
   useEffect(() => {
-    if (invoice.current_revision_number === hydratedRevision.current) return;
+    const nextSnapshot = draftSnapshot(invoice);
+    if (nextSnapshot === hydratedSnapshot.current) return;
     if (dirty) setServerUpdateAvailable(true);
     else hydrate(invoice);
   }, [invoice, dirty]);
   const evidence = useMemo(() => Object.fromEntries(invoice.extracted_fields.map((f) => [f.field_name, f.source_text])), [invoice]);
   const latestAI = invoice.ai.latest;
+  const candidateDifferences = latestAI?.candidate_data ? editableFields.flatMap(([key, label]) => {
+    const candidate = latestAI.candidate_data?.[key];
+    if (candidate == null || String(candidate) === String(invoice.data[key] ?? "")) return [];
+    return [{ key, label, current: invoice.data[key], candidate }];
+  }) : [];
   const isManager = user.roles.includes("QUEUE_MANAGER");
   const sourceMissing = invoice.source.status === "MISSING";
   const actionable = invoice.disposition.status === "ACTIVE" && !sourceMissing;
@@ -201,7 +220,8 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
             <dl className="metadata-grid"><div><dt>Model</dt><dd>{latestAI.model}</dd></div><div><dt>Verze</dt><dd>{latestAI.schema_version} · {latestAI.prompt_version}</dd></div><div><dt>Doba inference</dt><dd>{latestAI.duration_ms != null ? `${(latestAI.duration_ms / 1000).toFixed(2)} s` : "—"}</dd></div><div><dt>Běh</dt><dd>#{latestAI.extraction_revision}{latestAI.applied ? " · použit" : latestAI.requires_confirmation ? " · čeká na potvrzení" : ""}</dd></div></dl>
             {latestAI.error_message && <div className="alert danger"><strong>{latestAI.error_code}</strong>: {latestAI.error_message}</div>}
             {latestAI.parsed_result && <details className="candidate"><summary>Strukturovaný výsledek běhu #{latestAI.extraction_revision}</summary><dl>{Object.entries(latestAI.parsed_result).filter(([key])=>key!=="schema_version").map(([key,value])=><div key={key}><dt>{key}</dt><dd>{shown(value && typeof value === "object" && "value" in value ? (value as {value: unknown}).value : value)}</dd></div>)}</dl></details>}
-            {latestAI.requires_confirmation && isManager && <button className="button warning" disabled={Boolean(pending)} onClick={()=>{if(window.confirm("Nová extrakce přepíše aktuální pracovní údaje a vytvoří auditní záznam. Pokračovat?")) void call("ai-apply", `/invoices/${invoice.id}/ai-extractions/${latestAI.id}/apply`,{method:"POST",body:JSON.stringify({confirm_overwrite:true})},"Kandidát byl převzat do nové revize.")}}>{pending==="ai-apply"?"Přebírám…":"Potvrdit převzetí kandidáta"}</button>}
+            {latestAI.requires_confirmation && candidateDifferences.length > 0 && <details className="candidate"><summary>Porovnat kandidát s aktuálními údaji ({candidateDifferences.length})</summary><dl>{candidateDifferences.map((row)=><div key={row.key}><dt>{row.label}</dt><dd>aktuálně: {shown(row.current)} → kandidát: {shown(row.candidate)}</dd></div>)}</dl></details>}
+            {latestAI.requires_confirmation && isManager && <button className="button warning" disabled={Boolean(pending)} onClick={()=>{if(window.confirm("Nová extrakce nahradí rozdílné pracovní údaje, vytvoří novou revizi a audit. Ruční změny nebudou přepsány bez tohoto potvrzení. Pokračovat?")) void call("ai-apply", `/invoices/${invoice.id}/ai-extractions/${latestAI.id}/apply`,{method:"POST",body:JSON.stringify({confirm_overwrite:true})},"Kandidát byl převzat do nové revize.")}}>{pending==="ai-apply"?"Přebírám…":"Použít novou extrakci"}</button>}
           </> : <p>Extrakce zatím nebyla spuštěna.</p>}
           {isManager && <button className="button secondary" disabled={Boolean(pending)||["AI_PENDING","AI_PROCESSING"].includes(invoice.ai_status)} onClick={()=>void call("ai", `/invoices/${invoice.id}/ai-extractions`,{method:"POST"},"Extrakce byla zařazena do fronty.")}>{pending==="ai"?"Zařazuji…":"Spustit bezpečnou re-extrakci"}</button>}
           {invoice.ai.history.length > 1 && <details><summary>Historie AI běhů ({invoice.ai.history.length})</summary><ol>{invoice.ai.history.map((run)=><li key={run.id}>#{run.extraction_revision} · {run.model} · {run.status} · {run.duration_ms != null ? `${(run.duration_ms/1000).toFixed(2)} s` : "bez času"}{run.applied ? " · použit" : ""}</li>)}</ol></details>}

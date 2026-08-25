@@ -124,3 +124,24 @@ Nový read-mostly smoke `scripts/smoke_correction_iteration.py` ověřuje obě �
 `scripts/smoke_giriton_address_vat.py` spouští append-only Qwen3 8B kandidáty nad dostupnými skutečnými GIRITON dokumenty. Vypíše normalizovanou dodavatelskou adresu, banku, VAT/rounding řádky, deklarované součty a všechny VAT severity; kandidáty automaticky neaplikuje a zachovává workflow. `GIRITON_INVOICE_NUMBER` a `GIRITON_SMOKE_COUNT` omezí cíle, `GIRITON_SKIP_EXTRACTION=1` provede pouze read-only přepočet posledního kandidáta aktuální deterministickou vrstvou.
 
 `scripts/smoke_giriton_apply_export.py` aplikuje jen předem ověřený kandidát faktury `25081151`, vytvoří novou revizi, jedno rozúčtování, přiřadí `approver1`, provede skutečné OIDC schválení a připraví fakturu k exportu. `scripts/smoke_giriton_export_current.py` je následný idempotentní export/read-only verifier: ověří immutable artifact, XSD, přesnou adresu, banku a součty bez potvrzení importu do POHODY.
+
+## Regrese naplnění formuláře po AI
+
+`scripts/smoke_form_population.py` ponechá vlastní jednoznačně pojmenovaný syntetický dokument v izolovaném Paperless a pracuje ve třech fázích. Fáze `create` nahraje PDF a vrátí Paperless/invoice ID dříve, než skončí Qwen; detail lze otevřít v browseru během `AI_PROCESSING`. Fáze `first` ověří first extraction auto-apply do revize 1, oddělené `candidate_data`, current API data, evidence a audit. Fáze `reextract` ověří candidate bez automatického přepsání, explicitní aplikaci do nové revize a ochranu následného ručního override.
+
+```text
+docker compose run --rm --no-deps --env-from-file .env \
+  -e FORM_SMOKE_PHASE=create \
+  -v "$PWD/scripts:/smoke:ro" \
+  -v "$PWD/fixtures/synthetic:/fixtures:ro" \
+  worker python /smoke/smoke_form_population.py
+
+docker compose run --rm --no-deps --env-from-file .env \
+  -e FORM_SMOKE_PHASE=first \
+  -e FORM_SMOKE_DOCUMENT_ID=<paperless-id> \
+  -e FORM_SMOKE_INVOICE_ID=<invoice-id> \
+  -v "$PWD/scripts:/smoke:ro" \
+  worker python /smoke/smoke_form_population.py
+```
+
+Browser musí bez F5 prokázat hodnoty přímo v input elementech. Automatická frontend regrese simuluje stejnou revizi s prázdnými daty během `AI_PROCESSING`, následný serverový snapshot s daty a také dirty draft při refetchi.

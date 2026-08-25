@@ -65,6 +65,7 @@ export type AIExtraction = {
   validation_summary?: { ok: number; warning: number; blocking_error: number };
   validation_results?: Validation[];
   parsed_result?: Record<string, unknown>;
+  candidate_data?: Record<string, unknown>;
   error_code?: string;
   error_message?: string;
   queued_at: string;

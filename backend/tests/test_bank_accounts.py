@@ -10,6 +10,7 @@ from app.services.bank_accounts import (
     valid_czech_account_checksum,
 )
 from app.services.pohoda import NS_INV, NS_TYP, generate_invoice_xml
+from app.services.workflow import create_invoice, update_invoice_data
 
 
 def revision(*, vat_lines: list[dict[str, str]], total: str) -> InvoiceRevision:
@@ -112,3 +113,28 @@ def test_pohoda_receives_account_without_slash_and_separate_bank_code() -> None:
     namespaces = {"inv": NS_INV, "typ": NS_TYP}
     assert root.xpath("string(//inv:paymentAccount/typ:accountNo)", namespaces=namespaces) == "19-2000145399"
     assert root.xpath("string(//inv:paymentAccount/typ:bankCode)", namespaces=namespaces) == "0800"
+
+
+def test_editing_structured_account_fields_updates_legacy_source_of_truth(db) -> None:
+    invoice = create_invoice(db, 88)
+    invoice.current_revision.data = normalize_payment_data(
+        {"bank_account": "123456789/0100", "bank_code": "0100"}
+    )
+
+    update_invoice_data(
+        db,
+        invoice,
+        {
+            "bank_account_raw": "19-2000145399/0800",
+            "bank_account_prefix": "19",
+            "bank_account_number": "2000145399",
+            "bank_code": "0800",
+        },
+        "manager",
+    )
+
+    assert invoice.current_revision.data["bank_account_raw"] == "19-2000145399/0800"
+    assert invoice.current_revision.data["bank_account_prefix"] == "19"
+    assert invoice.current_revision.data["bank_account_number"] == "2000145399"
+    assert invoice.current_revision.data["bank_account"] == "19-2000145399"
+    assert invoice.current_revision.data["bank_code"] == "0800"

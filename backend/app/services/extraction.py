@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -89,6 +90,38 @@ def extraction_to_invoice_data(
         "description": scalar("description"),
     })
     return normalize_payment_data(reconcile_printed_invoice_amounts(data, ocr_text))
+
+
+def _stored_extraction_payload(extraction: AIExtraction) -> InvoiceExtractionV1:
+    if extraction.parsed_result is None:
+        raise ValueError("AI extraction has no parsed result")
+    stored_payload = deepcopy(extraction.parsed_result)
+    if stored_payload.get("schema_version") == "invoice-extraction.v1":
+        legacy_address = stored_payload.pop(
+            "supplier_address", {"value": None, "source_text": None}
+        )
+        stored_payload.update(
+            {
+                "schema_version": "invoice-extraction.v3",
+                "supplier_address_raw": legacy_address,
+                "supplier_street": {"value": None, "source_text": None},
+                "supplier_city": {"value": None, "source_text": None},
+                "supplier_zip": {"value": None, "source_text": None},
+            }
+        )
+    elif stored_payload.get("schema_version") == "invoice-extraction.v2":
+        stored_payload["schema_version"] = "invoice-extraction.v3"
+    for row in stored_payload.get("vat_lines", []):
+        row.setdefault("gross_amount", None)
+    return InvoiceExtractionV1.model_validate(stored_payload)
+
+
+def stored_extraction_to_invoice_data(
+    extraction: AIExtraction, ocr_text: str | None = None
+) -> dict[str, Any]:
+    """Return normalized candidate data without changing extraction or invoice state."""
+    payload = _stored_extraction_payload(extraction)
+    return extraction_to_invoice_data(payload, ocr_text)
 
 
 def _evidence(
@@ -347,6 +380,7 @@ def complete_ai_extraction(
             metadata={
                 "ai_extraction_id": extraction.id,
                 "extraction_revision": extraction.extraction_revision,
+                "invoice_revision": invoice.current_revision_number,
                 "automatic": True,
             },
         )
@@ -397,24 +431,8 @@ def apply_ai_extraction(
     if extraction.requires_confirmation and not confirm_overwrite:
         raise ValueError("Applying re-extraction requires explicit overwrite confirmation")
 
-    stored_payload = dict(extraction.parsed_result)
-    if stored_payload.get("schema_version") == "invoice-extraction.v1":
-        legacy_address = stored_payload.pop("supplier_address", {"value": None, "source_text": None})
-        stored_payload.update(
-            {
-                "schema_version": "invoice-extraction.v3",
-                "supplier_address_raw": legacy_address,
-                "supplier_street": {"value": None, "source_text": None},
-                "supplier_city": {"value": None, "source_text": None},
-                "supplier_zip": {"value": None, "source_text": None},
-            }
-        )
-    elif stored_payload.get("schema_version") == "invoice-extraction.v2":
-        stored_payload["schema_version"] = "invoice-extraction.v3"
-    for row in stored_payload.get("vat_lines", []):
-        row.setdefault("gross_amount", None)
-    payload = InvoiceExtractionV1.model_validate(stored_payload)
-    data = extraction_to_invoice_data(payload, invoice.paperless_ocr_text)
+    data = stored_extraction_to_invoice_data(extraction, invoice.paperless_ocr_text)
+    payload = _stored_extraction_payload(extraction)
     update_invoice_data(
         db,
         invoice,
@@ -430,12 +448,13 @@ def apply_ai_extraction(
     extraction.requires_confirmation = False
     record_event(
         db,
-        "AI_EXTRACTION_APPLIED",
+        "AI_REEXTRACTION_APPLIED",
         actor=actor,
         invoice=invoice,
         metadata={
             "ai_extraction_id": extraction.id,
             "extraction_revision": extraction.extraction_revision,
+            "invoice_revision": invoice.current_revision_number,
             "automatic": False,
         },
     )

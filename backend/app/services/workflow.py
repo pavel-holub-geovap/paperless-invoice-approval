@@ -199,6 +199,17 @@ def update_invoice_data(
         "iban",
         "swift_bic",
     }:
+        if set(changes) & {
+            "bank_account_raw",
+            "bank_account_prefix",
+            "bank_account_number",
+        } and "bank_account" not in changes:
+            prefix = str(merged.get("bank_account_prefix") or "").strip()
+            number = str(merged.get("bank_account_number") or "").strip()
+            raw = str(merged.get("bank_account_raw") or "").strip()
+            merged["bank_account"] = (
+                f"{prefix}-{number}" if prefix and number else number or raw or None
+            )
         merged = normalize_payment_data(merged)
     changed = {key: value for key, value in merged.items() if current.data.get(key) != value}
     if not changed:

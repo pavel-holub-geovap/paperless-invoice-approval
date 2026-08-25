@@ -74,3 +74,9 @@ LLM poskytuje hodnotu a evidence, nikoli strukturu českého clearingového úč
 - Výchozí extrakční model je Qwen3 8B bez automatického fallbacku. Historické běhy zůstávají nedotčené.
 - Pro živou aktualizaci byl zvolen polling; websocket infrastruktura by nepřinesla úměrný přínos.
 - Optimistická konkurence používá číslo doménové revize a HTTP 409. Polling nikdy nepřepisuje dirty formulář.
+
+## ADR-019: Serverový snapshot a formulářový draft jsou oddělené zdroje stavu
+
+Detail API je autorita pro current invoice revision, evidence, AI kandidáta, workflow a validace. Editovatelný formulář drží pouze lokální draft odvozený z current dat. Hydratace se řídí fingerprintem všech editovatelných hodnot a allocations, nikoli jen číslem revize, protože první automatická AI aplikace legitimně naplní počáteční revizi beze změny jejího čísla. Nový serverový snapshot automaticky naplní pouze čistý draft; dirty draft zůstane zachovaný a UI nabídne explicitní načtení serverové verze.
+
+Raw `parsed_result`, normalizovaná `candidate_data`, aplikovaná `data` a `extracted_fields.source_text` jsou samostatné kontrakty. Input nikdy nepoužívá evidence jako fallback. Re-extrakce je candidate, UI ukáže rozdíly a její explicitní aplikace vytvoří revizi i audit `AI_REEXTRACTION_APPLIED`.

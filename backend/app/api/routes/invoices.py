@@ -43,7 +43,11 @@ from app.services.approval_setup import replace_allocations, replace_approvers
 from app.services.audit import record_event
 from app.services.disposition import restore_disposition, set_disposition
 from app.services.exports import latest_valid_artifact
-from app.services.extraction import apply_ai_extraction, queue_ai_extraction
+from app.services.extraction import (
+    apply_ai_extraction,
+    queue_ai_extraction,
+    stored_extraction_to_invoice_data,
+)
 from app.services.paperless_sync import mark_source_missing
 from app.services.validation import run_validations
 from app.services.workflow import (
@@ -157,6 +161,12 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
         if include_result:
             result["parsed_result"] = row.parsed_result
             result["validation_results"] = row.validation_results_json
+            try:
+                result["candidate_data"] = stored_extraction_to_invoice_data(
+                    row, invoice.paperless_ocr_text
+                )
+            except (TypeError, ValueError):
+                result["candidate_data"] = None
         return result
     return {
         "id": invoice.id,
