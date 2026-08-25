@@ -5,7 +5,7 @@
 - Git remote: `git@github-paperless-approval:pavel-holub-geovap/paperless-invoice-approval.git`
 - Approval aplikace: `http://172.30.172.167/`
 - Nasazeno: PostgreSQL, Redis, Keycloak, Paperless-ngx, Nginx, `approval-backend`, `approval-worker`, `approval-frontend`, Ollama a jednorázový `ollama-pull`. Všechny dlouhodobé služby jsou healthy; provision/bootstrap/pull kontejnery skončily kódem 0.
-- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0006 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
+- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0007 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
 - OIDC: skutečný Authorization Code flow prošel pro `queue-manager`, `approver1`, `approver2` a `approver3`. Approver nemůže otevřít manažerský seznam (HTTP 403).
 
 ## Opravná iterace po Etapě F
@@ -18,6 +18,13 @@
 - Frontend používá History API routy `/`, `/invoices/:id`, `/approvals`, `/cost-centers` a `/exports`. Manažerské Fronta odkazy, přímý detail a `popstate` jsou testované; backend authorization zůstává autoritativní.
 
 ## Reálné uživatelské faktury
+
+### Qwen3 8B raw schema a diagnostika
+
+- Původní `SCHEMA_VALIDATION_FAILED` na Paperless dokumentu `17`, extraction revision 1, prompt v4 vznikl proto, že Qwen vynechal povinné `total_amount`, místo něj vrátil extra `total_with_vat={"value":469,"source_text":"469,00"}` a přidal sedm dalších nepovolených polí. Starý kód validoval odpověď přímo jako `InvoiceExtractionV1`, zahodil raw odpověď i devět detailních Pydantic chyb a uložil jen obecné `Ollama JSON does not match InvoiceExtractionV1`. Historickou raw odpověď proto nelze zpětně obnovit.
+- Pipeline nyní používá prompt v5 a samostatné `invoice-extraction.raw.v1`: ploché Ollama structured-output schéma přijímá u známých raw hodnot string/null, následuje konzervativní deterministická normalizace a teprve potom přísné `invoice-extraction.v3`. Raw všech pokusů, přesné chyby, normalizační změny a počet corrective retry jsou uloženy v extraction revision. Nejvýše jeden retry dostane konkrétní validační feedback; schema/request chyby už nevyvolávají tři slepé job retry.
+- Skutečný více-dokumentový smoke po deploymentu prošel. Dokument `17`, revision 3, `qwen3:8b`, trval 1 057 602 ms a potřeboval jeden retry kvůli `vat_lines.0.adjustment_type="ZakladCZK"` (očekáváno `ROUNDING` nebo null). Normalizace mimo jiné provedla `"81,40"→81.40`, `"469,00"→469.00`, `"387,60"→387.60` a `"76001"→"760 01"`; finální `total_amount=469.00` a `InvoiceExtractionV1` validace prošla.
+- Dokument `14`, revision 3, trval 1 065 816 ms a potřeboval jeden retry kvůli `vat_lines.0.adjustment_type="line-item"`; normalizoval `"21%"→21` a `"14000"→"140 00"`. Dokument `11`, revision 5, prošel bez retry za 467 344 ms. Všechny tři mají zachovaný raw výstup, raw schema v1, kanonickou validaci `PASSED`; kandidáti nebyli aplikováni a workflow zůstalo postupně `QUEUE_REVIEW`, `QUEUE_REVIEW`, `READY_FOR_EXPORT`.
 
 - Paperless dokument `14`, GMtech faktura `20260182`, byl znovu vytěžen skutečným Qwen3 8B přes prompt `invoice-extraction.cs-en.v4`. Historická extraction revision 1 zůstala zachována s chybným DUZP `2026-07-08`; raw model revision 2 už vrátil vystavení `2026-07-08`, DUZP `2026-06-30` a splatnost `2026-08-07`. Kandidát byl standardním API aplikován jako invoice revision 2. DB i API mají stejné ISO hodnoty, provenance DUZP je `Datum zd. plnění: 30.06.2026` a append-only `FIELD_CHANGED` audit obsahuje old `2026-07-08`, new `2026-06-30`, extraction ID a uživatele `queue-manager`. Inference trvala 485 521 ms.
 - Paperless dokument `11`, GIRITON faktura `25081151`, byl 2026-08-24 znovu vytěžen Qwen3 8B přes schema/prompt v3 a deterministicky doplněn z vytištěné VAT tabulky a sumáře. Dodavatel je `GIRITON Systems s.r.o.`, raw adresa `Hornosušská 1399/4 735 64 Havířov - Prostřední Suchá`, street `Hornosušská 1399/4`, ZIP `735 64`, city `Havířov - Prostřední Suchá`; účet je `2300122535/2010` rozdělený na `2300122535` a `2010`.
@@ -41,10 +48,10 @@
 
 ## Závěrečné automatické ověření
 
-- Backend: 102/102 testů; Ruff čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty.
-- Frontend: 6 testovacích souborů, 21/21 testů; TypeScript a produkční Vite build prošly. Regrese pokrývají české datumové zobrazení a vstup, neexistující datum, sekční DPH/rounding varování, inline chyby, focus/scroll na první chybu, blokaci dvojitého uložení a schválení a zachování rozepsaného formuláře při nové serverové revizi.
+- Backend: 124/124 testů; Ruff čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty. Regrese pokrývají RawV1, serializované ploché Ollama schéma, přesnou diagnostiku, zachování dvou neúspěšných raw pokusů a nejvýše jeden corrective retry.
+- Frontend: 6 testovacích souborů, 22/22 testů; TypeScript a produkční Vite build prošly. Regrese navíc ověřuje manažerské zobrazení pole, skutečné hodnoty, očekávání, zprávy, pokusu, zachování raw odpovědi a počtu retry.
 - Stage B: OIDC queue-manager/approver1, role, PDF a manažerský endpoint 403 pro approvera prošly.
-- Stage D/Qwen3 8B: skutečné inference proběhly na Paperless dokumentech 1, 2, 4, 8 a 11. Poslední úplná regrese nad dokumentem 1 měla inference 258 136 ms a 254 989 ms, prompt-injection 262 097 ms, `AI_COMPLETED`, 12 OK / 0 WARNING / 0 blocking a zachovala stav `EXPORT_CREATED`. Kandidát se bez potvrzení neaplikoval a prompt injection nezměnila žádné pole. Modelové české částky s čárkou/procentem se před striktní Pydantic validací konzervativně normalizují.
+- Stage D/Qwen3 8B: skutečné inference proběhly na Paperless dokumentech 1, 2, 4, 8, 11, 14 a 17. Nejnovější RawV1 regrese nad dokumenty 17/14/11 skončila třikrát `AI_COMPLETED`, kanonická validace vždy prošla a workflow se nezměnilo. Starší úplná regrese nad dokumentem 1 měla inference 258 136 ms a 254 989 ms, prompt-injection 262 097 ms, 12 OK / 0 WARNING / 0 blocking a zachovala stav `EXPORT_CREATED`. Kandidáti se bez potvrzení neaplikovali a prompt injection nezměnila žádné pole.
 - Stage E: allocations 700/510 Kč, tři assignments, RETURN/REJECT/REOPEN, invalidace, idempotentní/souběžné approvals, 403 a Paperless tagy prošly; skončilo `APPROVED`.
 - Stage F: re-approval, XSD-valid generování/re-export, XML/PDF/ZIP hashe, response parser a bankovní XML semantics prošly; skončilo `EXPORT_CREATED`.
 - Živá aktualizace: samostatná session `approver1` schválila úkol, zatímco manager session zůstala otevřená bez ručního reloadu; polling změnu zobrazil po 116 ms. Následný cleanup schválil zbývající úkoly a Stage F vytvořila aktuální export.
