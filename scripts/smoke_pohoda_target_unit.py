@@ -6,9 +6,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from typing import Any
 from xml.etree import ElementTree as ET
 
-from smoke_stage_b import api, login, require, response_json
+import httpx
+from smoke_stage_b import login, require, response_json
 
 NS = {
     "dat": "http://www.stormware.cz/schema/version_2/data.xsd",
@@ -17,6 +19,28 @@ NS = {
 }
 EXPECTED_TARGET_ICO = "15049248"
 EXPECTED_SUPPLIER_ICO = "28652240"
+
+
+def api(
+    client: httpx.Client,
+    method: str,
+    url: str,
+    user: dict[str, Any],
+    *,
+    payload: dict[str, Any],
+    expected: int,
+) -> httpx.Response:
+    response = client.request(
+        method,
+        url,
+        headers={"X-CSRF-Token": user["csrf_token"]},
+        json=payload,
+    )
+    require(
+        response.status_code == expected,
+        f"{method} {url} returned HTTP {response.status_code}: {response.text[:500]}",
+    )
+    return response
 
 
 def main() -> None:
