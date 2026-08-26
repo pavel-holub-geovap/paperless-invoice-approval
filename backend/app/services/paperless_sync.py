@@ -87,7 +87,7 @@ def sync_document_snapshot(
             metadata={"paperless_document_id": document.id},
         )
 
-    if invoice.status == InvoiceStatus.NEW:
+    if invoice.status == InvoiceStatus.NEW and document.content.strip():
         transition(db, invoice, InvoiceStatus.VALIDATION, actor)
         transition(db, invoice, InvoiceStatus.QUEUE_REVIEW, actor)
     settings = get_settings()

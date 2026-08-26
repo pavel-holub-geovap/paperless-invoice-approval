@@ -348,6 +348,9 @@ class InvoiceListItem(BaseModel):
     title: str
     correspondent: str | None
     paperless_created_at: datetime | None
+    approval_created_at: datetime
+    uploaded_by: str | None
+    source_pdf_sha256: str | None
     sync_status: PaperlessSyncStatus
     ai_status: AIExtractionStatus
     supplier_name: str | None

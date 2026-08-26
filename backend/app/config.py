@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     allocation_tolerance: str = "0.01"
     session_ttl_seconds: int = 28800
     external_retry_attempts: int = 3
+    upload_max_bytes: int = 8 * 1024 * 1024
 
     @field_validator("paperless_base_url", "ollama_base_url", "keycloak_base_url")
     @classmethod

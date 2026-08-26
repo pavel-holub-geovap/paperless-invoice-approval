@@ -7,7 +7,12 @@ import pytest
 from pydantic import SecretStr
 
 from app.config import Settings
-from app.integrations.paperless import PaperlessClient, PaperlessError, PaperlessNotFound
+from app.integrations.paperless import (
+    PaperlessClient,
+    PaperlessError,
+    PaperlessNotFound,
+    PaperlessUnavailable,
+)
 
 
 @pytest.mark.asyncio
@@ -80,3 +85,98 @@ async def test_only_http_404_is_classified_as_missing_source() -> None:
     finally:
         await not_found.close()
         await unavailable.close()
+
+
+@pytest.mark.asyncio
+async def test_pdf_upload_uses_official_task_endpoint_and_configured_tag() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags/":
+            return httpx.Response(200, json={"results": [{"id": 17, "name": "Přijatá faktura"}]})
+        if request.url.path == "/api/documents/post_document/":
+            seen["content_type"] = request.headers["content-type"]
+            seen["body"] = request.content
+            return httpx.Response(200, json="task-upload-1")
+        raise AssertionError(request.url)
+
+    settings = Settings(
+        paperless_base_url="http://paperless.test",
+        paperless_api_token=SecretStr("test-token"),
+        paperless_api_token_file=None,
+    )
+    client = PaperlessClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        tag_id = await client.resolve_tag_id(settings.paperless_inbox_tag)
+        task_id = await client.post_document(
+            b"%PDF-1.7 test",
+            filename="safe.pdf",
+            title="safe",
+            tag_id=tag_id,
+        )
+    finally:
+        await client.close()
+
+    assert task_id == "task-upload-1"
+    assert "multipart/form-data" in str(seen["content_type"])
+    body = bytes(seen["body"])
+    assert b'name="tags"' in body and b"17" in body
+    assert b'name="document"; filename="safe.pdf"' in body
+
+
+@pytest.mark.asyncio
+async def test_connect_failure_before_upload_is_retryable() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline")
+
+    settings = Settings(
+        paperless_base_url="http://paperless.test",
+        paperless_api_token=SecretStr("test-token"),
+        paperless_api_token_file=None,
+    )
+    client = PaperlessClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(PaperlessUnavailable):
+            await client.post_document(
+                b"%PDF-1.7 test",
+                filename="safe.pdf",
+                title="safe",
+                tag_id=17,
+            )
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_paperless_task_returns_created_document_id() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["task_id"] == "task-upload-1"
+        return httpx.Response(
+            200,
+            json={
+                "count": 1,
+                "results": [
+                    {
+                        "task_id": "task-upload-1",
+                        "status": "success",
+                        "related_document_ids": [731],
+                        "result_data": {"message": "ok"},
+                    }
+                ],
+            },
+        )
+
+    settings = Settings(
+        paperless_base_url="http://paperless.test",
+        paperless_api_token=SecretStr("test-token"),
+        paperless_api_token_file=None,
+    )
+    client = PaperlessClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        task = await client.get_task("task-upload-1")
+    finally:
+        await client.close()
+
+    assert task is not None
+    assert task.status == "success"
+    assert task.related_document_ids == (731,)

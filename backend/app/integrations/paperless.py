@@ -19,6 +19,22 @@ class PaperlessNotFound(PaperlessError):
     pass
 
 
+class PaperlessAuthError(PaperlessError):
+    pass
+
+
+class PaperlessValidationError(PaperlessError):
+    pass
+
+
+class PaperlessUnavailable(PaperlessError):
+    """A failure known to have happened before Paperless accepted the request."""
+
+
+class PaperlessSubmissionUnknown(PaperlessError):
+    """Paperless may have accepted the upload, so automatic retry is unsafe."""
+
+
 @dataclass(frozen=True)
 class PaperlessDocument:
     id: int
@@ -30,6 +46,14 @@ class PaperlessDocument:
     correspondent: int | None
     correspondent_name: str | None
     original_filename: str | None
+
+
+@dataclass(frozen=True)
+class PaperlessTask:
+    task_id: str
+    status: str
+    related_document_ids: tuple[int, ...]
+    error: str | None
 
 
 class PaperlessClient:
@@ -150,6 +174,90 @@ class PaperlessClient:
         if "pdf" not in content_type.lower() and not response.content.startswith(b"%PDF"):
             raise PaperlessError("Paperless did not return a PDF")
         return response.content
+
+    async def post_document(
+        self,
+        content: bytes,
+        *,
+        filename: str,
+        title: str,
+        tag_id: int,
+    ) -> str:
+        """Submit exactly once; callers decide whether a transport failure is retryable."""
+        try:
+            response = await self.client.post(
+                "/documents/post_document/",
+                data={"title": title, "tags": str(tag_id)},
+                files={"document": (filename, content, "application/pdf")},
+            )
+        except httpx.ConnectError as exc:
+            raise PaperlessUnavailable("Paperless is unavailable before upload") from exc
+        except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
+            raise PaperlessSubmissionUnknown(
+                "Paperless upload response timed out; acceptance is unknown"
+            ) from exc
+        except httpx.NetworkError as exc:
+            raise PaperlessSubmissionUnknown(
+                "Paperless upload connection was interrupted; acceptance is unknown"
+            ) from exc
+        if response.status_code in {401, 403}:
+            raise PaperlessAuthError("Paperless rejected the technical credentials")
+        if response.status_code in {400, 404, 409, 415, 422}:
+            raise PaperlessValidationError("Paperless rejected the uploaded PDF")
+        if response.status_code >= 500:
+            raise PaperlessSubmissionUnknown(
+                f"Paperless returned HTTP {response.status_code}; acceptance is unknown"
+            )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise PaperlessError(
+                f"Paperless upload failed with HTTP {response.status_code}"
+            ) from exc
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = response.text.strip().strip('"')
+        task_id = payload if isinstance(payload, str) else payload.get("task_id")
+        if not task_id:
+            raise PaperlessSubmissionUnknown(
+                "Paperless accepted the upload but returned no task identifier"
+            )
+        return str(task_id)
+
+    async def get_task(self, task_id: str) -> PaperlessTask | None:
+        response = await self._request(
+            "GET", "/tasks/", params={"task_id": task_id, "page_size": 2}
+        )
+        payload = response.json()
+        rows = payload.get("results", []) if isinstance(payload, dict) else payload
+        matching = [row for row in rows if str(row.get("task_id")) == task_id]
+        if not matching:
+            return None
+        row = matching[0]
+        related = row.get("related_document_ids") or []
+        if not related:
+            legacy = row.get("related_document")
+            if legacy is not None:
+                related = [legacy]
+        result_data = row.get("result_data")
+        if not related and isinstance(result_data, dict):
+            document_id = result_data.get("document_id") or result_data.get("document")
+            if document_id is not None:
+                related = [document_id]
+        error = None
+        if str(row.get("status", "")).lower() in {"failure", "failed"}:
+            if isinstance(result_data, dict):
+                error = str(result_data.get("message") or result_data.get("error") or "")
+            elif result_data is not None:
+                error = str(result_data)
+            error = (error or "Paperless document processing failed")[:1000]
+        return PaperlessTask(
+            task_id=task_id,
+            status=str(row.get("status") or "pending").lower(),
+            related_document_ids=tuple(int(value) for value in related),
+            error=error,
+        )
 
     async def set_managed_status_tag(self, document_id: int, target_tag_name: str) -> None:
         document = await self.get_document(document_id)

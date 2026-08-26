@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { InvoiceTable } from "../components/InvoiceTable";
+import { InvoiceUploadPanel } from "../components/InvoiceUploadPanel";
 import { api } from "../lib/api";
 import type { Invoice, InvoiceListItem, User } from "../types";
 import { InvoiceDetail } from "./InvoiceDetail";
@@ -46,6 +47,7 @@ export function Dashboard({ user, invoiceId, onNavigate }: { user: User; invoice
   ];
   return <section>
     <div className="section-heading"><div><p className="eyebrow">Správa fronty</p><h1>Přijaté faktury</h1></div><button className="button secondary" onClick={() => void load()}>Obnovit</button></div>
+    <InvoiceUploadPanel user={user} onQueueChanged={() => void load()} onOpenInvoice={(id) => onNavigate(`/invoices/${encodeURIComponent(id)}`)} />
     <div className="filters">
       <label>Pohled<select aria-label="Pohled fronty" value={view} onChange={(e) => setView(e.target.value as typeof view)}><option value="active">Aktivní</option><option value="ignored">Ignorované</option><option value="missing">Chybějící zdroj</option><option value="all">Všechny</option></select></label>
       <label>Workflow<select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Všechny</option>{["NEW","VALIDATION","QUEUE_REVIEW","READY_FOR_APPROVAL","AWAITING_APPROVAL","RETURNED","REJECTED","APPROVED","READY_FOR_EXPORT","EXPORT_CREATED","IMPORTED_TO_POHODA"].map((s)=><option key={s}>{s}</option>)}</select></label>

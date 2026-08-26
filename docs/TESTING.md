@@ -48,6 +48,12 @@ docker compose run --rm --no-deps \
 
 Skript načítá testovací credentials pouze z chráněného serverového `.env`, projde Keycloak formulář a callback, ověří role, dashboard, detail, OCR, PDF a oddělení oprávnění approvera. Citlivé hodnoty netiskne.
 
+## Approval upload test
+
+Backend regrese pokrývají manager PDF accepted, approver HTTP 403, nepodporovaný typ, oversize, Paperless unavailable, append-only audit, task→invoice tracking, SHA-256, sanitaci názvu a idempotentní retry bez druhého tracking záznamu. Frontend testuje viditelnost podle role, oba file pickery, drag enter/leave/drop, multi-file izolaci, invalidní soubor, okamžitý pending stav, úspěch, chybu, retry a polling do fronty bez F5.
+
+Skutečný VM smoke používá výhradně nově vygenerované syntetické PDF. Přihlásí `queue-manager` do Approval, odešle jedno PDF přes `/api/uploads`, ověří Paperless task/document/PDF, OCR, Approval invoice/detail, Qwen3 8B a audit. Druhá fáze odešle současně tři odlišná PDF a jeden neplatný soubor; chyba nesmí ovlivnit tři úspěšné tracking řádky. Testovací dokumenty se automaticky nemažou, pokud smoke výslovně nedostal samostatné oprávnění k odstranění vlastních ID.
+
 ## AI integrační test (Etapa D)
 
 Po nasazení počkejte na `ollama-pull` s kódem 0 a healthy worker. Smoke test ověří skutečný tok Paperless OCR → Ollama → strict JSON → Pydantic → validace → DB/API, spustí bezpečnou re-extrakci a samostatnou reálnou prompt-injection inferenci:

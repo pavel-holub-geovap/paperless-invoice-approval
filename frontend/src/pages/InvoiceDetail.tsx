@@ -35,6 +35,9 @@ function shown(value: unknown): string {
 }
 
 const auditLabels: Record<string, string> = {
+  DOCUMENT_UPLOAD_REQUESTED: "Nahrání dokumentu vyžádáno",
+  DOCUMENT_UPLOADED_TO_PAPERLESS: "Dokument nahrán do Paperless",
+  DOCUMENT_UPLOAD_FAILED: "Nahrání dokumentu selhalo",
   DOCUMENT_DISCOVERED: "Dokument nalezen v Paperless",
   AI_EXTRACTION_APPLIED: "Použita první AI extrakce",
   AI_REEXTRACTION_APPLIED: "Použita nová AI extrakce",
@@ -240,7 +243,7 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
       <div className="pdf-panel">{sourceMissing ? <div className="source-missing">Originální PDF již není v Paperless dostupné.</div> : <><iframe title="Originální faktura" src={`/api/invoices/${invoice.id}/pdf`} /><a className="button secondary" href={`/api/invoices/${invoice.id}/pdf`} target="_blank" rel="noreferrer">Otevřít PDF v novém okně</a></>}</div>
       <div className="work-panel">
         <div className="card"><div className="card-title"><div><h2>Zdrojová metadata</h2><p>Načteno výhradně přes Paperless REST API</p></div></div>
-          <dl className="metadata-grid"><div><dt>Název</dt><dd>{invoice.paperless.title || "—"}</dd></div><div><dt>Vloženo do zdroje</dt><dd>{pragueDateTime(invoice.paperless.created_at)}</dd></div><div><dt>Korespondent</dt><dd>{invoice.paperless.correspondent || "—"}</dd></div><div><dt>Původní soubor</dt><dd>{invoice.paperless.original_filename || "—"}</dd></div><div><dt>Tagy</dt><dd>{invoice.paperless.tags.join(", ") || "—"}</dd></div><div><dt>Poslední synchronizace</dt><dd>{pragueDateTime(invoice.paperless.last_synced_at)}</dd></div></dl>
+          <dl className="metadata-grid"><div><dt>Název</dt><dd>{invoice.paperless.title || "—"}</dd></div><div><dt>Vloženo do zdroje</dt><dd>{pragueDateTime(invoice.paperless.created_at)}</dd></div><div><dt>Vytvořeno v Approval</dt><dd>{pragueDateTime(invoice.created_at)}</dd></div><div><dt>Nahrál</dt><dd>{invoice.paperless.uploaded_by || "—"}</dd></div><div><dt>Korespondent</dt><dd>{invoice.paperless.correspondent || "—"}</dd></div><div><dt>Původní soubor</dt><dd>{invoice.paperless.original_filename || "—"}</dd></div><div><dt>SHA-256 originálu</dt><dd className="hash">{invoice.paperless.source_pdf_sha256 || "—"}</dd></div><div><dt>Tagy</dt><dd>{invoice.paperless.tags.join(", ") || "—"}</dd></div><div><dt>Poslední synchronizace</dt><dd>{pragueDateTime(invoice.paperless.last_synced_at)}</dd></div></dl>
           {invoice.paperless.sync_error && <div className="alert danger">{invoice.paperless.sync_error}</div>}
         </div>
         <div className="card"><div className="card-title"><div><h2>Evidence a dispozice</h2><p>Nezávislé na workflow; historický stav se při ignorování nemění.</p></div><StatusBadge value={invoice.disposition.status}/></div>

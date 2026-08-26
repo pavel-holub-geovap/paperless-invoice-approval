@@ -81,3 +81,7 @@ LLM poskytuje hodnotu a evidence, nikoli strukturu českého clearingového úč
 Detail API je autorita pro current invoice revision, evidence, AI kandidáta, workflow a validace. Editovatelný formulář drží pouze lokální draft odvozený z current dat. Hydratace se řídí fingerprintem všech editovatelných hodnot a allocations, nikoli jen číslem revize, protože první automatická AI aplikace legitimně naplní počáteční revizi beze změny jejího čísla. Nový serverový snapshot automaticky naplní pouze čistý draft; dirty draft zůstane zachovaný a UI nabídne explicitní načtení serverové verze.
 
 Raw `parsed_result`, normalizovaná `candidate_data`, aplikovaná `data` a `extracted_fields.source_text` jsou samostatné kontrakty. Input nikdy nepoužívá evidence jako fallback. Re-extrakce je candidate, UI ukáže rozdíly a její explicitní aplikace vytvoří revizi i audit `AI_REEXTRACTION_APPLIED`.
+
+## ADR-020: Approval zprostředkovává asynchronní Paperless upload
+
+Queue manager nahrává PDF do Approval BFF, nikoli přímo do Paperless z browseru. Backend kontroluje soubor, počítá hash a jednorázově volá oficiální Paperless consume endpoint; worker sleduje vrácený task UUID do document ID a používá existující sync/AI pipeline. `document_uploads` obsahuje pouze tracking metadata a auditní korelaci, nikdy PDF. Per-file idempotency zabraňuje dvojímu odeslání při bezpečném retry; nejednoznačný transportní výsledek se automaticky neopakuje. Tato volba zachovává Paperless jako jediný document backend a eliminuje potřebu běžného přihlášení queue managera do Paperless UI.

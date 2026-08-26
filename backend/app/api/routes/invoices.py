@@ -192,6 +192,8 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             "sync_status": invoice.sync_status,
             "last_synced_at": invoice.last_synced_at,
             "sync_error": invoice.sync_error,
+            "source_pdf_sha256": invoice.source_pdf_sha256,
+            "uploaded_by": invoice.uploaded_by_username,
         },
         "status": invoice.status,
         "disposition": {
@@ -394,6 +396,9 @@ def list_invoices(
                 title=invoice.paperless_title,
                 correspondent=invoice.paperless_correspondent_name,
                 paperless_created_at=invoice.paperless_created_at,
+                approval_created_at=invoice.created_at,
+                uploaded_by=invoice.uploaded_by_username,
+                source_pdf_sha256=invoice.source_pdf_sha256,
                 sync_status=invoice.sync_status,
                 ai_status=invoice.ai_status,
                 supplier_name=data.get("supplier_name"),

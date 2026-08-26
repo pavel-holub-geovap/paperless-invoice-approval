@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.routes import approvals, auth, cost_centers, exports, invoices, users
+from app.api.routes import approvals, auth, cost_centers, exports, invoices, uploads, users
 from app.db import SessionLocal
 from app.models import SystemHeartbeat
 from app.request_context import reset_correlation_id, set_correlation_id
@@ -22,6 +22,7 @@ app = FastAPI(
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(invoices.router, prefix="/api")
+app.include_router(uploads.router, prefix="/api")
 app.include_router(approvals.router, prefix="/api")
 app.include_router(cost_centers.router, prefix="/api")
 app.include_router(exports.router, prefix="/api")

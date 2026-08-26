@@ -22,6 +22,14 @@ Upload probíhá přes UI nebo `/api/documents/post_document/`. Stav zpracován�
 
 Approval databáze ukládá OCR text, ale nikdy PDF bytes. Autorizovaný PDF proxy endpoint vždy volá Paperless download REST endpoint; browser Paperless token nezná. Etapy B/C nespouštějí Ollamu ani nevytvářejí extrakční job.
 
+## Upload z Approval aplikace
+
+Běžný `QUEUE_MANAGER` se kvůli uploadu nepřihlašuje do Paperless UI. React podporuje file picker, drag & drop a více PDF; každý soubor odesílá nezávisle na `POST /api/uploads` a sleduje přes `/api/uploads/{id}`. Výchozí limit je `UPLOAD_MAX_BYTES=8388608` a musí zůstat nižší než Nginx `client_max_body_size`. Backend autoritativně vyžaduje `.pdf`, podporovaný MIME typ a `%PDF-` signaturu.
+
+Backend řeší název pouze jako sanitizované metadata, vypočte SHA-256 a PDF po předání Paperless nedrží. Inbox tag se resolvuje názvem `PAPERLESS_INBOX_TAG`; hard-coded tag ID se nepoužívá. Multipart míří na oficiální `/api/documents/post_document/`, vrácený task UUID se sleduje přes API v10 `/api/tasks/` až k `related_document_ids`. Poté vznikne idempotentní Approval invoice a OCR/AI pokračují asynchronně. Kontrakt odpovídá [oficiálnímu Paperless REST upload postupu](https://docs.paperless-ngx.com/api/#posting-documents).
+
+Tracking ukládá `DOCUMENT_UPLOAD_REQUESTED`, `DOCUMENT_UPLOADED_TO_PAPERLESS` nebo `DOCUMENT_UPLOAD_FAILED`, actor/username, bezpečný filename, velikost, MIME, SHA-256, correlation, task/document ID a bezpečnou chybu. Obsah PDF ani token v auditu nejsou. Stejný idempotency key a hash nevytvoří další upload; stejný hash s novým klíčem je pouze duplicate warning a nevede k mazání nebo přepsání dokumentu.
+
 Timeout, omezený exponential backoff a job error chrání approval worker před výpadkem Paperless. Testovací service account má záměrně široký přístup jen v izolovaném tenantovi; produkční nasazení musí použít least-privileged účet.
 
 ## Reconciliation a smazaný zdroj

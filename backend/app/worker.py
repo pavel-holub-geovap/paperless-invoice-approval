@@ -34,6 +34,7 @@ from app.services.extraction import (
 )
 from app.services.jobs import complete_job, fail_job, lease_next_job
 from app.services.paperless_sync import mark_source_missing, mark_sync_error, sync_document_snapshot
+from app.services.uploads import poll_pending_uploads
 from app.services.workflow import create_invoice
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -248,6 +249,7 @@ async def run() -> None:
                     heartbeat.details = {"status": "running", "mode": "paperless-ai"}
             if time.monotonic() >= next_discovery:
                 try:
+                    await poll_pending_uploads(paperless)
                     await discover_documents(paperless)
                     await reconcile_source_documents(paperless)
                 except Exception:

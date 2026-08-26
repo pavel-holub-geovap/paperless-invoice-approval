@@ -41,8 +41,11 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
             row[1]
             for row in connection.execute("PRAGMA table_info(approval_assignments)").fetchall()
         }
+        upload_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(document_uploads)").fetchall()
+        }
 
-    assert revision == ("0007",)
+    assert revision == ("0008",)
     assert {
         "paperless_title",
         "paperless_ocr_text",
@@ -59,6 +62,9 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         "duplicate_of_invoice_id",
         "source_status",
         "source_missing_at",
+        "source_pdf_sha256",
+        "uploaded_by_subject",
+        "uploaded_by_username",
     } <= invoice_columns
     assert {"expected", "actual"} <= validation_columns
     assert {
@@ -80,3 +86,18 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         "invalidated_at",
         "invalidation_reason",
     } <= assignment_columns
+    assert {
+        "idempotency_key",
+        "actor_subject",
+        "filename",
+        "file_size",
+        "mime_type",
+        "sha256",
+        "status",
+        "paperless_task_id",
+        "paperless_document_id",
+        "invoice_id",
+        "correlation_id",
+        "error_code",
+        "retryable",
+    } <= upload_columns

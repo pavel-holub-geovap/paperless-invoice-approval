@@ -33,6 +33,12 @@ Worker při každém discovery cyklu navíc reconciliuje všechny uložené `pap
 
 `Invoice.disposition` je třetí, samostatná osa: `ACTIVE`, `IGNORED_DUPLICATE`, `IGNORED_OTHER`. Uchovává důvod, komentář, aktéra, čas a volitelný odkaz na původní fakturu. Výchozí fronta zobrazuje jen `ACTIVE + AVAILABLE`; další pohledy explicitně ukazují ignorované a chybějící zdroje.
 
+### Approval upload orchestrace
+
+Upload z browseru končí výhradně na `POST /api/uploads`; pouze `QUEUE_MANAGER` s platným CSRF smí endpoint použít. Backend streamově ověří limit a PDF signaturu, spočítá SHA-256, sanitizuje display filename a do `document_uploads` uloží metadata, actor, correlation a idempotency key, nikoli PDF bytes. Následně jedním multipart požadavkem volá oficiální Paperless `/api/documents/post_document/` s ID konfigurovaného inbox tagu.
+
+Paperless vrátí task UUID dříve než document ID. Worker proto sleduje `/api/tasks/?task_id=...`; po získání `related_document_ids` idempotentně vytvoří jeden Invoice, stáhne snapshot přes REST a standardní cesta spustí OCR-dependent AI job. Tracking API odvozuje uživatelské stavy Paperless/OCR/AI/workflow a React je polluje po 3 s. Connect failure před odesláním dovoluje retry stejného souboru se stejným idempotency key; timeout, přerušená odpověď a 5xx jsou `SUBMISSION_UNKNOWN`, protože automatické opakování by mohlo vytvořit druhý Paperless dokument.
+
 ## AI extrakce a validace
 
 Worker před každým během znovu načte OCR z Paperless REST API. Ollama dostane nedůvěryhodný OCR text oddělený značkami a constrained `InvoiceExtractionRawV1` JSON schema. Tok je výslovně `RawV1 → konzervativní normalizace → InvoiceExtractionV1 → účetní validace`; kanonický model se kvůli odchylkám LLM neuvolňuje. Pydantic odmítne chybějící nebo neznámá pole; hodnoty mohou být explicitně `null`. Každý běh ukládá model, schema/prompt verzi, všechny raw pokusy, přesné schema errors, normalizační mapu, parsed JSON, provenance, dobu, chybu a validační snapshot do `ai_extractions`. První běh lze aplikovat automaticky jen na prázdnou revizi; re-extrakce zůstane kandidátem do explicitního potvrzení.

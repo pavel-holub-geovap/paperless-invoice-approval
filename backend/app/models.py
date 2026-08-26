@@ -83,6 +83,16 @@ class PaperlessSyncStatus(enum.StrEnum):
     ERROR = "ERROR"
 
 
+class DocumentUploadStatus(enum.StrEnum):
+    SUBMITTING = "SUBMITTING"
+    PAPERLESS_PROCESSING = "PAPERLESS_PROCESSING"
+    WAITING_OCR = "WAITING_OCR"
+    OCR_COMPLETE = "OCR_COMPLETE"
+    FAILED_RETRYABLE = "FAILED_RETRYABLE"
+    FAILED = "FAILED"
+    SUBMISSION_UNKNOWN = "SUBMISSION_UNKNOWN"
+
+
 class InvoiceDisposition(enum.StrEnum):
     ACTIVE = "ACTIVE"
     IGNORED_DUPLICATE = "IGNORED_DUPLICATE"
@@ -150,6 +160,9 @@ class Invoice(Base):
     paperless_tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     paperless_ocr_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
     paperless_original_filename: Mapped[str | None] = mapped_column(String(255))
+    source_pdf_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    uploaded_by_subject: Mapped[str | None] = mapped_column(String(255), index=True)
+    uploaded_by_username: Mapped[str | None] = mapped_column(String(255))
     sync_status: Mapped[PaperlessSyncStatus] = mapped_column(
         Enum(PaperlessSyncStatus, native_enum=False),
         default=PaperlessSyncStatus.PENDING,
@@ -458,6 +471,43 @@ class AuditEvent(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
+class DocumentUpload(Base):
+    __tablename__ = "document_uploads"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    actor_subject: Mapped[str] = mapped_column(String(255), index=True)
+    actor_username: Mapped[str] = mapped_column(String(255), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[DocumentUploadStatus] = mapped_column(
+        Enum(DocumentUploadStatus, native_enum=False),
+        default=DocumentUploadStatus.SUBMITTING,
+        nullable=False,
+        index=True,
+    )
+    paperless_task_id: Mapped[str | None] = mapped_column(
+        String(100), unique=True, index=True
+    )
+    paperless_document_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    invoice_id: Mapped[str | None] = mapped_column(
+        ForeignKey("invoices.id", ondelete="SET NULL"), index=True
+    )
+    correlation_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    retryable: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
 
 

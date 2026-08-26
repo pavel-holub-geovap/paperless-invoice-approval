@@ -19,6 +19,9 @@ export type InvoiceListItem = {
   title: string;
   correspondent?: string;
   paperless_created_at?: string;
+  approval_created_at?: string;
+  uploaded_by?: string;
+  source_pdf_sha256?: string;
   sync_status: "PENDING" | "SYNCED" | "ERROR";
   ai_status: AIStatus;
   supplier_name?: string;
@@ -149,6 +152,8 @@ export type Invoice = {
     sync_status: "PENDING" | "SYNCED" | "ERROR";
     last_synced_at?: string;
     sync_error?: string;
+    source_pdf_sha256?: string;
+    uploaded_by?: string;
   };
   original_review_confirmed: boolean;
   original_reviewed_at?: string;
@@ -228,6 +233,39 @@ export type AuditEvent = {
   new_value?: unknown;
   comment?: string;
   metadata: Record<string, unknown>;
+};
+
+export type UploadConfig = {
+  max_file_size: number;
+  supported_mime_types: string[];
+  supported_extensions: string[];
+  multi_upload: boolean;
+};
+
+export type UploadTracking = {
+  id: string;
+  idempotency_key: string;
+  filename: string;
+  file_size: number;
+  mime_type: string;
+  sha256: string;
+  status: string;
+  tracking_status: string;
+  paperless_task_id?: string;
+  paperless_document_id?: number;
+  invoice_id?: string;
+  ai_status?: AIStatus;
+  workflow_status?: string;
+  uploaded_by: string;
+  source_created_at?: string;
+  approval_created_at?: string;
+  error_code?: string;
+  error_message?: string;
+  retryable: boolean;
+  retry_count: number;
+  exact_duplicate_invoice_id?: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ExportBatch = {
