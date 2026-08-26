@@ -54,6 +54,8 @@ Backend regrese pokrývají manager PDF accepted, approver HTTP 403, nepodporova
 
 Skutečný VM smoke používá výhradně nově vygenerované syntetické PDF. Přihlásí `queue-manager` do Approval, odešle jedno PDF přes `/api/uploads`, ověří Paperless task/document/PDF, OCR, Approval invoice/detail, Qwen3 8B a audit. Druhá fáze odešle současně tři odlišná PDF a jeden neplatný soubor; chyba nesmí ovlivnit tři úspěšné tracking řádky. Testovací dokumenty se automaticky nemažou, pokud smoke výslovně nedostal samostatné oprávnění k odstranění vlastních ID.
 
+Kontrolovaný retry lze ověřit pomocí `scripts/smoke_upload_retry.py` ve dvou bězích se stejným `UPLOAD_RETRY_SMOKE_KEY`. Režim `failure` se spouští pouze během krátkého zastavení izolované Paperless služby a vyžaduje `FAILED_RETRYABLE/PAPERLESS_UNAVAILABLE`; po obnovení služby režim `retry` vyžaduje stejné upload ID, `retry_count=1`, Paperless document ID a Approval invoice ID. Test nemaže dokumenty, databáze ani volumes.
+
 ## AI integrační test (Etapa D)
 
 Po nasazení počkejte na `ollama-pull` s kódem 0 a healthy worker. Smoke test ověří skutečný tok Paperless OCR → Ollama → strict JSON → Pydantic → validace → DB/API, spustí bezpečnou re-extrakci a samostatnou reálnou prompt-injection inferenci:
