@@ -1,11 +1,11 @@
 # Aktuální stav
 
-- Datum ověření: 2026-08-25
+- Datum ověření: 2026-08-26
 - Branch: `main`
 - Git remote: `git@github-paperless-approval:pavel-holub-geovap/paperless-invoice-approval.git`
 - Approval aplikace: `http://172.30.172.167/`
 - Nasazeno: PostgreSQL, Redis, Keycloak, Paperless-ngx, Nginx, `approval-backend`, `approval-worker`, `approval-frontend`, Ollama a jednorázový `ollama-pull`. Všechny dlouhodobé služby jsou healthy; provision/bootstrap/pull kontejnery skončily kódem 0.
-- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0007 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
+- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0008 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
 - OIDC: skutečný Authorization Code flow prošel pro `queue-manager`, `approver1`, `approver2` a `approver3`. Approver nemůže otevřít manažerský seznam (HTTP 403).
 
 ## Opravná iterace po Etapě F
@@ -16,6 +16,15 @@
 - `disposition` je oddělená od workflow: `ACTIVE`, `IGNORED_DUPLICATE`, `IGNORED_OTHER`. Vyřazení/restore jsou auditované, ignorované faktury nelze schválit ani exportovat a Paperless zdroj se nemaže.
 - `source_status` je oddělený stav `AVAILABLE`/`MISSING`. Pouze přesné Paperless HTTP 404 označí zdroj jako chybějící; 5xx, timeout a síťová chyba jsou sync error. Missing audit je idempotentní a workflow/PDF/nový export jsou blokované.
 - Frontend používá History API routy `/`, `/invoices/:id`, `/approvals`, `/cost-centers` a `/exports`. Manažerské Fronta odkazy, přímý detail a `popstate` jsou testované; backend authorization zůstává autoritativní.
+
+## Nahrávání faktur z Approval aplikace
+
+- `QUEUE_MANAGER` může nahrát jeden nebo více PDF přes dashboard. Browser posílá každý soubor samostatně do Approval endpointu `POST /api/uploads`; Paperless token zůstává pouze na backendu. `APPROVER` endpoint použít nesmí.
+- Backend přijímá pouze PDF do konfigurovatelného limitu `UPLOAD_MAX_BYTES` (výchozí 8 MiB), kontroluje příponu, MIME i PDF signaturu, počítá SHA-256, sanitizuje název a ukládá pouze metadata. Originální PDF trvale neduplikuje.
+- Paperless upload používá oficiální `POST /api/documents/post_document/`. Worker sleduje Paperless task, OCR, vznik Approval invoice a existující AI pipeline. Opakování se stejným idempotency klíčem a hashem je bezpečné; nejednoznačný timeout po odeslání se automaticky neopakuje.
+- Skutečný smoke vytvořil `codex-approval-upload-6988633cde.pdf`: upload `01fd4ab9-122b-4356-99b0-88cc33751554`, Paperless task `0138235d-8a75-4c39-9a71-220a6683158e`, Paperless document `19` a Approval invoice `1246c15e-44c6-4596-8731-8bbf4315309d`. OCR má 911 znaků, AI skončila `AI_COMPLETED` na `qwen3:8b`, workflow `QUEUE_REVIEW` a UI status `READY_FOR_REVIEW`.
+- Audit `DOCUMENT_UPLOADED_TO_PAPERLESS` obsahuje `queue-manager`, subject, korelační ID, sanitizovaný název, velikost, MIME a Paperless document ID. Invoice nese `uploaded_by=queue-manager`, zdrojový i Approval timestamp a SHA-256 přijatých bytů `84ee2c5f6f96635cb5925cdb6abd1476833c9f59977c093a9ec2be60e7f229f7`.
+- Originální PDF dokumentu 19 se přes Approval proxy zobrazilo/stáhlo. Fronta se v otevřené session aktualizovala bez F5. Skutečný paralelní smoke navíc nezávisle přijal tři PDF jako Paperless dokumenty 20, 21 a 22; neplatný textový soubor vrátil HTTP 415 a pokus uživatele `approver1` HTTP 403.
 
 ## Reálné uživatelské faktury
 
@@ -48,8 +57,8 @@
 
 ## Závěrečné automatické ověření
 
-- Backend: 124/124 testů; Ruff čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty. Regrese pokrývají RawV1, serializované ploché Ollama schéma, přesnou diagnostiku, zachování dvou neúspěšných raw pokusů a nejvýše jeden corrective retry.
-- Frontend: 6 testovacích souborů, 22/22 testů; TypeScript a produkční Vite build prošly. Regrese navíc ověřuje manažerské zobrazení pole, skutečné hodnoty, očekávání, zprávy, pokusu, zachování raw odpovědi a počtu retry.
+- Backend: 135/135 testů; Ruff čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty. Regrese pokrývají RawV1, serializované ploché Ollama schéma, přesnou diagnostiku, zachování dvou neúspěšných raw pokusů, nejvýše jeden corrective retry a upload validaci, autorizaci, idempotenci i Paperless task polling.
+- Frontend: 7 testovacích souborů, 29/29 testů; TypeScript a produkční Vite build prošly. Regrese navíc ověřuje manažerské zobrazení pole, skutečné hodnoty, očekávání, zprávy, pokusu, zachování raw odpovědi a počtu retry i výběr/drag-and-drop více PDF, individuální stavy, retry a aktualizaci bez F5.
 - Stage B: OIDC queue-manager/approver1, role, PDF a manažerský endpoint 403 pro approvera prošly.
 - Stage D/Qwen3 8B: skutečné inference proběhly na Paperless dokumentech 1, 2, 4, 8, 11, 14 a 17. Nejnovější RawV1 regrese nad dokumenty 17/14/11 skončila třikrát `AI_COMPLETED`, kanonická validace vždy prošla a workflow se nezměnilo. Starší úplná regrese nad dokumentem 1 měla inference 258 136 ms a 254 989 ms, prompt-injection 262 097 ms, 12 OK / 0 WARNING / 0 blocking a zachovala stav `EXPORT_CREATED`. Kandidáti se bez potvrzení neaplikovali a prompt injection nezměnila žádné pole.
 - Stage E: allocations 700/510 Kč, tři assignments, RETURN/REJECT/REOPEN, invalidace, idempotentní/souběžné approvals, 403 a Paperless tagy prošly; skončilo `APPROVED`.
