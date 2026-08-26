@@ -85,3 +85,7 @@ Raw `parsed_result`, normalizovaná `candidate_data`, aplikovaná `data` a `extr
 ## ADR-020: Approval zprostředkovává asynchronní Paperless upload
 
 Queue manager nahrává PDF do Approval BFF, nikoli přímo do Paperless z browseru. Backend kontroluje soubor, počítá hash a jednorázově volá oficiální Paperless consume endpoint; worker sleduje vrácený task UUID do document ID a používá existující sync/AI pipeline. `document_uploads` obsahuje pouze tracking metadata a auditní korelaci, nikdy PDF. Per-file idempotency zabraňuje dvojímu odeslání při bezpečném retry; nejednoznačný transportní výsledek se automaticky neopakuje. Tato volba zachovává Paperless jako jediný document backend a eliminuje potřebu běžného přihlášení queue managera do Paperless UI.
+
+## ADR-021: Fronta faktur je jediný trvalý uživatelský seznam
+
+Historické `document_uploads` jsou technická diagnostika, nikoli druhá business fronta. Dashboard je proto při načtení nečte a zobrazuje pouze lokálně zahájenou dávku v kompaktním dočasném panelu. Jakmile refresh potvrdí vznik `invoice_id` v hlavní tabulce, tracking položka zmizí; chyba zůstává s retry a explicitním zavřením. Upload a refresh jsou ve společném action baru bez záporných marginů, aby desktopové zarovnání i responzivní zalomení vycházelo z jednoho layoutu.

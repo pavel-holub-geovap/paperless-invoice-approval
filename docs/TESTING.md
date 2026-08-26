@@ -50,7 +50,7 @@ Skript načítá testovací credentials pouze z chráněného serverového `.env
 
 ## Approval upload test
 
-Backend regrese pokrývají manager PDF accepted, approver HTTP 403, nepodporovaný typ, oversize, Paperless unavailable, append-only audit, task→invoice tracking, SHA-256, sanitaci názvu a idempotentní retry bez druhého tracking záznamu. Frontend testuje viditelnost podle role, oba file pickery, drag enter/leave/drop, multi-file izolaci, invalidní soubor, okamžitý pending stav, úspěch, chybu, retry a polling do fronty bez F5.
+Backend regrese pokrývají manager PDF accepted, approver HTTP 403, nepodporovaný typ, oversize, Paperless unavailable, append-only audit, task→invoice tracking, SHA-256, sanitaci názvu a idempotentní retry bez druhého tracking záznamu. Frontend testuje viditelnost podle role, oba file pickery, drag enter/leave/drop, multi-file izolaci, invalidní soubor, okamžitý pending stav, úspěch, chybu, retry a polling do fronty bez F5. GUI regrese navíc ověřuje, že se nenačítá ani nevykresluje historický upload grid, obě hlavičkové akce sdílejí jeden container, refresh blokuje dvojklik a dočasný tracking zmizí až po potvrzení invoice v hlavní frontě.
 
 Skutečný VM smoke používá výhradně nově vygenerované syntetické PDF. Přihlásí `queue-manager` do Approval, odešle jedno PDF přes `/api/uploads`, ověří Paperless task/document/PDF, OCR, Approval invoice/detail, Qwen3 8B a audit. Druhá fáze odešle současně tři odlišná PDF a jeden neplatný soubor; chyba nesmí ovlivnit tři úspěšné tracking řádky. Testovací dokumenty se automaticky nemažou, pokud smoke výslovně nedostal samostatné oprávnění k odstranění vlastních ID.
 
