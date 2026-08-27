@@ -143,3 +143,14 @@ def test_explicit_rounding_label_is_deterministically_classified() -> None:
     payload, _ = normalize_raw_extraction(raw)
 
     assert payload.vat_lines[0].adjustment_type == "ROUNDING"
+
+
+def test_unknown_adjustment_enum_remains_a_schema_error() -> None:
+    raw = structured()
+    raw["vat_lines"][0]["adjustment_type"] = "ZakladCZK"
+
+    with pytest.raises(ExtractionNormalizationFailed) as caught:
+        normalize_raw_extraction(raw)
+
+    assert caught.value.errors[0]["path"] == "vat_lines.0.adjustment_type"
+    assert caught.value.errors[0]["stage"] == "canonical_schema"

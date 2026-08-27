@@ -33,4 +33,8 @@ def canonical_rounding_type(
     """Treat the model's classification as a candidate, never as authority."""
     if has_explicit_rounding_evidence(source_text):
         return "ROUNDING"
+    if adjustment_type is None or adjustment_type.casefold() in {"none", "null"}:
+        return None
+    if adjustment_type.casefold() != "rounding":
+        return adjustment_type
     return None
