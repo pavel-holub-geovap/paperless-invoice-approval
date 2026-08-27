@@ -109,7 +109,10 @@ def main() -> None:
 
         if skip_extraction:
             candidate = pixel["ai"]["latest"]
-            require(candidate["applied"], "Latest Pixel extraction is not applied")
+            require(
+                candidate["applied"] or candidate["requires_confirmation"],
+                "Latest Pixel extraction cannot be safely resumed",
+            )
             applied = pixel
         else:
             queued = manager.post(
@@ -139,7 +142,7 @@ def main() -> None:
             "Pixel candidate has VAT_ROUNDING_ADJUSTMENT",
         )
 
-        if not skip_extraction:
+        if not candidate["applied"]:
             applied_response = manager.post(
                 f"{base_url}/api/invoices/{pixel['id']}/ai-extractions/{candidate['id']}/apply",
                 headers=headers,
