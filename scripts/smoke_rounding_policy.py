@@ -18,16 +18,22 @@ def detail(client, base_url: str, invoice_id: str) -> dict[str, Any]:
     )
 
 
-def find_invoice(client, base_url: str, predicate) -> dict[str, Any]:
-    rows = response_json(
-        client.get(f"{base_url}/api/invoices?view=all&sort=source_desc"),
-        "invoice list",
+def invoice_for_document(
+    client,
+    base_url: str,
+    rows: list[dict[str, Any]],
+    paperless_document_id: int,
+) -> dict[str, Any]:
+    row = next(
+        (
+            item
+            for item in rows
+            if item["paperless_document_id"] == paperless_document_id
+        ),
+        None,
     )
-    for row in rows:
-        current = detail(client, base_url, row["id"])
-        if predicate(current):
-            return current
-    raise RuntimeError("Required real invoice was not found")
+    require(row is not None, f"Paperless document {paperless_document_id} was not found")
+    return detail(client, base_url, row["id"])
 
 
 def wait_for_run(
@@ -66,32 +72,57 @@ def main() -> None:
     try:
         user = response_json(manager.get(f"{base_url}/api/auth/me"), "manager /me")
         headers = {"X-CSRF-Token": user["csrf_token"]}
-        pixel = find_invoice(
+        rows = response_json(
+            manager.get(f"{base_url}/api/invoices?view=all&sort=source_desc"),
+            "invoice list",
+        )
+        pixel = invoice_for_document(
             manager,
             base_url,
-            lambda row: row["data"].get("supplier_name") == "Pixel Design s.r.o.",
+            rows,
+            int(os.environ.get("PIXEL_PAPERLESS_DOCUMENT_ID", "24")),
+        )
+        giriton = invoice_for_document(
+            manager,
+            base_url,
+            rows,
+            int(os.environ.get("GIRITON_PAPERLESS_DOCUMENT_ID", "11")),
+        )
+        require(
+            pixel["data"].get("supplier_name") == "Pixel Design s.r.o.",
+            "Configured Pixel document has a different supplier",
+        )
+        require(
+            giriton["data"].get("invoice_number") == "25081151",
+            "Configured GIRITON document has a different invoice number",
         )
         before_history = list(pixel["ai"]["history"])
         before_latest_revision = pixel["ai"]["latest"]["extraction_revision"]
         before_invoice_revision = pixel["current_revision_number"]
+        skip_extraction = os.environ.get("ROUNDING_SMOKE_SKIP_EXTRACTION") == "1"
 
-        queued = manager.post(
-            f"{base_url}/api/invoices/{pixel['id']}/ai-extractions",
-            headers=headers,
-        )
-        require(queued.status_code == 202, f"Queue returned HTTP {queued.status_code}")
-        candidate_detail = wait_for_run(
-            manager, base_url, pixel["id"], before_latest_revision
-        )
-        candidate = candidate_detail["ai"]["latest"]
+        if skip_extraction:
+            candidate = pixel["ai"]["latest"]
+            require(candidate["applied"], "Latest Pixel extraction is not applied")
+            applied = pixel
+        else:
+            queued = manager.post(
+                f"{base_url}/api/invoices/{pixel['id']}/ai-extractions",
+                headers=headers,
+            )
+            require(queued.status_code == 202, f"Queue returned HTTP {queued.status_code}")
+            candidate_detail = wait_for_run(
+                manager, base_url, pixel["id"], before_latest_revision
+            )
+            candidate = candidate_detail["ai"]["latest"]
+            require(candidate["requires_confirmation"], "Re-extraction was not a candidate")
+            require(not candidate["applied"], "Candidate was unexpectedly auto-applied")
         require(candidate["model"] == "qwen3:8b", "Unexpected model")
         require(
             candidate["prompt_version"] == "invoice-extraction.cs-en.v6",
             "Unexpected prompt version",
         )
         require(candidate["raw_response_preserved"], "Raw Qwen response was not preserved")
-        require(candidate["requires_confirmation"], "Re-extraction was not a candidate")
-        require(not candidate["applied"], "Candidate was unexpectedly auto-applied")
         candidate_data = candidate["candidate_data"]
         require(not rounding_rows(candidate_data), "Pixel candidate contains ROUNDING")
         require(
@@ -102,12 +133,13 @@ def main() -> None:
             "Pixel candidate has VAT_ROUNDING_ADJUSTMENT",
         )
 
-        applied_response = manager.post(
-            f"{base_url}/api/invoices/{pixel['id']}/ai-extractions/{candidate['id']}/apply",
-            headers=headers,
-            json={"confirm_overwrite": True},
-        )
-        applied = response_json(applied_response, "apply Pixel extraction")
+        if not skip_extraction:
+            applied_response = manager.post(
+                f"{base_url}/api/invoices/{pixel['id']}/ai-extractions/{candidate['id']}/apply",
+                headers=headers,
+                json={"confirm_overwrite": True},
+            )
+            applied = response_json(applied_response, "apply Pixel extraction")
         data = applied["data"]
         base = Decimal(str(data["total_without_vat"]))
         vat = Decimal(str(data["total_vat"]))
@@ -122,20 +154,15 @@ def main() -> None:
             <= codes,
             "Pixel OK validations are incomplete",
         )
-        require(
-            applied["current_revision_number"] > before_invoice_revision,
-            "Applying Pixel candidate did not create a revision",
-        )
-        require(
-            len(applied["ai"]["history"]) == len(before_history) + 1,
-            "AI history was not preserved",
-        )
-
-        giriton = find_invoice(
-            manager,
-            base_url,
-            lambda row: row["data"].get("invoice_number") == "25081151",
-        )
+        if not skip_extraction:
+            require(
+                applied["current_revision_number"] > before_invoice_revision,
+                "Applying Pixel candidate did not create a revision",
+            )
+            require(
+                len(applied["ai"]["history"]) == len(before_history) + 1,
+                "AI history was not preserved",
+            )
         giriton_rounding = rounding_rows(giriton["data"])
         require(len(giriton_rounding) == 1, "GIRITON explicit rounding is missing")
         giriton_row = giriton_rounding[0]
@@ -170,6 +197,7 @@ def main() -> None:
                         "duration_ms": candidate["duration_ms"],
                         "raw_response_preserved": candidate["raw_response_preserved"],
                         "normalization_rejections": rejections,
+                        "extraction_skipped": skip_extraction,
                         "invoice_revision_before": before_invoice_revision,
                         "invoice_revision_after": applied["current_revision_number"],
                         "base": str(base),
