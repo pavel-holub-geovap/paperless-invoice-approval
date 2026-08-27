@@ -72,22 +72,28 @@ def main() -> None:
     try:
         user = response_json(manager.get(f"{base_url}/api/auth/me"), "manager /me")
         headers = {"X-CSRF-Token": user["csrf_token"]}
-        rows = response_json(
-            manager.get(f"{base_url}/api/invoices?view=all&sort=source_desc"),
-            "invoice list",
-        )
-        pixel = invoice_for_document(
-            manager,
-            base_url,
-            rows,
-            int(os.environ.get("PIXEL_PAPERLESS_DOCUMENT_ID", "24")),
-        )
-        giriton = invoice_for_document(
-            manager,
-            base_url,
-            rows,
-            int(os.environ.get("GIRITON_PAPERLESS_DOCUMENT_ID", "11")),
-        )
+        pixel_invoice_id = os.environ.get("PIXEL_INVOICE_ID", "").strip()
+        giriton_invoice_id = os.environ.get("GIRITON_INVOICE_ID", "").strip()
+        if pixel_invoice_id and giriton_invoice_id:
+            pixel = detail(manager, base_url, pixel_invoice_id)
+            giriton = detail(manager, base_url, giriton_invoice_id)
+        else:
+            rows = response_json(
+                manager.get(f"{base_url}/api/invoices?view=all&sort=source_desc"),
+                "invoice list",
+            )
+            pixel = invoice_for_document(
+                manager,
+                base_url,
+                rows,
+                int(os.environ.get("PIXEL_PAPERLESS_DOCUMENT_ID", "24")),
+            )
+            giriton = invoice_for_document(
+                manager,
+                base_url,
+                rows,
+                int(os.environ.get("GIRITON_PAPERLESS_DOCUMENT_ID", "11")),
+            )
         require(
             pixel["data"].get("supplier_name") == "Pixel Design s.r.o.",
             "Configured Pixel document has a different supplier",
