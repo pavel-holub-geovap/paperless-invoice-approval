@@ -96,6 +96,8 @@ Skript případně doplní přesnou strukturovanou adresu a nechá novou revizi 
 
 Doménová sada navíc testuje 1 středisko/1 sazbu, více středisek/1 sazbu, 1 středisko/více sazeb, explicitní split více středisek/více sazeb a rounding remainder. Negativní XSD testy porušují povinný element, pořadí, datový typ, enum a namespace.
 
+Regrese detekce zaokrouhlení pokrývá Pixel Design (`4300.00 + 903.00 = 5203.00`): raw model smí chybně navrhnout `ROUNDING`, ale evidence ze souhrnného řádku jej musí deterministicky odmítnout bez `VAT_ROUNDING_ADJUSTMENT` a bez samostatné exportní položky. Negativní varianty zahrnují CELKEM, CELKEM K ÚHRADĚ, Celkem s DPH a VAT rekapitulaci. Pozitivní varianty používají explicitní `Zaokrouhlení +0.30/-0.25`, další jednoznačné štítky a skutečný GIRITON řádek `0.29 + 0.06 = 0.35`.
+
 Změny tagů jsou povolené pouze v izolované testovací instanci. Reálné faktury, produkční Paperless a POHODA nejsou součástí automatických testů.
 
 ## Opravná iterace po Etapě F

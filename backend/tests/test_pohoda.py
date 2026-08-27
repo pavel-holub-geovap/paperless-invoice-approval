@@ -198,6 +198,33 @@ def test_one_centre_multiple_rates() -> None:
     ]
 
 
+def test_pixel_summary_vat_row_exports_once_without_false_rounding_item() -> None:
+    row = revision(
+        vat_lines=[
+            {
+                "vat_rate": "21",
+                "taxable_base": "4300.00",
+                "vat_amount": "903.00",
+                "gross_amount": "5203.00",
+                "adjustment_type": None,
+                "source_text": (
+                    "Sazba DPH Základ Výše DPH Celkem\n"
+                    "21 % 4 300,00 Kč 903,00 Kč 5 203,00 Kč"
+                ),
+            }
+        ],
+        total="5203.00",
+    )
+
+    xml = generate_invoice_xml(
+        row,
+        [allocation(row, "200", "5203.00")],
+        accounting_unit_ico=TARGET_ICO,
+    )
+
+    assert item_values(xml) == [("200", Decimal("4300.00"), Decimal("903.00"))]
+
+
 def test_multiple_centres_multiple_rates_require_and_use_explicit_split() -> None:
     row = revision(
         vat_lines=[

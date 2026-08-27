@@ -318,6 +318,38 @@ describe("Stage B pages", () => {
     await act(async () => undefined);
   });
 
+  it("shows the Pixel VAT summary as a normal row without a rounding warning", async () => {
+    mockEmptyApi();
+    render(
+      <InvoiceDetail
+        invoice={{
+          ...invoice,
+          data: {
+            supplier_name: "Pixel Design s.r.o.", currency: "CZK",
+            total_without_vat: "4300.00", total_vat: "903.00", total_amount: "5203.00",
+            vat_lines: [{
+              vat_rate: "21", taxable_base: "4300.00", vat_amount: "903.00",
+              gross_amount: "5203.00", adjustment_type: null,
+              source_text: "Sazba DPH Základ Výše DPH Celkem",
+            }],
+          },
+          validations: [
+            { code: "VAT_ROW_OK", severity: "OK", field_name: "vat_lines", message: "DPH řádek 1 matematicky sedí." },
+            { code: "TOTAL_MATH_OK", severity: "OK", field_name: "total_amount", message: "Základ a DPH odpovídají celkové částce." },
+          ],
+        }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("DPH řádek 1")).toBeVisible();
+    expect(screen.queryByText("Zaokrouhlení")).not.toBeInTheDocument();
+    expect(screen.queryByText(/pravděpodobně způsoben položkou Zaokrouhlení/)).not.toBeInTheDocument();
+    await act(async () => undefined);
+  });
+
   it("prevents double save and focuses the first returned field error", async () => {
     let finishPatch!: (value: unknown) => void;
     const patchResponse = new Promise((resolve) => { finishPatch = resolve; });

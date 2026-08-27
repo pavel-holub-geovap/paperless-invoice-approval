@@ -68,6 +68,10 @@ Reconciliation čte každý známý dokument přes REST. Pouze HTTP 404 je důka
 
 LLM poskytuje hodnotu a evidence, nikoli strukturu českého clearingového účtu. Parser bez odhadu rozloží `[prefix-]number/code` a POHODA v2 mapuje účet/kód odděleně. Tři agregované DPH reconciliation rozdíly jsou WARNING, protože mohou představovat legitimní zaokrouhlení; řádkové a strukturální chyby zůstávají blocking.
 
+## Deterministická autorita pro zaokrouhlení
+
+LLM smí navrhnout `ROUNDING`, ale normalizační hranice jej přijme pouze s explicitním samostatným štítkem zaokrouhlení v `source_text`. Souhrnný VAT/total řádek se zachová jako běžný VAT řádek a falešná klasifikace se uloží jen do append-only raw/normalizační diagnostiky. Samotná matematická odchylka je reconciliation warning a bez dokumentového důkazu se automaticky nenazývá zaokrouhlením.
+
 ## ADR-018: Cílová identita POHODA, 8B model a polling
 
 - `dataPack/@ico` je povinná cílová účetní jednotka ze serverové konfigurace; `key` je pouze explicitní volba.

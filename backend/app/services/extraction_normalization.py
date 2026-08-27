@@ -8,6 +8,11 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.schemas import InvoiceExtractionRawV1, InvoiceExtractionV1
+from app.services.rounding import (
+    ROUNDING_REJECTION_CODE,
+    ROUNDING_REJECTION_REASON,
+    canonical_rounding_type,
+)
 
 RAW_SCHEMA_VERSION = "invoice-extraction.raw.v1"
 DATE_FIELDS = {"issue_date", "taxable_supply_date", "due_date"}
@@ -214,11 +219,24 @@ def _source(value: str | None) -> str | None:
     return value.strip() if value and value.strip() else None
 
 
-def _record_change(changes: list[dict[str, Any]], path: str, raw: Any, normalized: Any) -> None:
+def _record_change(
+    changes: list[dict[str, Any]],
+    path: str,
+    raw: Any,
+    normalized: Any,
+    *,
+    reason: str | None = None,
+    code: str | None = None,
+) -> None:
     raw_json = _json_value(raw)
     normalized_json = _json_value(normalized)
     if raw_json != normalized_json:
-        changes.append({"path": path, "raw": raw_json, "normalized": normalized_json})
+        change = {"path": path, "raw": raw_json, "normalized": normalized_json}
+        if code:
+            change["code"] = code
+        if reason:
+            change["reason"] = reason
+        changes.append(change)
 
 
 def normalize_raw_extraction(
@@ -233,6 +251,7 @@ def normalize_raw_extraction(
             validation_error_details(exc, stage="raw_schema", attempt=attempt)
         ) from exc
     changes: list[dict[str, Any]] = []
+    rejections: list[dict[str, Any]] = []
     canonical: dict[str, Any] = {"schema_version": "invoice-extraction.v3"}
     for field in TEXT_FIELDS | DATE_FIELDS | DECIMAL_FIELDS:
         item = getattr(raw, field)
@@ -259,13 +278,36 @@ def normalize_raw_extraction(
             )
             _record_change(changes, f"vat_lines.{index}.{field}", value, normalized)
             normalized_row[field] = normalized
-        adjustment = _blank(row.adjustment_type)
-        if isinstance(adjustment, str) and adjustment.casefold() == "rounding":
-            adjustment = "ROUNDING"
         source = _source(row.source_text)
-        _record_change(
-            changes, f"vat_lines.{index}.adjustment_type", row.adjustment_type, adjustment
+        raw_adjustment = _blank(row.adjustment_type)
+        adjustment = canonical_rounding_type(
+            str(raw_adjustment) if raw_adjustment is not None else None,
+            source,
         )
+        rejected = bool(
+            isinstance(raw_adjustment, str)
+            and raw_adjustment.casefold() == "rounding"
+            and adjustment is None
+        )
+        _record_change(
+            changes,
+            f"vat_lines.{index}.adjustment_type",
+            row.adjustment_type,
+            adjustment,
+            code=ROUNDING_REJECTION_CODE if rejected else None,
+            reason=ROUNDING_REJECTION_REASON if rejected else None,
+        )
+        if rejected:
+            rejections.append(
+                {
+                    "path": f"vat_lines.{index}.adjustment_type",
+                    "code": ROUNDING_REJECTION_CODE,
+                    "raw": row.adjustment_type,
+                    "normalized": None,
+                    "source_text": source,
+                    "reason": ROUNDING_REJECTION_REASON,
+                }
+            )
         _record_change(changes, f"vat_lines.{index}.source_text", row.source_text, source)
         normalized_row.update(adjustment_type=adjustment, source_text=source)
         vat_lines.append(normalized_row)
@@ -280,5 +322,6 @@ def normalize_raw_extraction(
         "raw_schema_version": RAW_SCHEMA_VERSION,
         "canonical_schema_version": "invoice-extraction.v3",
         "changes": changes,
+        "rejections": rejections,
         "canonical": payload.model_dump(mode="json"),
     }

@@ -354,10 +354,7 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                         details={"row": index + 1, "difference": str(gross - base - vat)},
                     )
                 )
-            source_text = str(row.get("source_text") or "")
-            is_rounding = row.get("adjustment_type") == "ROUNDING" or bool(
-                re.search(r"\b(?:zaokrouhlení|zaokr\.?|rounding)\b", source_text, re.IGNORECASE)
-            )
+            is_rounding = row.get("adjustment_type") == "ROUNDING"
             if is_rounding:
                 rounding_rows.append(
                     {

@@ -37,7 +37,7 @@ Mapování je odvozené z oficiálních `data.xsd`, `invoice.xsd`, `type.xsd` a 
 - Více středisek a jedna sazba: základ se rozdělí podle hrubých allocation částek metodou largest remainder na haléře; DPH každé allocation je `allocation gross − allocated base`. Tím se přesně zachová částka allocation, celkový základ, DPH i total.
 - Jedno středisko a více sazeb: použijí se přesné VAT řádky faktury.
 - Více středisek a více sazeb: automatický odhad je zakázán. Každá allocation musí mít explicitní `vat_breakdown`; součet po allocation i agregace po sazbě musí přesně rekonstruovat schválené hodnoty. Jinak export končí `MULTI_RATE_ALLOCATION_REQUIRES_EXPLICIT_VAT_SPLIT`.
-- Samostatné zaokrouhlení ve stejné sazbě se před rozdělením do POHODY agreguje s hlavním VAT řádkem. Deklarované součty z faktury se nedopočítávají ani nepřepisují; reconciliation odchylka je WARNING.
+- Samostatné, deterministicky ověřené zaokrouhlení ve stejné sazbě se před rozdělením do POHODY agreguje s hlavním VAT řádkem. Neověřená klasifikace LLM se do snapshotu ani XML nedostane. Deklarované součty z faktury se nedopočítávají ani nepřepisují; reconciliation odchylka je WARNING.
 
 Pro syntetickou fakturu s jedinou sazbou 21 % vzniknou přesně dvě účetní položky: 700 Kč se střediskem 200 a 510 Kč se střediskem 300. Dva schvalovatelé druhé allocation nevytvářejí druhou účetní položku.
 

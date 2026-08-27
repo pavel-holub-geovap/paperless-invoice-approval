@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from app.models import ValidationSeverity
 from app.services.validation import (
     run_validations,
@@ -95,3 +97,42 @@ def test_iban_mod97_and_expected_actual_diagnostics() -> None:
     failure = next(row for row in results if row.code == "CURRENCY_ISO")
     assert failure.expected == "ISO 4217"
     assert failure.actual == "CROWNS"
+
+
+def test_exact_pixel_amounts_have_no_rounding_warning() -> None:
+    data = valid_data()
+    data.update(
+        supplier_name="Pixel Design s.r.o.",
+        total_without_vat="4300.00",
+        total_vat="903.00",
+        total_amount="5203.00",
+        vat_lines=[
+            {
+                "vat_rate": "21",
+                "taxable_base": "4300.00",
+                "vat_amount": "903.00",
+                "gross_amount": "5203.00",
+                "adjustment_type": None,
+                "source_text": (
+                    "Sazba DPH Základ Výše DPH Celkem\n"
+                    "21 % 4 300,00 Kč 903,00 Kč 5 203,00 Kč"
+                ),
+            }
+        ],
+    )
+
+    results = validate_invoice_data(data)
+
+    assert {row.code for row in results} >= {
+        "VAT_ROW_OK",
+        "VAT_BASE_TOTAL_OK",
+        "VAT_TOTAL_OK",
+        "TOTAL_MATH_OK",
+    }
+    assert not any(row.code == "VAT_ROUNDING_ADJUSTMENT" for row in results)
+    assert Decimal("3600.00") + Decimal("1000.00") - Decimal("300.00") == Decimal(
+        "4300.00"
+    )
+    assert Decimal("756.00") + Decimal("210.00") - Decimal("63.00") == Decimal(
+        "903.00"
+    )

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from copy import deepcopy
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -29,6 +28,7 @@ from app.services.bank_accounts import normalize_payment_data
 from app.services.invoice_amounts import reconcile_printed_invoice_amounts
 from app.services.invoice_dates import reconcile_extraction_dates
 from app.services.jobs import enqueue_job
+from app.services.rounding import canonical_rounding_type
 from app.services.supplier_addresses import normalize_supplier_address
 from app.services.validation import run_validations, validate_invoice_data
 from app.services.workflow import update_invoice_data
@@ -54,11 +54,8 @@ def extraction_to_invoice_data(
     vat_lines: list[dict[str, Any]] = []
     for row in payload.vat_lines:
         normalized_row = row.model_dump(mode="json")
-        normalized_row["adjustment_type"] = row.adjustment_type or (
-            "ROUNDING"
-            if row.source_text
-            and re.search(r"\b(?:zaokrouhlení|zaokr\.?|rounding)\b", row.source_text, re.IGNORECASE)
-            else None
+        normalized_row["adjustment_type"] = canonical_rounding_type(
+            row.adjustment_type, row.source_text
         )
         if row.taxable_base is not None and row.gross_amount is not None:
             derived_vat = row.gross_amount - row.taxable_base

@@ -84,7 +84,15 @@ export type AIExtraction = {
   normalization_result?: {
     raw_schema_version?: string;
     canonical_schema_version?: string;
-    changes?: Array<{ path: string; raw: unknown; normalized: unknown }>;
+    changes?: Array<{ path: string; raw: unknown; normalized: unknown; code?: string; reason?: string }>;
+    rejections?: Array<{
+      path: string;
+      code: string;
+      raw: unknown;
+      normalized: unknown;
+      source_text?: string;
+      reason: string;
+    }>;
   };
   corrective_retry_count?: number;
   raw_response_preserved?: boolean;
