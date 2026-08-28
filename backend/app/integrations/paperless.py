@@ -169,10 +169,16 @@ class PaperlessClient:
         return await self._document_from_payload(payload)
 
     async def search_document_ids(self, query: str) -> set[int]:
-        """Search Paperless OCR/fulltext once per result page and return only IDs."""
+        """Search Paperless title/OCR text once per result page and return only IDs.
+
+        Paperless' ``query`` parameter uses advanced full-text syntax where whitespace
+        is an OR.  A human-entered phrase would therefore match documents containing
+        any common word.  ``text`` provides the intended substring-style title/content
+        search and keeps the Approval history filter precise.
+        """
         path: str | None = "/documents/"
         params: dict[str, Any] | None = {
-            "query": query,
+            "text": query,
             "page_size": 100,
         }
         document_ids: set[int] = set()

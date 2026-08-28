@@ -67,13 +67,14 @@ async def test_fulltext_search_uses_paginated_document_query_without_n_plus_one(
         requests.append(request)
         assert request.url.path == "/api/documents/"
         if len(requests) == 1:
-            assert request.url.params["query"] == "unikátní OCR fráze"
+            assert request.url.params["text"] == "unikátní OCR fráze"
+            assert "query" not in request.url.params
             assert request.url.params["page_size"] == "100"
             return httpx.Response(
                 200,
                 json={
                     "results": [{"id": 10}, {"id": 11}],
-                    "next": "http://paperless.test/api/documents/?page=2&query=unik%C3%A1tn%C3%AD",
+                    "next": "http://paperless.test/api/documents/?page=2&text=unik%C3%A1tn%C3%AD",
                 },
             )
         return httpx.Response(200, json={"results": [{"id": 12}], "next": None})
