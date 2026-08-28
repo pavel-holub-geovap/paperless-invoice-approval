@@ -229,6 +229,74 @@ export type ApprovalTask = {
   current: boolean;
 };
 
+export type ApproverHistoryAssignment = {
+  assignment_id: string;
+  revision_id: string;
+  revision?: number;
+  cost_center: { id: string; code: string; name: string };
+  amount: string;
+  percentage?: string;
+  allocation_note?: string;
+  assigned_at: string;
+  assignment_status: string;
+  decision?: "APPROVE" | "RETURN" | "REJECT";
+  decision_at?: string;
+  comment?: string;
+  decision_valid?: boolean;
+  invalidated: boolean;
+  invalidated_at?: string;
+  invalidation_reason?: string;
+  event_at: string;
+  revision_data?: Record<string, unknown>;
+};
+
+export type ApproverHistoryItem = {
+  invoice_id: string;
+  paperless_document_id: number;
+  invoice_number?: string;
+  supplier_name?: string;
+  supplier_ico?: string;
+  supplier_dic?: string;
+  currency: string;
+  current_status: string;
+  current_revision: number;
+  source_status: "AVAILABLE" | "MISSING";
+  pdf_available: boolean;
+  latest_event_at: string;
+  latest_assignment: ApproverHistoryAssignment;
+  assignment_count: number;
+  ocr_snippet?: string;
+};
+
+export type ApproverHistoryResponse = {
+  items: ApproverHistoryItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  filters?: { cost_centers: { code: string; name: string }[] };
+};
+
+export type ApproverHistoryDetail = {
+  invoice_id: string;
+  paperless_document_id: number;
+  invoice_number?: string;
+  supplier_name?: string;
+  currency: string;
+  current_status: string;
+  current_revision: number;
+  current_data: Record<string, unknown>;
+  source_status: "AVAILABLE" | "MISSING";
+  pdf_available: boolean;
+  paperless: {
+    title: string;
+    created_at?: string;
+    correspondent?: string;
+    tags: string[];
+    original_filename?: string;
+  };
+  history: ApproverHistoryAssignment[];
+};
+
 export type AuditEvent = {
   id: string;
   timestamp: string;

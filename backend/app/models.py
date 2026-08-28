@@ -395,6 +395,11 @@ class ApprovalAssignment(Base):
             "approver_subject",
             name="uq_revision_allocation_approver",
         ),
+        Index(
+            "ix_approval_assignment_approver_invoice",
+            "approver_subject",
+            "invoice_id",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -437,6 +442,11 @@ class ApprovalDecision(Base):
             unique=True,
             postgresql_where=text("valid"),
             sqlite_where=text("valid = 1"),
+        ),
+        Index(
+            "ix_approval_decision_assignment_created",
+            "assignment_id",
+            "created_at",
         ),
     )
 

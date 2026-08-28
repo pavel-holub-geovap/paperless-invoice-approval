@@ -40,6 +40,7 @@ from app.schemas import (
     InvoicePatch,
 )
 from app.services.approval_setup import replace_allocations, replace_approvers
+from app.services.approver_history import user_can_access_invoice_history
 from app.services.audit import record_event
 from app.services.disposition import restore_disposition, set_disposition
 from app.services.exports import latest_valid_artifact
@@ -83,6 +84,16 @@ def _viewer(db: Session, invoice: Invoice, user: CurrentUser) -> None:
     ):
         return
     raise HTTPException(status_code=403, detail="Invoice is not available to this user")
+
+
+def _pdf_viewer(db: Session, invoice: Invoice, user: CurrentUser) -> None:
+    if "QUEUE_MANAGER" in user.roles:
+        return
+    if "APPROVER" in user.roles and user_can_access_invoice_history(
+        db, user.subject, invoice.id
+    ):
+        return
+    raise HTTPException(status_code=403, detail="Invoice PDF is not available to this user")
 
 
 def _invoice_or_404(db: Session, invoice_id: str, lock: bool = False) -> Invoice:
@@ -448,7 +459,7 @@ async def proxy_pdf(
     settings: Settings = Depends(get_settings),
 ) -> Response:
     invoice = _invoice_or_404(db, invoice_id)
-    _viewer(db, invoice, user)
+    _pdf_viewer(db, invoice, user)
     if invoice.source_status == SourceDocumentStatus.MISSING:
         raise HTTPException(status_code=409, detail="Paperless source document is missing")
     client = PaperlessClient(settings)

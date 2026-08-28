@@ -60,6 +60,40 @@ async def test_document_metadata_and_pdf_are_loaded_only_over_rest() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fulltext_search_uses_paginated_document_query_without_n_plus_one() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.url.path == "/api/documents/"
+        if len(requests) == 1:
+            assert request.url.params["query"] == "unikátní OCR fráze"
+            assert request.url.params["page_size"] == "100"
+            return httpx.Response(
+                200,
+                json={
+                    "results": [{"id": 10}, {"id": 11}],
+                    "next": "http://paperless.test/api/documents/?page=2&query=unik%C3%A1tn%C3%AD",
+                },
+            )
+        return httpx.Response(200, json={"results": [{"id": 12}], "next": None})
+
+    settings = Settings(
+        paperless_base_url="http://paperless.test",
+        paperless_api_token=SecretStr("test-token"),
+        paperless_api_token_file=None,
+    )
+    client = PaperlessClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        result = await client.search_document_ids("unikátní OCR fráze")
+    finally:
+        await client.close()
+
+    assert result == {10, 11, 12}
+    assert len(requests) == 2
+
+
+@pytest.mark.asyncio
 async def test_only_http_404_is_classified_as_missing_source() -> None:
     settings = Settings(
         paperless_base_url="http://paperless.test",

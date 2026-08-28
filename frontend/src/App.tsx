@@ -59,7 +59,7 @@ export default function App() {
     </header>
     <main className="app-shell">
       {route.page === "dashboard" && <Dashboard user={user} invoiceId={route.invoiceId} onNavigate={navigate}/>}
-      {route.page === "approvals" && <Approvals/>}
+      {route.page === "approvals" && <Approvals history={route.history} historyInvoiceId={route.historyInvoiceId} onNavigate={navigate}/>}
       {route.page === "centres" && <CostCenters/>}
       {route.page === "exports" && <Exports/>}
     </main>

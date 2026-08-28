@@ -31,6 +31,14 @@ Approval databáze ukládá pouze `paperless_document_id`, název, čas vytvoře
 
 Worker při každém discovery cyklu navíc reconciliuje všechny uložené `paperless_document_id`. Jen explicitní REST HTTP 404 mění `source_status` z `AVAILABLE` na `MISSING`; 401/403, timeout, síťová chyba a 5xx ponechávají dostupnost beze změny. Opětovné nalezení dokumentu nastaví `AVAILABLE`. Oba přechody jsou idempotentní a auditované. `MISSING` přidává blocking validation, ale nepřepisuje workflow, revize, approvals ani exportní historii.
 
+## Historie a fulltext schvalovatele
+
+Historické oprávnění je odvozeno výhradně z append-only `ApprovalAssignment` napříč všemi `InvoiceRevision`, nikoliv z aktuálního workflow nebo aktivního assignmentu. Centrální `user_can_access_invoice_history(subject, invoice_id)` je bezpečnostní hranice pro historický detail a originální PDF. Seznam používá stejný existenční predikát přímo v SQL, aby se autorizace neprováděla až ve frontendu.
+
+Fulltext má dva nezávislé zdroje s odlišnou autoritou: Approval DB poskytuje business oprávnění a strukturovaná pole, Paperless REST poskytuje OCR vyhledání a originální dokument. Backend provede nejvýše jeden paginovaný Paperless search tok pro dotaz, získané document ID protne s historicky povolenými fakturami a teprve potom vytvoří počet, metadata a případný snippet. Paperless výsledek nikdy nerozšiřuje oprávnění a browser nezná Paperless token ani globální výsledky.
+
+Historický list je jedna faktura na řádek a používá dávkové načtení assignmentů, allocations, středisek a decisions. Indexy `(approver_subject, invoice_id)` a `(assignment_id, created_at)` podporují autorizaci, řazení i detail bez N+1.
+
 `Invoice.disposition` je třetí, samostatná osa: `ACTIVE`, `IGNORED_DUPLICATE`, `IGNORED_OTHER`. Uchovává důvod, komentář, aktéra, čas a volitelný odkaz na původní fakturu. Výchozí fronta zobrazuje jen `ACTIVE + AVAILABLE`; další pohledy explicitně ukazují ignorované a chybějící zdroje.
 
 ### Approval upload orchestrace

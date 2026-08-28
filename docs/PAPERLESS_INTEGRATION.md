@@ -22,6 +22,12 @@ Upload probíhá přes UI nebo `/api/documents/post_document/`. Stav zpracován�
 
 Approval databáze ukládá OCR text, ale nikdy PDF bytes. Autorizovaný PDF proxy endpoint vždy volá Paperless download REST endpoint; browser Paperless token nezná. Etapy B/C nespouštějí Ollamu ani nevytvářejí extrakční job.
 
+## Fulltext pro Moji historii
+
+Endpoint dokumentů Paperless přijímá parametr `query` a stránkování. Approval backend jej používá jako jediný OCR/fulltext backend a z výsledku přebírá pouze document ID. Dotaz není prováděn jednou pro každou fakturu. Výsledná množina vzniká až průnikem s historickými assignmenty přihlášeného approvera v Approval DB; teprve poté se vrací počet, strukturovaná metadata a krátký snippet z již autorizovaného OCR snapshotu.
+
+Paperless nemůže rozšířit oprávnění. Nepovolený výsledek se neobjeví v response, počtu, snippetu, detailu ani PDF URL. Fulltextový timeout nebo auth/5xx chyba se nepřekládá na `MISSING`.
+
 ## Upload z Approval aplikace
 
 Běžný `QUEUE_MANAGER` se kvůli uploadu nepřihlašuje do Paperless UI. React podporuje file picker, drag & drop a více PDF; každý soubor odesílá nezávisle na `POST /api/uploads` a sleduje přes `/api/uploads/{id}`. Výchozí limit je `UPLOAD_MAX_BYTES=8388608` a musí zůstat nižší než Nginx `client_max_body_size`. Backend autoritativně vyžaduje `.pdf`, podporovaný MIME typ a `%PDF-` signaturu.

@@ -60,6 +60,12 @@ Jedna sazba dovoluje deterministické largest-remainder rozdělení základu mez
 
 Workflow popisuje business proces, dispozice vědomé vyřazení a source status fyzickou dostupnost Paperless originálu. Nezavádíme pseudo-workflow stavy pro duplicitu nebo 404, protože by přepisovaly účetní historii. Ignorování i source přechody jsou append-only auditované a slouží jako guard podmínky nad existujícím workflow.
 
+## Approval DB rozhoduje o přístupu, Paperless pouze hledá
+
+Pro „Moji historii“ nepoužíváme Paperless permissions ani browser-side filtrování. Oprávněná množina vzniká v Approval DB z libovolného historického assignmentu uživatele. Paperless REST fulltext vrací kandidátní document ID a backend provede bezpečný průnik ještě před stránkováním a serializací. Tím nemohou uniknout cizí metadata, snippet ani počet výsledků. Vlastní druhý OCR index nezavádíme; Paperless zůstává fulltext backendem.
+
+Historický detail je samostatný read-only kontrakt. Nevrací technický audit ani editovací operace a uchovává snapshot dat každé rozhodované revize. Obecný manager detail zůstává oddělený.
+
 ## ADR-016: Jen potvrzená 404 znamená MISSING
 
 Reconciliation čte každý známý dokument přes REST. Pouze HTTP 404 je důkaz neexistence. Auth chyba, timeout, síťová chyba a 5xx zůstávají retryovatelnou integrační chybou, aby výpadek Paperless nemohl hromadně označit faktury jako smazané.

@@ -42,6 +42,7 @@ afterEach(() => {
 describe("client-side routing", () => {
   it("parses direct invoice deep links", () => {
     expect(parseRoute("/invoices/invoice%20id")).toEqual({ page: "dashboard", invoiceId: "invoice id" });
+    expect(parseRoute("/approvals/history/invoice%20id")).toEqual({ page: "approvals", history: true, historyInvoiceId: "invoice id" });
   });
 
   it("opens a deep-linked detail and Fronta navigates to the real queue URL", async () => {

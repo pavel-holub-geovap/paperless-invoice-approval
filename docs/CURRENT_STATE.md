@@ -5,7 +5,7 @@
 - Git remote: `git@github-paperless-approval:pavel-holub-geovap/paperless-invoice-approval.git`
 - Approval aplikace: `http://172.30.172.167/`
 - Nasazeno: PostgreSQL, Redis, Keycloak, Paperless-ngx, Nginx, `approval-backend`, `approval-worker`, `approval-frontend`, Ollama a jednorázový `ollama-pull`. Všechny dlouhodobé služby jsou healthy; provision/bootstrap/pull kontejnery skončily kódem 0.
-- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0008 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
+- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0009 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
 - OIDC: skutečný Authorization Code flow prošel pro `queue-manager`, `approver1`, `approver2` a `approver3`. Approver nemůže otevřít manažerský seznam (HTTP 403).
 
 ## Opravná iterace po Etapě F
@@ -60,7 +60,13 @@
 
 ## Závěrečné automatické ověření
 
-- Backend: 135/135 testů; Ruff čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty. Regrese pokrývají RawV1, serializované ploché Ollama schéma, přesnou diagnostiku, zachování dvou neúspěšných raw pokusů, nejvýše jeden corrective retry a upload validaci, autorizaci, idempotenci i Paperless task polling.
+- Backend: 161/161 testů; úplná sada obsahuje také regresní testy historie, Paperless fulltext průniku, historického RBAC, chybějícího originálu a složených filtrů. Frontend: 37/37 testů a production build. Ruff je čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty.
+
+## Moje historie schvalovatele
+
+APPROVER má vedle aktuální fronty „Ke schválení“ paginovanou „Moji historii“. Jedna faktura je jeden řádek, zatímco detail zobrazuje všechny vlastní assignmenty, allocation, středisko, částku, rozhodnutí, revizi a případnou pozdější invalidaci. Detail je pouze pro čtení a jasně odděluje historické rozhodnutí od aktuálního workflow stavu.
+
+Vyhledávání kombinuje strukturovaná Approval data s OCR fulltextem Paperless. Paperless vrací pouze kandidátní document ID; Approval backend provede průnik s množinou faktur, ke kterým měl přihlášený subject někdy historický assignment. Stejná centrální autorizace chrání history detail a PDF proxy. `MISSING` fakturu z historie neodstraní, pouze znepřístupní originální PDF.
 - Frontend: 8 testovacích souborů, 33/33 testů; TypeScript a produkční Vite build prošly. Regrese navíc ověřuje manažerské zobrazení pole, skutečné hodnoty, očekávání, zprávy, pokusu, zachování raw odpovědi a počtu retry i výběr/drag-and-drop více PDF, individuální dočasné stavy, retry, jedinou permanentní invoice tabulku, společný action bar a aktualizaci bez F5.
 - Stage B: OIDC queue-manager/approver1, role, PDF a manažerský endpoint 403 pro approvera prošly.
 - Stage D/Qwen3 8B: skutečné inference proběhly na Paperless dokumentech 1, 2, 4, 8, 11, 14 a 17. Nejnovější RawV1 regrese nad dokumenty 17/14/11 skončila třikrát `AI_COMPLETED`, kanonická validace vždy prošla a workflow se nezměnilo. Starší úplná regrese nad dokumentem 1 měla inference 258 136 ms a 254 989 ms, prompt-injection 262 097 ms, 12 OK / 0 WARNING / 0 blocking a zachovala stav `EXPORT_CREATED`. Kandidáti se bez potvrzení neaplikovali a prompt injection nezměnila žádné pole.

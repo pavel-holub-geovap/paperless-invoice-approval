@@ -44,8 +44,16 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         upload_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(document_uploads)").fetchall()
         }
+        assignment_indexes = {
+            row[1]
+            for row in connection.execute("PRAGMA index_list(approval_assignments)").fetchall()
+        }
+        decision_indexes = {
+            row[1]
+            for row in connection.execute("PRAGMA index_list(approval_decisions)").fetchall()
+        }
 
-    assert revision == ("0008",)
+    assert revision == ("0009",)
     assert {
         "paperless_title",
         "paperless_ocr_text",
@@ -101,3 +109,5 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         "error_code",
         "retryable",
     } <= upload_columns
+    assert "ix_approval_assignment_approver_invoice" in assignment_indexes
+    assert "ix_approval_decision_assignment_created" in decision_indexes

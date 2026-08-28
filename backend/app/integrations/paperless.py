@@ -168,6 +168,23 @@ class PaperlessClient:
         payload = (await self._request("GET", f"/documents/{document_id}/")).json()
         return await self._document_from_payload(payload)
 
+    async def search_document_ids(self, query: str) -> set[int]:
+        """Search Paperless OCR/fulltext once per result page and return only IDs."""
+        path: str | None = "/documents/"
+        params: dict[str, Any] | None = {
+            "query": query,
+            "page_size": 100,
+        }
+        document_ids: set[int] = set()
+        while path:
+            response = await self._request("GET", path, params=params)
+            payload = response.json()
+            document_ids.update(int(row["id"]) for row in payload.get("results", []))
+            next_url = payload.get("next")
+            path = str(next_url) if next_url else None
+            params = None
+        return document_ids
+
     async def download_pdf(self, document_id: int) -> bytes:
         response = await self._request("GET", f"/documents/{document_id}/download/")
         content_type = response.headers.get("content-type", "")

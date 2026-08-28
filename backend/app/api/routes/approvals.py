@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from typing import Any
+from datetime import date
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import ROLE_APPROVER, require_csrf_roles, require_roles
+from app.config import Settings, get_settings
 from app.db import get_db
+from app.integrations.paperless import PaperlessClient, PaperlessError
 from app.models import (
     Allocation,
     ApprovalAssignment,
@@ -19,9 +22,71 @@ from app.models import (
     SourceDocumentStatus,
 )
 from app.schemas import ApprovalRequest, CurrentUser
+from app.services.approver_history import (
+    get_approver_history_detail,
+    list_approver_history,
+    user_can_access_invoice_history,
+)
 from app.services.workflow import WorkflowError, decide
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
+
+
+@router.get("/history")
+async def my_history(
+    q: str | None = Query(default=None, max_length=200),
+    decision: Literal["APPROVE", "RETURN", "REJECT", "NONE"] | None = None,
+    date_from: date | None = None,
+    cost_center: str | None = Query(default=None, max_length=50),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_roles(ROLE_APPROVER)),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    query = q.strip() if q and q.strip() else None
+    paperless_document_ids: set[int] = set()
+    if query:
+        client = PaperlessClient(settings)
+        try:
+            paperless_document_ids = await client.search_document_ids(query)
+        except PaperlessError as exc:
+            raise HTTPException(
+                status_code=502, detail="Paperless fulltext is temporarily unavailable"
+            ) from exc
+        finally:
+            await client.close()
+    return list_approver_history(
+        db,
+        user.subject,
+        page=page,
+        page_size=page_size,
+        query=query,
+        paperless_document_ids=paperless_document_ids,
+        decision=decision,
+        date_from=date_from,
+        cost_center=cost_center,
+    )
+
+
+@router.get("/history/{invoice_id}")
+def my_history_detail(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_roles(ROLE_APPROVER)),
+) -> dict[str, Any]:
+    if not user_can_access_invoice_history(db, user.subject, invoice_id):
+        invoice_exists = db.scalar(select(Invoice.id).where(Invoice.id == invoice_id))
+        if invoice_exists is None:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=403, detail="Invoice is not in this approver's history")
+    try:
+        detail = get_approver_history_detail(db, user.subject, invoice_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return detail
 
 
 @router.get("/mine")
