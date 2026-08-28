@@ -106,7 +106,7 @@ def main() -> None:
             matching = [
                 row for row in candidate["items"] if row["invoice_id"] == target["invoice_id"]
             ]
-            if matching and matching[0].get("ocr_snippet"):
+            if candidate["total"] == 1 and matching and matching[0].get("ocr_snippet"):
                 search_query = phrase
                 search_result = candidate
                 break
@@ -151,6 +151,7 @@ def main() -> None:
                     },
                     "fulltext_query": search_query,
                     "found_via_paperless_ocr": True,
+                    "ocr_search_total": search_result["total"],
                     "ocr_snippet_present": bool(
                         next(
                             row
