@@ -285,17 +285,16 @@ def main() -> None:
         plain = classify(manager, base, manager_user, rows["plain"]["inspected"], "RECEIVED_INVOICE")
         plain = ensure_fields(manager, base, manager_user, plain, "PLAIN")
         plain = approve(manager, approver, base, manager_user, approver_user, plain, centre_id)
-        generated = response_json(
-            api(
-                manager,
-                "POST",
-                f"{base}/api/exports/invoices/{plain['id']}/generate",
-                manager_user,
-                {"reason": None},
-                expected=201,
-            ),
-            "generated POHODA XML",
+        generated_response = api(
+            manager,
+            "POST",
+            f"{base}/api/exports/invoices/{plain['id']}/generate",
+            manager_user,
+            {"reason": None},
+            expected=201,
         )
+        generated = generated_response.json()
+        require(isinstance(generated, dict), "Generated POHODA artifact is not an object")
         xml_response = manager.get(f"{base}/api/exports/artifacts/{generated['id']}/xml")
         require(xml_response.status_code == 200, "Generated XML download failed")
         xml_root = ET.fromstring(xml_response.content)
