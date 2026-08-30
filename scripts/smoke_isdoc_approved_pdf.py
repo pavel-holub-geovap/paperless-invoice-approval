@@ -286,7 +286,14 @@ def main() -> None:
         plain = ensure_fields(manager, base, manager_user, plain, "PLAIN")
         plain = approve(manager, approver, base, manager_user, approver_user, plain, centre_id)
         generated = response_json(
-            api(manager, "POST", f"{base}/api/exports/invoices/{plain['id']}/generate", manager_user, {"reason": None}),
+            api(
+                manager,
+                "POST",
+                f"{base}/api/exports/invoices/{plain['id']}/generate",
+                manager_user,
+                {"reason": None},
+                expected=201,
+            ),
             "generated POHODA XML",
         )
         xml_response = manager.get(f"{base}/api/exports/artifacts/{generated['id']}/xml")
