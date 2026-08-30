@@ -7,6 +7,8 @@ import type { Invoice, InvoiceListItem, User } from "./types";
 const user: User = { subject: "manager", username: "queue-manager", roles: ["QUEUE_MANAGER"], csrf_token: "csrf" };
 const invoice: Invoice = {
   id: "invoice-route", paperless_document_id: 42, status: "QUEUE_REVIEW",
+  classification: { document_type: "RECEIVED_INVOICE", processing_mode: "FOR_APPROVAL", extraction_source: "OCR_AI", pohoda_eligible: true, pohoda_import_method: "GENERATED_XML" },
+  isdoc: { has_embedded_isdoc: false, status: "NOT_PRESENT" },
   disposition: { status: "ACTIVE" }, source: { status: "AVAILABLE" },
   ai_status: "AI_COMPLETED", ai: { history: [] }, current_revision_number: 1,
   paperless: { title: "Route invoice", tag_ids: [], tags: [], ocr_text: "OCR", sync_status: "SYNCED" },
@@ -16,6 +18,7 @@ const invoice: Invoice = {
 const row: InvoiceListItem = {
   id: invoice.id, paperless_document_id: 42, status: "QUEUE_REVIEW", disposition: "ACTIVE", source_status: "AVAILABLE",
   current_revision_number: 1, title: "Route invoice", sync_status: "SYNCED", ai_status: "AI_COMPLETED",
+  document_type: "RECEIVED_INVOICE", processing_mode: "FOR_APPROVAL", extraction_source: "OCR_AI", isdoc_status: "NOT_PRESENT", pohoda_import_method: "GENERATED_XML",
   invoice_number: "ROUTE-42", approvals_done: 0, approvals_required: 0, warning_count: 0, blocking_error_count: 0,
   updated_at: "2026-08-23T00:00:00Z",
 };

@@ -257,10 +257,6 @@ class PohodaInvoiceXmlGenerator:
                 "Cílová účetní jednotka POHODA není nakonfigurována (POHODA_TARGET_ICO)."
             )
         allocations = snapshot.get("allocations") or []
-        if not allocations:
-            raise PohodaMappingError("At least one allocation is required")
-        if any(not row.get("pohoda_code") for row in allocations):
-            raise PohodaMappingError("Every allocation needs a POHODA cost centre code")
         data = snapshot["data"]
         currency = str(data.get("currency") or "CZK").upper()
         if currency != "CZK" and not data.get("exchange_rate"):
@@ -279,7 +275,6 @@ class PohodaInvoiceXmlGenerator:
         if missing:
             raise PohodaMappingError("Missing reviewed export fields: " + ", ".join(missing))
 
-        split_rows = _split_vat(snapshot)
         root = etree.Element(_q(NS_DATA, "dataPack"), nsmap=NSMAP)
         root.set("version", "2.0")
         root.set("id", f"invoice-{snapshot['invoice_id']}-r{snapshot['revision_number']}")
@@ -301,12 +296,24 @@ class PohodaInvoiceXmlGenerator:
         _text(header, NS_INV, "date", data.get("issue_date"))
         _text(header, NS_INV, "dateTax", data.get("taxable_supply_date"))
         _text(header, NS_INV, "dateDue", data.get("due_date"))
-        _text(
-            header,
-            NS_INV,
-            "text",
-            data.get("description") or f"Přijatá faktura {data.get('invoice_number', '')}",
-        )
+        allocation_summary = []
+        for row in allocations:
+            amount = f"{Decimal(str(row['amount'])):,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
+            allocation_summary.append(
+                f"středisko {row['cost_center_code']} - {amount} {currency}"
+            )
+        handoff = "Finální účetní rozúčtování provádí účetní."
+        base_text = str(
+            data.get("description") or f"Přijatá faktura {data.get('invoice_number', '')}"
+        )[:60]
+        if allocation_summary:
+            prefix = f"{base_text}. Interní schválení: "
+            available = max(0, 240 - len(prefix) - len(handoff) - 2)
+            summary = "; ".join(allocation_summary)[:available].rstrip(" ;")
+            header_text = f"{prefix}{summary}. {handoff}"
+        else:
+            header_text = f"{base_text}. {handoff}"
+        _text(header, NS_INV, "text", header_text)
 
         partner = etree.SubElement(header, _q(NS_INV, "partnerIdentity"))
         address = etree.SubElement(partner, _q(NS_TYP, "address"))
@@ -337,26 +344,46 @@ class PohodaInvoiceXmlGenerator:
             _text(payment_account, NS_TYP, "bankCode", bank_code)
 
         detail = etree.SubElement(invoice, _q(NS_INV, "invoiceDetail"))
-        for allocation, allocation_rows in zip(allocations, split_rows, strict=True):
-            for row in allocation_rows:
-                rate = row["rate"]
-                item = etree.SubElement(detail, _q(NS_INV, "invoiceItem"))
-                suffix = f" / DPH {rate}%" if len(allocation_rows) > 1 else ""
-                item_text = (
-                    f"{data.get('description') or 'Přijatá faktura'} / "
-                    f"{allocation['cost_center_code']}{suffix}"
-                )[:90]
-                _text(item, NS_INV, "text", item_text)
-                _text(item, NS_INV, "quantity", "1")
-                _text(item, NS_INV, "payVAT", "false")
-                _text(item, NS_INV, "rateVAT", _rate_name(rate))
-                money_tag = "homeCurrency" if currency == "CZK" else "foreignCurrency"
-                money = etree.SubElement(item, _q(NS_INV, money_tag))
-                _text(money, NS_TYP, "unitPrice", _money(row["base"]))
-                _text(money, NS_TYP, "price", _money(row["base"]))
-                _text(money, NS_TYP, "priceVAT", _money(row["vat"]))
-                centre = etree.SubElement(item, _q(NS_INV, "centre"))
-                _text(centre, NS_TYP, "ids", allocation["pohoda_code"])
+        extracted_items = data.get("invoice_items") or []
+        if extracted_items and all(
+            row.get("line_extension_amount") not in (None, "")
+            and row.get("vat_rate") not in (None, "")
+            for row in extracted_items
+        ):
+            detail_rows = [
+                {
+                    "text": row.get("description") or "Položka přijaté faktury",
+                    "quantity": row.get("quantity") or "1",
+                    "base": Decimal(str(row["line_extension_amount"])),
+                    "vat": Decimal(str(row["line_extension_amount"]))
+                    * Decimal(str(row["vat_rate"])) / Decimal("100"),
+                    "rate": Decimal(str(row["vat_rate"])),
+                }
+                for row in extracted_items
+            ]
+        else:
+            detail_rows = [
+                {
+                    "text": data.get("description") or "Přijatá faktura",
+                    "quantity": "1",
+                    "base": _decimal(row["base"], "VAT base"),
+                    "vat": _decimal(row["vat"], "VAT amount"),
+                    "rate": Decimal(str(row["rate"])),
+                }
+                for row in _vat_rows(data)
+            ]
+        for row in detail_rows:
+            item = etree.SubElement(detail, _q(NS_INV, "invoiceItem"))
+            _text(item, NS_INV, "text", str(row["text"])[:90])
+            _text(item, NS_INV, "quantity", row["quantity"])
+            _text(item, NS_INV, "payVAT", "false")
+            _text(item, NS_INV, "rateVAT", _rate_name(row["rate"]))
+            money_tag = "homeCurrency" if currency == "CZK" else "foreignCurrency"
+            money = etree.SubElement(item, _q(NS_INV, money_tag))
+            unit_price = row["base"] / Decimal(str(row["quantity"]))
+            _text(money, NS_TYP, "unitPrice", _money(unit_price))
+            _text(money, NS_TYP, "price", _money(row["base"]))
+            _text(money, NS_TYP, "priceVAT", _money(row["vat"]))
 
         summary = etree.SubElement(invoice, _q(NS_INV, "invoiceSummary"))
         if currency == "CZK":

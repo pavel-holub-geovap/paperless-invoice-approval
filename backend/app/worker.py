@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 
@@ -18,12 +19,21 @@ from app.integrations.paperless import PaperlessClient, PaperlessError, Paperles
 from app.models import (
     AIExtraction,
     AIExtractionStatus,
+    ApprovedPdfArtifact,
+    ApprovedPdfStatus,
     Invoice,
     InvoiceDisposition,
+    IsdocStatus,
     ProcessingJob,
     SourceDocumentStatus,
     SystemHeartbeat,
     utcnow,
+)
+from app.services.approved_pdf import (
+    create_approved_pdf,
+    finalize_approved_pdf_bytes,
+    mark_approved_pdf_stored,
+    prepare_approved_pdf_artifact,
 )
 from app.services.extraction import (
     AI_JOB_TYPE,
@@ -32,6 +42,7 @@ from app.services.extraction import (
     queue_ai_extraction,
     start_ai_extraction,
 )
+from app.services.isdoc import apply_isdoc_inspection, inspect_pdf_isdoc
 from app.services.jobs import complete_job, fail_job, lease_next_job
 from app.services.paperless_sync import mark_source_missing, mark_sync_error, sync_document_snapshot
 from app.services.uploads import poll_pending_uploads
@@ -106,6 +117,9 @@ def queue_pending_ai() -> None:
                 Invoice.paperless_ocr_text != "",
                 Invoice.disposition == InvoiceDisposition.ACTIVE,
                 Invoice.source_status == SourceDocumentStatus.AVAILABLE,
+                Invoice.isdoc_status.in_(
+                    [IsdocStatus.NOT_PRESENT, IsdocStatus.INVALID, IsdocStatus.ERROR]
+                ),
             )
         ).all()
         for invoice in invoices:
@@ -193,6 +207,95 @@ async def process_one(paperless: PaperlessClient, ollama: OllamaClient | None) -
                 ollama,
             )
             return True
+        if job_type == "INSPECT_ISDOC":
+            with SessionLocal() as db:
+                invoice = db.get(Invoice, invoice_id)
+                if invoice is None:
+                    raise ValueError("Invoice for ISDOC inspection no longer exists")
+                paperless_document_id = invoice.paperless_document_id
+            pdf = await paperless.download_pdf(paperless_document_id)
+            inspection = inspect_pdf_isdoc(pdf, get_settings())
+            with SessionLocal.begin() as db:
+                persisted = db.get(ProcessingJob, job_id)
+                invoice = db.get(Invoice, invoice_id)
+                if persisted is None or invoice is None:
+                    raise ValueError("Invoice or ISDOC job no longer exists")
+                actual_hash = hashlib.sha256(pdf).hexdigest()
+                if invoice.source_pdf_sha256 and invoice.source_pdf_sha256 != actual_hash:
+                    raise ValueError("Paperless original PDF hash changed")
+                invoice.source_pdf_sha256 = actual_hash
+                apply_isdoc_inspection(db, invoice, inspection)
+                if (
+                    inspection.status != IsdocStatus.VALID
+                    and get_settings().ai_extraction_enabled
+                    and invoice.paperless_ocr_text.strip()
+                    and db.scalar(
+                        select(AIExtraction.id)
+                        .where(AIExtraction.invoice_id == invoice.id)
+                        .limit(1)
+                    )
+                    is None
+                ):
+                    queue_ai_extraction(db, invoice, get_settings())
+                complete_job(persisted)
+            return True
+        if job_type == "CREATE_APPROVED_PDF":
+            with SessionLocal.begin() as db:
+                persisted = db.get(ProcessingJob, job_id)
+                invoice = db.get(Invoice, invoice_id)
+                if persisted is None or invoice is None:
+                    raise ValueError("Invoice or approved PDF job no longer exists")
+                artifact = prepare_approved_pdf_artifact(db, invoice, get_settings())
+                artifact_id = artifact.id
+                if artifact.status == ApprovedPdfStatus.STORED:
+                    complete_job(persisted)
+                    return True
+                paperless_document_id = invoice.paperless_document_id
+                snapshot = dict(artifact.approval_snapshot)
+                known_task_id = artifact.paperless_task_id
+            original_pdf = await paperless.download_pdf(paperless_document_id)
+            approved_pdf = create_approved_pdf(original_pdf, snapshot)
+            with SessionLocal.begin() as db:
+                artifact = db.get(ApprovedPdfArtifact, artifact_id)
+                if artifact is None:
+                    raise ValueError("Approved PDF artifact no longer exists")
+                if artifact.approved_pdf_sha256:
+                    if artifact.approved_pdf_sha256 != hashlib.sha256(approved_pdf).hexdigest():
+                        raise ValueError("Approved PDF retry produced different bytes")
+                else:
+                    finalize_approved_pdf_bytes(db, artifact, original_pdf, approved_pdf)
+                known_task_id = artifact.paperless_task_id
+            if not known_task_id:
+                tag_id = await paperless.resolve_tag_id(
+                    get_settings().paperless_tag_approved_copy
+                )
+                known_task_id = await paperless.post_document(
+                    approved_pdf,
+                    filename=f"approved-{invoice_id}-r{snapshot['invoice_revision']}.pdf",
+                    title=f"Schválená kopie {snapshot.get('invoice_number') or invoice_id} r{snapshot['invoice_revision']}",
+                    tag_id=tag_id,
+                )
+                with SessionLocal.begin() as db:
+                    artifact = db.get(ApprovedPdfArtifact, artifact_id)
+                    if artifact is None:
+                        raise ValueError("Approved PDF artifact no longer exists")
+                    artifact.paperless_task_id = known_task_id
+            deadline = time.monotonic() + 240
+            while time.monotonic() < deadline:
+                task = await paperless.get_task(known_task_id)
+                if task and task.error:
+                    raise ValueError(task.error)
+                if task and task.related_document_ids:
+                    with SessionLocal.begin() as db:
+                        artifact = db.get(ApprovedPdfArtifact, artifact_id)
+                        persisted = db.get(ProcessingJob, job_id)
+                        if artifact is None or persisted is None:
+                            raise ValueError("Approved PDF artifact or job disappeared")
+                        mark_approved_pdf_stored(db, artifact, task.related_document_ids[0])
+                        complete_job(persisted)
+                    return True
+                await asyncio.sleep(2)
+            raise TimeoutError("Paperless approved-copy processing timed out")
         raise ValueError(f"Unsupported job type: {job_type}")
     except Exception as exc:
         logger.exception("job_failed job_id=%s invoice_id=%s", job_id, invoice_id)
@@ -203,6 +306,16 @@ async def process_one(paperless: PaperlessClient, ollama: OllamaClient | None) -
                     exc, (SchemaValidationFailed, OllamaRequestRejected)
                 )
                 fail_job(persisted, exc, retryable=not terminal_ai_failure)
+                if job_type == "CREATE_APPROVED_PDF" and persisted.status.value == "FAILED":
+                    revision_id = job_payload.get("revision_id")
+                    artifact = db.scalar(
+                        select(ApprovedPdfArtifact)
+                        .where(ApprovedPdfArtifact.revision_id == revision_id)
+                        .order_by(ApprovedPdfArtifact.created_at.desc())
+                    )
+                    if artifact is not None and artifact.status != ApprovedPdfStatus.STORED:
+                        artifact.status = ApprovedPdfStatus.FAILED
+                        artifact.error_message = str(exc)[:4000]
                 extraction_id = job_payload.get("ai_extraction_id")
                 extraction = db.get(AIExtraction, extraction_id) if extraction_id else None
                 if extraction is not None:

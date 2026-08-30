@@ -3,16 +3,14 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.integrations.paperless import PaperlessDocument
 from app.models import (
-    AIExtraction,
     Invoice,
     InvoiceDisposition,
     InvoiceStatus,
+    IsdocStatus,
     PaperlessSyncStatus,
     SourceDocumentStatus,
     utcnow,
@@ -90,7 +88,6 @@ def sync_document_snapshot(
     if invoice.status == InvoiceStatus.NEW and document.content.strip():
         transition(db, invoice, InvoiceStatus.VALIDATION, actor)
         transition(db, invoice, InvoiceStatus.QUEUE_REVIEW, actor)
-    settings = get_settings()
     if source_restored and invoice.disposition != InvoiceDisposition.ACTIVE:
         from app.services.jobs import enqueue_job
 
@@ -106,18 +103,15 @@ def sync_document_snapshot(
             invoice_id=invoice.id,
             payload={"tag_setting": tag_setting, "disposition": invoice.disposition.value},
         )
-    has_extraction = db.scalar(
-        select(AIExtraction.id).where(AIExtraction.invoice_id == invoice.id).limit(1)
-    )
-    if (
-        settings.ai_extraction_enabled
-        and invoice.disposition == InvoiceDisposition.ACTIVE
-        and not has_extraction
-        and document.content.strip()
-    ):
-        from app.services.extraction import queue_ai_extraction
+    if invoice.isdoc_status == IsdocStatus.UNCHECKED:
+        from app.services.jobs import enqueue_job
 
-        queue_ai_extraction(db, invoice, settings, actor)
+        enqueue_job(
+            db,
+            "INSPECT_ISDOC",
+            f"inspect-isdoc:{invoice.id}",
+            invoice_id=invoice.id,
+        )
     return changed
 
 

@@ -18,7 +18,9 @@ from app.models import (
     AIExtraction,
     AIExtractionStatus,
     ExtractedField,
+    ExtractionSource,
     Invoice,
+    IsdocStatus,
     ValidationResult,
     ValidationSeverity,
 )
@@ -219,6 +221,8 @@ def queue_ai_extraction(
 ) -> AIExtraction:
     if not settings.ai_extraction_enabled:
         raise ValueError("AI extraction is disabled")
+    if invoice.isdoc_status == IsdocStatus.VALID:
+        raise ValueError("Valid ISDOC is the authoritative extraction source; AI is not allowed")
     if not invoice.paperless_ocr_text.strip():
         raise ValueError("Invoice has no OCR text")
     active = db.scalar(
@@ -256,6 +260,7 @@ def queue_ai_extraction(
     db.add(extraction)
     db.flush()
     invoice.ai_status = AIExtractionStatus.AI_PENDING
+    invoice.extraction_source = ExtractionSource.OCR_AI
     enqueue_job(
         db,
         AI_JOB_TYPE,

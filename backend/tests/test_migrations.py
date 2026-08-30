@@ -52,8 +52,14 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
             row[1]
             for row in connection.execute("PRAGMA index_list(approval_decisions)").fetchall()
         }
+        isdoc_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(isdoc_extractions)").fetchall()
+        }
+        approved_pdf_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(approved_pdf_artifacts)").fetchall()
+        }
 
-    assert revision == ("0009",)
+    assert revision == ("0010",)
     assert {
         "paperless_title",
         "paperless_ocr_text",
@@ -73,7 +79,21 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         "source_pdf_sha256",
         "uploaded_by_subject",
         "uploaded_by_username",
+        "document_type",
+        "processing_mode",
+        "extraction_source",
+        "has_embedded_isdoc",
+        "isdoc_status",
+        "pohoda_import_method",
     } <= invoice_columns
+    assert {"isdoc_sha256", "mapped_data", "provenance", "attachment_metadata"} <= isdoc_columns
+    assert {
+        "approval_snapshot_sha256",
+        "original_pdf_sha256",
+        "approved_pdf_sha256",
+        "paperless_document_id",
+        "attachment_manifest",
+    } <= approved_pdf_columns
     assert {"expected", "actual"} <= validation_columns
     assert {
         "parsed_result",

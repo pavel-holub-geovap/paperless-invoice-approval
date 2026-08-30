@@ -19,6 +19,8 @@ dependencies = [
   "authlib>=1.4,<2",
   "python-multipart>=0.0.20,<1",
   "lxml>=5.3,<6",
+  "pypdf>=5.4,<7",
+  "reportlab>=4.2,<5",
 ]
 
 [project.optional-dependencies]

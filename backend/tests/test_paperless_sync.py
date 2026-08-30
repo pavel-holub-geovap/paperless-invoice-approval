@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.integrations.paperless import PaperlessDocument
-from app.models import AuditEvent, InvoiceStatus, PaperlessSyncStatus
+from app.models import AuditEvent, InvoiceStatus, PaperlessSyncStatus, ProcessingJob
 from app.services.paperless_sync import sync_document_snapshot
 from app.services.workflow import create_invoice
 
@@ -49,8 +49,15 @@ def test_paperless_snapshot_is_persisted_without_pdf(db: Session) -> None:
         "PAPERLESS_DOCUMENT_SYNCED",
         "WORKFLOW_TRANSITION",
         "WORKFLOW_TRANSITION",
-        "AI_EXTRACTION_QUEUED",
     ]
+    job = db.scalar(
+        select(ProcessingJob).where(
+            ProcessingJob.invoice_id == invoice.id,
+            ProcessingJob.job_type == "INSPECT_ISDOC",
+        )
+    )
+    assert job is not None
+    assert job.job_type == "INSPECT_ISDOC"
 
 
 def test_unchanged_snapshot_does_not_duplicate_data_change_audit(db: Session) -> None:

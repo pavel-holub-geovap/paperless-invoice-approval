@@ -98,9 +98,15 @@ docker compose run --rm --no-deps --env-from-file .env \
   worker python /smoke/smoke_stage_f.py
 ```
 
-Skript případně doplní přesnou strukturovanou adresu a nechá novou revizi znovu schválit reálnými OIDC uživateli. Ověří dvě allocations 700/510 Kč na střediska 200/300, první XML a auditovaný deterministický re-export, Windows-1250, `receivedInvoice`, adresu s `linkToAddress=false`, XSD-validitu, hash originálního Paperless PDF, stabilní ZIP/batch a diagnostický upload oficiální response fixture. Závěrečný stav je `EXPORT_CREATED`; skript nikdy nepotvrdí `IMPORTED_TO_POHODA`.
+Skript případně doplní přesnou strukturovanou adresu a nechá novou revizi znovu schválit reálnými OIDC uživateli. Ověří Windows-1250, `receivedInvoice`, adresu, XSD, cílovou jednotku, hash originálu, ZIP a response parser. Allocations 700/510 Kč jsou pouze informativní poznámka a XML nesmí obsahovat účetní `centre` odvozená z Approval.
 
-Doménová sada navíc testuje 1 středisko/1 sazbu, více středisek/1 sazbu, 1 středisko/více sazeb, explicitní split více středisek/více sazeb a rounding remainder. Negativní XSD testy porušují povinný element, pořadí, datový typ, enum a namespace.
+Doménová sada testuje skutečné invoice items, DPH summary fallback bez `centre`, allocation poznámku a negativní XSD případy povinného elementu, pořadí, datového typu, enumu a namespace.
+
+## ISDOC a schválené PDF
+
+`test_isdoc_approved_pdf.py` generuje bezpečné syntetické PDF bez attachmentu, s validním ISDOC 6.0.2, invalidním/cizím/malicious XML, více kandidáty a více přílohami. Ověřuje extraction source, zákaz AI a provenance. Portrait/landscape i multi-page kopie musí být deterministická, vyšší než originální poslední stránka, obsahovat lidské razítko a zachovat filename/content/SHA-256 všech attachments. Originální bytes se nesmějí změnit.
+
+VM smoke používá `scripts/generate_isdoc_smoke_fixtures.py` a scénáře bez ISDOC, validní ISDOC, invalidní ISDOC, zálohovou fakturu a novou revizi po approved artifactu. Kontroluje skutečné Paperless document ID, worker joby, API download, hashe, AI běh i POHODA metodu.
 
 Regrese detekce zaokrouhlení pokrývá Pixel Design (`4300.00 + 903.00 = 5203.00`): raw model smí chybně navrhnout `ROUNDING`, ale evidence ze souhrnného řádku jej musí deterministicky odmítnout bez `VAT_ROUNDING_ADJUSTMENT` a bez samostatné exportní položky. Negativní varianty zahrnují CELKEM, CELKEM K ÚHRADĚ, Celkem s DPH a VAT rekapitulaci. Pozitivní varianty používají explicitní `Zaokrouhlení +0.30/-0.25`, další jednoznačné štítky a skutečný GIRITON řádek `0.29 + 0.06 = 0.35`.
 

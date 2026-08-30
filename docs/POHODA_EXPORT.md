@@ -4,9 +4,9 @@ Export je offline předání pro ruční import. Aplikace se nepřipojuje k POHO
 
 ## Stav a snapshot
 
-První generování je povoleno pouze nad `APPROVED` aktuální revizí se všemi platnými approvals, potvrzeným originálem, bez blocking validation a s přesným součtem allocations. Vytvoří immutable `ExportArtifact` se snapshotem revize, allocations, approvals, verzí generátoru/XSD, XML/PDF hashem a výsledkem validace.
+POHODA se týká pouze `RECEIVED_INVOICE`. S validním ISDOC je metoda `PDF_ISDOC` a importním podkladem je uložená schválená kopie se shodným ISDOC hashem; generované invoice XML je zakázáno. Bez validního ISDOC je metoda `GENERATED_XML` a první generování je povoleno pouze nad `APPROVED` aktuální revizí se všemi platnými approvals, potvrzeným originálem, bez blocking validation a s přesným součtem allocations.
 
-Úspěšná cesta je `APPROVED → XML_READY → READY_FOR_EXPORT → EXPORT_CREATED`. `IMPORTED_TO_POHODA` vznikne jen explicitní potvrzenou akcí správce a ukládá uživatele, čas a konkrétní export ID. Stažení souboru stav nemění.
+XML cesta je `APPROVED → XML_READY → READY_FOR_EXPORT → EXPORT_CREATED`. PDF+ISDOC cesta přejde po bezpečném uložení kopie `APPROVED → READY_FOR_EXPORT → EXPORT_CREATED`. `IMPORTED_TO_POHODA` vznikne u obou metod jen explicitní potvrzenou akcí správce. `RECEIVED_ADVANCE_INVOICE` a ostatní typy mají metodu `NONE`; export, batch i potvrzení importu jsou backendem zakázané.
 
 Re-export je povolen jen pro stejnou aktuální revizi. Vytvoří nový artifact s odkazem na původní export a audit `REEXPORTED`; změněná revize musí znovu projít schválením.
 
@@ -17,6 +17,10 @@ Ignorovaná faktura nebo faktura s `source_status=MISSING` nesmí vytvořit prvn
 - XML: immutable Windows-1250 artifact, vždy XSD-validní.
 - PDF: při generování se pouze načte z Paperless REST API pro hash; samostatné stažení používá chráněný proxy endpoint.
 - ZIP: archivovaný exportní artifact smí obsahovat PDF a XML. Batch má stabilní složky `invoice-<bezpečné číslo>/invoice.xml|invoice.pdf` a vlastní SHA-256.
+
+## Položky a allocations
+
+Approval allocations vyjadřují věcné schválení nákladu, nikoli účetní zaúčtování. Generátor proto nevytváří `inv:centre` ani položky podle allocations. Pokud jsou dostupné skutečné vytěžené `invoice_items`, použije je; jinak vytvoří XSD-validní DPH souhrnné řádky bez vymyšlené účetní analytiky. Allocation summary je deterministicky pouze v `invoiceHeader/text` spolu s větou, že finální účetní rozúčtování provádí účetní.
 
 Při tvorbě ZIP se PDF znovu načte z Paperless a jeho hash musí odpovídat exportnímu snapshotu. Tím se zabrání spojení XML s mezitím změněným originálem.
 

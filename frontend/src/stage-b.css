@@ -87,6 +87,25 @@
   margin: 12px 0 18px;
 }
 
+.pdf-switch {
+  display: flex;
+  gap: 6px;
+}
+
+.pdf-switch button {
+  border: 1px solid #52606d;
+  border-radius: 8px;
+  background: #34414d;
+  color: #e9f0f4;
+  cursor: pointer;
+  padding: 7px 11px;
+}
+
+.pdf-switch button.active {
+  background: #fff;
+  color: #16324f;
+}
+
 .quick-filters button {
   border: 1px solid var(--line);
   border-radius: 999px;

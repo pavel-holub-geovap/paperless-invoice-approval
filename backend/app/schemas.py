@@ -10,9 +10,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.models import (
     AIExtractionStatus,
     ApprovalAction,
+    DocumentType,
+    ExtractionSource,
     InvoiceDisposition,
     InvoiceStatus,
+    IsdocStatus,
     PaperlessSyncStatus,
+    PohodaImportMethod,
+    ProcessingMode,
     SourceDocumentStatus,
     ValidationSeverity,
 )
@@ -282,6 +287,17 @@ class AIExtractionApply(BaseModel):
     confirm_overwrite: bool = False
 
 
+class DocumentClassificationSet(BaseModel):
+    document_type: DocumentType
+    processing_mode: ProcessingMode
+    pohoda_eligible: bool | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class ManualHandoffSet(BaseModel):
+    note: str = Field(min_length=1, max_length=2000)
+
+
 class AllocationVatInput(BaseModel):
     rate: Decimal = Field(ge=0, le=100)
     base: Decimal
@@ -353,6 +369,11 @@ class InvoiceListItem(BaseModel):
     source_pdf_sha256: str | None
     sync_status: PaperlessSyncStatus
     ai_status: AIExtractionStatus
+    document_type: DocumentType
+    processing_mode: ProcessingMode
+    extraction_source: ExtractionSource
+    isdoc_status: IsdocStatus
+    pohoda_import_method: PohodaImportMethod
     supplier_name: str | None
     invoice_number: str | None
     total_amount: Decimal | None

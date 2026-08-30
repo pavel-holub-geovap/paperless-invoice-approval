@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     paperless_tag_pohoda_ready: str = "Připraveno pro Pohodu"
     paperless_tag_exported: str = "Exportováno"
     paperless_tag_imported: str = "Importováno do Pohody"
+    paperless_tag_approved_copy: str = "Approval - schválená kopie"
     paperless_tag_duplicate: str = "Duplicita"
     paperless_tag_ignored: str = "Ignorováno"
 
@@ -57,6 +58,8 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = 28800
     external_retry_attempts: int = 3
     upload_max_bytes: int = 8 * 1024 * 1024
+    isdoc_max_attachment_bytes: int = 4 * 1024 * 1024
+    approved_pdf_stamp_version: str = "approval-stamp.v1"
 
     @field_validator("paperless_base_url", "ollama_base_url", "keycloak_base_url")
     @classmethod

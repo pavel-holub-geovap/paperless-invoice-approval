@@ -15,6 +15,8 @@ const invoice: Invoice = {
   id: "invoice-1",
   paperless_document_id: 1,
   status: "QUEUE_REVIEW",
+  classification: { document_type: "RECEIVED_INVOICE", processing_mode: "FOR_APPROVAL", extraction_source: "OCR_AI", pohoda_eligible: true, pohoda_import_method: "GENERATED_XML" },
+  isdoc: { has_embedded_isdoc: false, status: "NOT_PRESENT" },
   disposition: { status: "ACTIVE" },
   source: { status: "AVAILABLE" },
   ai_status: "AI_COMPLETED",

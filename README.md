@@ -1,6 +1,6 @@
 # Paperless Invoice Approval
 
-Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schválení a manuální export přijatých faktur z Paperless do POHODY. Kompletní testovací stack obsahuje vlastní izolovaný Paperless-ngx; pozdější produkční architektura může použít existující externí Paperless.
+Interní systém pro klasifikaci dokumentů, vytěžení, věcné schválení nákladu a přípravu podkladů pro ruční účetní zpracování. Paperless je autorita pro originály/OCR, Approval není druhé účetnictví a s POHODOU přímo nekomunikuje.
 
 ## Nejdůležitější invarianty
 
@@ -9,7 +9,8 @@ Interní systém pro vytěžení, kontrolu, rozúčtování, paralelní schvále
 - Schvaluje se konkrétní rozúčtovaná část za konkrétní středisko a konkrétní revizi.
 - Významná změna invaliduje všechna dosavadní schválení aktuální faktury.
 - Jediné `REJECT` zamítne celou fakturu; `RETURN` ji vrátí správci.
-- POHODA XML generuje deterministický kód a před exportem jej validuje XSD.
+- Validní vložený ISDOC je primární strukturovaný zdroj a přeskočí AI; bez něj se použije OCR + Qwen3 8B.
+- Přijatá faktura s ISDOC se předává jako schválené PDF se zachovaným ISDOC, bez ISDOC jako deterministické XSD-validní POHODA XML.
 - Import do POHODY je výhradně ruční. Až správce explicitně potvrdí import, vznikne stav `IMPORTED_TO_POHODA`.
 - Audit je append-only. Secrets, skutečné faktury ani modely se necommitují.
 - Workflow, dispozice (`ACTIVE`/ignorováno) a dostupnost Paperless zdroje (`AVAILABLE`/`MISSING`) jsou tři nezávislé osy. Ignorování ani ztráta zdroje nemažou historii.
@@ -27,7 +28,7 @@ Etapy B/C synchronizují metadata, tagy a OCR text z Paperless REST API do samos
 
 Etapa E přidává konfigurovatelná střediska, Decimal rozúčtování, povinnou kontrolu originálu a paralelní assignmenty navázané na konkrétní revizi, středisko a částku. `RETURN` vrací celou fakturu správci, `REJECT` ji globálně zamítá a `REOPEN` vytváří novou auditovanou revizi. Významná změna dat, allocations nebo approverů invaliduje všechna dřívější rozhodnutí bez mazání historie. Podrobný kontrakt je v [docs/APPROVAL_WORKFLOW.md](docs/APPROVAL_WORKFLOW.md).
 
-Etapa F vytváří deterministickým Python generátorem `receivedInvoice`, validuje jej proti verzovanému oficiálnímu POHODA XML 2.x bundle a ukládá immutable exportní snapshot s hashy XML i původního PDF. Do položek se exportují allocations a `pohoda_code`, nikdy approval assignmenty. Správce může stáhnout XML, PDF nebo dávkový ZIP, diagnosticky načíst POHODA response a teprve po skutečném ručním importu explicitně potvrdit `IMPORTED_TO_POHODA`. Viz [docs/POHODA_EXPORT.md](docs/POHODA_EXPORT.md), [docs/POHODA_MAPPING.md](docs/POHODA_MAPPING.md) a [docs/POHODA_XSD.md](docs/POHODA_XSD.md).
+POHODA XML používá skutečné vytěžené položky, případně bezpečné DPH souhrny; Approval allocations se do účetních středisek nepřevádějí. Jsou věcným schvalovacím údajem, objeví se v auditu, schváleném PDF a informativní poznámce. Finální účetní rozúčtování provádí účetní firma. Přijaté zálohové faktury se do interní POHODY nikdy neimportují. Viz [docs/POHODA_EXPORT.md](docs/POHODA_EXPORT.md) a [docs/POHODA_MAPPING.md](docs/POHODA_MAPPING.md).
 
 Opravná iterace po Etapě F normalizuje český účet deterministicky na `bank_account_raw`, `bank_account_prefix`, `bank_account_number`, `bank_code` a zpětně kompatibilní `bank_account`. Schéma v3 odděluje dodavatelský `supplier_address_raw` na street/city/zip pouze z dodavatelského bloku. `ROUNDING` VAT řádek se přijme jen s explicitním tištěným štítkem zaokrouhlení; souhrnné řádky CELKEM/Základ/DPH nejsou důkaz. Odmítnutý návrh modelu zůstane v raw a normalizační diagnostice, ale nevstoupí do pracovních dat, validace ani exportu. Matematické reconciliation rozdíly jsou review WARNING; neblokují kontrolu, schválení ani export. Správce má zvláštní pohledy aktivních, ignorovaných a zdrojově chybějících dokladů. Frontend používá skutečné SPA URL včetně přímého `/invoices/{id}`.
 

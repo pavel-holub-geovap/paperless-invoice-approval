@@ -121,6 +121,56 @@ class ExportArtifactStatus(enum.StrEnum):
     XSD_INVALID = "XSD_INVALID"
 
 
+class DocumentType(enum.StrEnum):
+    UNCLASSIFIED = "UNCLASSIFIED"
+    RECEIVED_INVOICE = "RECEIVED_INVOICE"
+    RECEIVED_ADVANCE_INVOICE = "RECEIVED_ADVANCE_INVOICE"
+    ADVANCE_PAYMENT_TAX_DOCUMENT = "ADVANCE_PAYMENT_TAX_DOCUMENT"
+    FINAL_SETTLEMENT = "FINAL_SETTLEMENT"
+    RECEIPT = "RECEIPT"
+    CARD_EXPENSE = "CARD_EXPENSE"
+    EMPLOYEE_EXPENSE = "EMPLOYEE_EXPENSE"
+    CENTRAL_DOCUMENT = "CENTRAL_DOCUMENT"
+    OTHER_SUPPORTING_DOCUMENT = "OTHER_SUPPORTING_DOCUMENT"
+
+
+class ProcessingMode(enum.StrEnum):
+    FOR_APPROVAL = "FOR_APPROVAL"
+    RECORD_ONLY = "RECORD_ONLY"
+    CENTRAL_MANUAL = "CENTRAL_MANUAL"
+
+
+class ExtractionSource(enum.StrEnum):
+    UNDETERMINED = "UNDETERMINED"
+    ISDOC = "ISDOC"
+    OCR_AI = "OCR_AI"
+    MANUAL = "MANUAL"
+
+
+class IsdocStatus(enum.StrEnum):
+    UNCHECKED = "UNCHECKED"
+    NOT_PRESENT = "NOT_PRESENT"
+    DETECTED = "DETECTED"
+    VALID = "VALID"
+    INVALID = "INVALID"
+    ERROR = "ERROR"
+
+
+class ApprovedPdfStatus(enum.StrEnum):
+    PENDING = "PENDING"
+    CREATED = "CREATED"
+    STORED = "STORED"
+    FAILED = "FAILED"
+    HISTORICAL = "HISTORICAL"
+
+
+class PohodaImportMethod(enum.StrEnum):
+    NONE = "NONE"
+    PDF_ISDOC = "PDF_ISDOC"
+    GENERATED_XML = "GENERATED_XML"
+    MANUAL_REVIEW = "MANUAL_REVIEW"
+
+
 class UserIdentity(Base):
     __tablename__ = "user_identities"
 
@@ -163,6 +213,45 @@ class Invoice(Base):
     source_pdf_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
     uploaded_by_subject: Mapped[str | None] = mapped_column(String(255), index=True)
     uploaded_by_username: Mapped[str | None] = mapped_column(String(255))
+    document_type: Mapped[DocumentType] = mapped_column(
+        Enum(DocumentType, native_enum=False),
+        default=DocumentType.UNCLASSIFIED,
+        nullable=False,
+        index=True,
+    )
+    processing_mode: Mapped[ProcessingMode] = mapped_column(
+        Enum(ProcessingMode, native_enum=False),
+        default=ProcessingMode.FOR_APPROVAL,
+        nullable=False,
+        index=True,
+    )
+    extraction_source: Mapped[ExtractionSource] = mapped_column(
+        Enum(ExtractionSource, native_enum=False),
+        default=ExtractionSource.UNDETERMINED,
+        nullable=False,
+        index=True,
+    )
+    has_embedded_isdoc: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    isdoc_status: Mapped[IsdocStatus] = mapped_column(
+        Enum(IsdocStatus, native_enum=False),
+        default=IsdocStatus.UNCHECKED,
+        nullable=False,
+        index=True,
+    )
+    isdoc_version: Mapped[str | None] = mapped_column(String(32))
+    isdoc_filename: Mapped[str | None] = mapped_column(String(255))
+    isdoc_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    isdoc_validation_error: Mapped[str | None] = mapped_column(Text)
+    pohoda_eligible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    pohoda_import_method: Mapped[PohodaImportMethod] = mapped_column(
+        Enum(PohodaImportMethod, native_enum=False),
+        default=PohodaImportMethod.NONE,
+        nullable=False,
+        index=True,
+    )
+    manual_handoff_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    manual_handoff_by: Mapped[str | None] = mapped_column(String(255))
+    manual_handoff_note: Mapped[str | None] = mapped_column(Text)
     sync_status: Mapped[PaperlessSyncStatus] = mapped_column(
         Enum(PaperlessSyncStatus, native_enum=False),
         default=PaperlessSyncStatus.PENDING,
@@ -220,6 +309,12 @@ class Invoice(Base):
         back_populates="invoice",
         cascade="all, delete-orphan",
         order_by="AIExtraction.extraction_revision",
+    )
+    isdoc_extractions: Mapped[list[IsdocExtraction]] = relationship(
+        back_populates="invoice", cascade="all, delete-orphan", order_by="IsdocExtraction.created_at"
+    )
+    approved_pdf_artifacts: Mapped[list[ApprovedPdfArtifact]] = relationship(
+        back_populates="invoice", cascade="all, delete-orphan", order_by="ApprovedPdfArtifact.created_at"
     )
 
     @property
@@ -332,6 +427,72 @@ class AIExtraction(Base):
 
     invoice: Mapped[Invoice] = relationship(back_populates="ai_extractions")
     invoice_revision: Mapped[InvoiceRevision | None] = relationship()
+
+
+class IsdocExtraction(Base):
+    __tablename__ = "isdoc_extractions"
+    __table_args__ = (
+        UniqueConstraint("invoice_id", "isdoc_sha256", name="uq_invoice_isdoc_sha256"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    invoice_id: Mapped[str] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True
+    )
+    invoice_revision_id: Mapped[str] = mapped_column(
+        ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    isdoc_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    version: Mapped[str] = mapped_column(String(32), nullable=False)
+    namespace: Mapped[str] = mapped_column(String(255), nullable=False)
+    mapped_data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    attachment_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(255), default="system", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    invoice: Mapped[Invoice] = relationship(back_populates="isdoc_extractions")
+    invoice_revision: Mapped[InvoiceRevision] = relationship()
+
+
+class ApprovedPdfArtifact(Base):
+    __tablename__ = "approved_pdf_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "revision_id", "approval_snapshot_sha256", "stamp_version",
+            name="uq_approved_pdf_identity",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    invoice_id: Mapped[str] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True
+    )
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("invoice_revisions.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[ApprovedPdfStatus] = mapped_column(
+        Enum(ApprovedPdfStatus, native_enum=False), nullable=False, index=True
+    )
+    stamp_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    approval_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    approval_snapshot_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_pdf_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    approved_pdf_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    approved_pdf_size: Mapped[int | None] = mapped_column(Integer)
+    paperless_document_id: Mapped[int | None] = mapped_column(Integer, unique=True, index=True)
+    paperless_task_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
+    attachment_manifest: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(255), default="system", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    stored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    invoice: Mapped[Invoice] = relationship(back_populates="approved_pdf_artifacts")
+    revision: Mapped[InvoiceRevision] = relationship()
 
 
 class CostCenter(Base):

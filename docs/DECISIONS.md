@@ -52,9 +52,9 @@ Validace používá úplný oficiální POHODA XML 2.x bundle s datem 2025-10-16
 
 Každé generování ukládá neměnný snapshot aktuální revize, allocations a approvals spolu s verzemi a SHA-256 XML/PDF. Re-export vytváří nový řádek a odkazuje na předchozí artifact. Stažení nic nemění; `IMPORTED_TO_POHODA` vzniká pouze explicitním potvrzením správce po ručním importu.
 
-## ADR-014: Účetní DPH split se neodhaduje
+## ADR-014: Approval allocations nejsou účetní rozúčtování (nahrazené rozhodnutí)
 
-Jedna sazba dovoluje deterministické largest-remainder rozdělení základu mezi střediska. U více sazeb a více středisek model vyžaduje explicitní `Allocation.vat_breakdown`; bez něj export končí blokující chybou. Správnost a reprodukovatelnost mají přednost před automatizací.
+Starší mapování allocations na POHODA položky/střediska je zrušeno. Allocation popisuje věcné schválení nákladu a zůstává v Approval auditu, razítku a informativní poznámce. POHODA XML používá skutečné invoice items nebo DPH souhrny bez středisek; konečné účty, předkontaci a střediska určí účetní firma.
 
 ## ADR-015: Tři nezávislé osy stavu faktury
 
@@ -99,3 +99,13 @@ Queue manager nahrává PDF do Approval BFF, nikoli přímo do Paperless z brows
 ## ADR-021: Fronta faktur je jediný trvalý uživatelský seznam
 
 Historické `document_uploads` jsou technická diagnostika, nikoli druhá business fronta. Dashboard je proto při načtení nečte a zobrazuje pouze lokálně zahájenou dávku v kompaktním dočasném panelu. Jakmile refresh potvrdí vznik `invoice_id` v hlavní tabulce, tracking položka zmizí; chyba zůstává s retry a explicitním zavřením. Upload a refresh jsou ve společném action baru bez záporných marginů, aby desktopové zarovnání i responzivní zalomení vycházelo z jednoho layoutu.
+
+## ADR-022: ISDOC před AI a odvozená schválená PDF kopie
+
+Podporujeme deterministický validační profil ISDOC Invoice 6.0.2. Validní vložený ISDOC je autorita strukturovaných polí a Qwen3 se nespouští. Originál ani vložené bytes se nemění. Schválená kopie je nový immutable artifact s hashy originálu/kopie/ISDOC, revizí, approval snapshotem a verzí razítka.
+
+Paperless 3.0.5 neposkytuje pro tento účel bezpečné přepsání/verzování originálu. Kopie se proto ukládá jako samostatný Paperless dokument s technickým tagem `Approval - schválená kopie`, bez inbox tagu, a její document ID je v Approval DB. Tím zůstává Paperless binary backendem a derived dokument se nevrátí do ingestion fronty.
+
+## ADR-023: Typ dokumentu a processing mode jsou nezávislé
+
+`document_type` popisuje dokument, `processing_mode` proces. Pouze `FOR_APPROVAL` vytváří standardní schvalování. `RECORD_ONLY` nic nepředstírá a případná způsobilost přijaté faktury vyžaduje explicitní volbu managera. `CENTRAL_DOCUMENT + CENTRAL_MANUAL` zůstává mimo approval i POHODU. `RECEIVED_ADVANCE_INVOICE` smí projít approval, ale backend vždy blokuje POHODA export/import.

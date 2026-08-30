@@ -14,7 +14,7 @@ Zdrojovým implementačním kontraktem je `Zadání sw-paperless-invoice-full.do
 8. Schvalování je paralelní. `APPROVE` schválí assignment; `RETURN` s komentářem vrátí fakturu správci; `REJECT` s komentářem zamítne celou fakturu.
 9. Významná změna vytvoří novou revizi a invaliduje všechna stará schválení. Historie se nemaže.
 10. Faktura je finálně schválená až po kontrole originálu, bez blokujících chyb, s přesným rozúčtováním a všemi povinnými approvals.
-11. Deterministický generátor vytvoří XML přijaté faktury se středisky a ověří je proti deklarované XSD sadě.
+11. Přijatá faktura s validním ISDOC používá schválené PDF + původní ISDOC; bez ISDOC deterministický XML generátor bez vymyšleného účetního rozúčtování a s XSD validací.
 12. Správce stáhne XML, originální PDF nebo ZIP; může vytvořit dávku více faktur. Export neznamená import.
 13. Po skutečném ručním importu správce jednotlivě nebo pro dávku explicitně nastaví `IMPORTED_TO_POHODA`.
 14. Hrubý stav se synchronizuje Paperless tagy; detailní stav, approvals a audit jsou autoritativní v PostgreSQL.
@@ -29,7 +29,7 @@ Samostatné stavy jsou `disposition_status = ACTIVE|IGNORED_DUPLICATE|IGNORED_OT
 
 ## Data a integrita
 
-Minimální entity: identita uživatele, faktura, revize, vytěžené pole, výsledek validace, středisko, allocation včetně případného explicitního VAT splitu, assignment, rozhodnutí, auditní událost, job, immutable exportní artifact, exportní dávka a její položka a diagnostický upload POHODA response. Unikátní vazba chrání před duplicitou Paperless ID. Backend a databázové constraints brání schválení staré revize, exportu neschválené faktury a rozhodnutí bez assignmentu.
+Minimální entity navíc zahrnují immutable ISDOC extraction snapshot a approved PDF artifact. Unikátní vazby chrání Paperless ID, ISDOC hash a identitu revision + approval snapshot + stamp. Backend brání schválení staré revize, exportu neschválené faktury a rozhodnutí bez assignmentu.
 
 ## Validace
 

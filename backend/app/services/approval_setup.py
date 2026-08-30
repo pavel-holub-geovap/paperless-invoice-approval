@@ -15,6 +15,7 @@ from app.models import (
     CostCenter,
     Invoice,
     InvoiceStatus,
+    ProcessingMode,
     UserIdentity,
 )
 from app.services.allocations import allocate_by_percentages
@@ -183,6 +184,10 @@ def replace_approvers(
     subjects: Sequence[str],
     actor: str,
 ) -> Allocation:
+    if invoice.processing_mode != ProcessingMode.FOR_APPROVAL:
+        raise WorkflowError(
+            "Schvalovatelé mohou být přiřazeni pouze dokladu v režimu FOR_APPROVAL"
+        )
     if invoice.status in REVISION_SENSITIVE_STATES:
         old_cost_center_id = allocation.cost_center_id
         revision = fork_revision(db, invoice, actor, "Změna seznamu schvalovatelů")

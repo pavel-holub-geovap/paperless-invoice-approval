@@ -14,6 +14,19 @@ const editableFields = [
 ] as const;
 
 const dateFields = new Set(["issue_date", "taxable_supply_date", "due_date"]);
+const documentTypes = [
+  ["UNCLASSIFIED", "Nezařazený"], ["RECEIVED_INVOICE", "Přijatá faktura"],
+  ["RECEIVED_ADVANCE_INVOICE", "Přijatá zálohová faktura"],
+  ["ADVANCE_PAYMENT_TAX_DOCUMENT", "Daňový doklad k záloze"],
+  ["FINAL_SETTLEMENT", "Konečné vyúčtování"], ["RECEIPT", "Účtenka"],
+  ["CARD_EXPENSE", "Výdaj kartou"], ["EMPLOYEE_EXPENSE", "Výdaj zaměstnance"],
+  ["CENTRAL_DOCUMENT", "Centrální dokument"],
+  ["OTHER_SUPPORTING_DOCUMENT", "Jiný podpůrný doklad"],
+] as const;
+const processingModes = [
+  ["FOR_APPROVAL", "Ke schválení"], ["RECORD_ONLY", "Pouze evidence"],
+  ["CENTRAL_MANUAL", "Centrální ruční proces"],
+] as const;
 const formFromInvoice = (invoice: Invoice) => Object.fromEntries(editableFields.map(([key]) => {
   const value = invoice.data[key] ?? (key === "supplier_address_raw" ? invoice.data.supplier_address : undefined);
   return [key, dateFields.has(key) && value ? formatDateCs(String(value)) : String(value ?? "")];
@@ -39,6 +52,16 @@ const auditLabels: Record<string, string> = {
   DOCUMENT_UPLOADED_TO_PAPERLESS: "Dokument nahrán do Paperless",
   DOCUMENT_UPLOAD_FAILED: "Nahrání dokumentu selhalo",
   DOCUMENT_DISCOVERED: "Dokument nalezen v Paperless",
+  DOCUMENT_CLASSIFIED: "Dokument klasifikován",
+  PROCESSING_MODE_CHANGED: "Změněn režim zpracování",
+  ISDOC_DETECTED: "Nalezen vložený ISDOC",
+  ISDOC_VALIDATED: "ISDOC úspěšně ověřen",
+  ISDOC_VALIDATION_FAILED: "Ověření ISDOC selhalo",
+  EXTRACTION_FROM_ISDOC_CREATED: "Vytvořena datová revize z ISDOC",
+  APPROVED_PDF_CREATED: "Vytvořena schválená PDF kopie",
+  APPROVED_PDF_STORED: "Schválená PDF kopie uložena v Paperless",
+  APPROVED_PDF_SUPERSEDED: "Schválená PDF kopie nahrazena novou revizí",
+  POHODA_IMPORT_METHOD_SELECTED: "Zvolen způsob předání do POHODY",
   AI_EXTRACTION_APPLIED: "Použita první AI extrakce",
   AI_REEXTRACTION_APPLIED: "Použita nová AI extrakce",
   INVOICE_FIELD_CHANGED: "Změněn údaj faktury",
@@ -82,14 +105,16 @@ function workflowSteps(invoice: Invoice): { label: string; state: StepState; det
   const assigned = invoice.allocations.length > 0 && invoice.allocations.every((row) => row.assignments.length > 0);
   const approved = ["APPROVED", "XML_READY", "READY_FOR_EXPORT", "EXPORT_CREATED", "IMPORTED_TO_POHODA"].includes(invoice.status);
   const exported = ["EXPORT_CREATED", "IMPORTED_TO_POHODA"].includes(invoice.status);
+  const pohodaMethod = invoice.classification.pohoda_import_method;
+  const pohodaNotApplicable = pohodaMethod === "NONE";
   return [
     { label: "Zdroj", state: invoice.source.status === "AVAILABLE" ? "DONE" : "ERROR", detail: invoice.source.status === "AVAILABLE" ? "Dokument je dostupný v Paperless." : "Zdroj není dostupný; navazující akce jsou blokované." },
     { label: "Data a validace", state: blocked ? "BLOCKED" : invoice.data.invoice_number ? "DONE" : "CURRENT", detail: blocked ? "Odstraňte blokující validační chyby." : invoice.data.invoice_number ? "Fakturační údaje jsou připravené." : "Doplňte fakturační údaje." },
     { label: "Rozúčtování", state: allocated ? "DONE" : blocked ? "WAITING" : "CURRENT", detail: allocated ? "Součet rozúčtování odpovídá faktuře." : "Doplňte rozúčtování do celé částky." },
     { label: "Kontrola originálu", state: invoice.original_review_confirmed ? "DONE" : !allocated ? "WAITING" : "CURRENT", detail: invoice.original_review_confirmed ? "Originál byl zkontrolován." : "Správce musí potvrdit kontrolu PDF." },
     { label: "Schválení", state: invoice.status === "REJECTED" ? "ERROR" : invoice.status === "RETURNED" ? "BLOCKED" : approved ? "DONE" : invoice.status === "AWAITING_APPROVAL" ? "CURRENT" : assigned ? "WAITING" : "BLOCKED", detail: invoice.status === "REJECTED" ? "Faktura byla zamítnuta." : invoice.status === "RETURNED" ? "Faktura byla vrácena k opravě." : approved ? "Všechna povinná schválení jsou hotová." : !assigned ? "Přiřaďte schvalovatele." : invoice.status === "AWAITING_APPROVAL" ? "Čeká se na schvalovatele." : "Předejte fakturu ke schválení." },
-    { label: "POHODA export", state: invoice.pohoda_export?.status === "XSD_INVALID" ? "ERROR" : exported ? "DONE" : approved ? "CURRENT" : "WAITING", detail: invoice.pohoda_export?.status === "XSD_INVALID" ? "XML neprošlo XSD validací." : exported ? "Neměnný exportní artefakt byl vytvořen." : approved ? "Lze vytvořit a stáhnout XML/ZIP." : "Export čeká na finální schválení." },
-    { label: "Ruční import", state: invoice.status === "IMPORTED_TO_POHODA" ? "DONE" : invoice.status === "EXPORT_CREATED" ? "CURRENT" : "WAITING", detail: invoice.status === "IMPORTED_TO_POHODA" ? "Import byl explicitně potvrzen." : invoice.status === "EXPORT_CREATED" ? "Po ručním importu potvrďte konkrétní artefakt." : "Čeká na exportní balíček." },
+    { label: "Podklad pro POHODU", state: pohodaNotApplicable ? "DONE" : invoice.pohoda_export?.status === "XSD_INVALID" ? "ERROR" : exported ? "DONE" : approved ? "CURRENT" : "WAITING", detail: pohodaNotApplicable ? "Tento typ dokladu se do interní POHODY nepředává." : invoice.pohoda_export?.status === "XSD_INVALID" ? "XML neprošlo XSD validací." : exported ? "Neměnný importní podklad byl vytvořen." : approved ? pohodaMethod === "PDF_ISDOC" ? "Čeká se na schválené PDF se zachovaným ISDOC." : "Lze vytvořit a stáhnout XML/ZIP." : "Podklad čeká na finální schválení." },
+    { label: "Ruční import", state: pohodaNotApplicable ? "DONE" : invoice.status === "IMPORTED_TO_POHODA" ? "DONE" : invoice.status === "EXPORT_CREATED" ? "CURRENT" : "WAITING", detail: pohodaNotApplicable ? "Import se neprovádí." : invoice.status === "IMPORTED_TO_POHODA" ? "Import byl explicitně potvrzen." : invoice.status === "EXPORT_CREATED" ? "Po ručním importu potvrďte konkrétní artefakt." : "Čeká na importní podklad." },
   ];
 }
 
@@ -110,10 +135,15 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [sectionError, setSectionError] = useState("");
   const [pohodaConfig, setPohodaConfig] = useState<PohodaConfig | null>(null);
+  const [documentType, setDocumentType] = useState(invoice.classification.document_type);
+  const [processingMode, setProcessingMode] = useState(invoice.classification.processing_mode);
+  const [pdfKind, setPdfKind] = useState<"original" | "approved">("original");
   const hydratedRevision = useRef(invoice.current_revision_number);
   const hydratedSnapshot = useRef(draftSnapshot(invoice));
   const hydrate = (next: Invoice) => {
     setForm(formFromInvoice(next));
+    setDocumentType(next.classification.document_type);
+    setProcessingMode(next.classification.processing_mode);
     setAllocationRows(next.allocations.map((a)=>({cost_center_id:a.cost_center.id,amount:String(a.amount),percentage:String(a.percentage??""),note:a.note??"",vat_breakdown:JSON.stringify(a.vat_breakdown??[])})));
     setApproverChoices(Object.fromEntries(next.allocations.map((a)=>[a.id,a.assignments.map((x)=>x.approver_subject)])));
     hydratedRevision.current = next.current_revision_number;
@@ -207,6 +237,10 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
     if (!invoice.pohoda_export || !window.confirm("Potvrzujete, že tato konkrétní revize byla ručně importována do POHODY?")) return;
     void call("import", `/exports/artifacts/${invoice.pohoda_export.id}/mark-imported`, { method: "POST", body: JSON.stringify({ confirmed: true }) }, "Ruční import konkrétního artefaktu byl potvrzen.");
   };
+  const markPdfIsdocImported = async () => {
+    if (!window.confirm("Potvrzujete ruční import schváleného PDF s původním ISDOC do POHODY?")) return;
+    void call("import-pdf-isdoc", `/invoices/${invoice.id}/mark-pohoda-imported`, { method: "POST", body: JSON.stringify({ confirmed: true }) }, "Ruční import PDF + ISDOC byl potvrzen.");
+  };
   const uploadResponse = async (file?: File) => {
     if (!file || !invoice.pohoda_export) return;
     const body = new FormData(); body.append("response_file", file); body.append("export_artifact_id", invoice.pohoda_export.id);
@@ -226,6 +260,12 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
     const comment = window.prompt("Volitelný komentář k porovnání") || null;
     void call("disposition", `/invoices/${invoice.id}/disposition`, { method: "POST", body: JSON.stringify({ disposition: "IGNORED_DUPLICATE", reason: "confirmed duplicate", comment, duplicate_of_invoice_id: target }) }, "Dokument byl označen jako duplicita.");
   };
+  const saveClassification = () => void call(
+    "classification",
+    `/invoices/${invoice.id}/classification`,
+    { method: "PUT", body: JSON.stringify({ document_type: documentType, processing_mode: processingMode, expected_revision: invoice.current_revision_number }) },
+    "Klasifikace a režim byly uloženy.",
+  );
   const validationByField = Object.fromEntries(invoice.validations.filter((row)=>row.field_name&&row.severity!=="OK").map((row)=>[row.field_name!,row]));
   const allocationError = invoice.validations.find((row)=>row.code==="ALLOCATION_TOTAL_MISMATCH");
   const missingApprover = invoice.allocations.find((row)=>row.assignments.length===0);
@@ -240,8 +280,15 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
     {message && <div className="alert success">{message}</div>}{(error || sectionError) && <div className="alert danger" role="alert">{sectionError || error}</div>}
     <ol className="workflow-stepper" aria-label="Průběh zpracování faktury">{steps.map((step)=><li key={step.label} className={`step-${step.state.toLowerCase()}`}><StatusBadge value={step.state}/><strong>{step.label}</strong><span>{step.detail}</span></li>)}</ol>
     <div className="detail-grid">
-      <div className="pdf-panel">{sourceMissing ? <div className="source-missing">Originální PDF již není v Paperless dostupné.</div> : <><iframe title="Originální faktura" src={`/api/invoices/${invoice.id}/pdf`} /><a className="button secondary" href={`/api/invoices/${invoice.id}/pdf`} target="_blank" rel="noreferrer">Otevřít PDF v novém okně</a></>}</div>
+      <div className="pdf-panel"><div className="pdf-switch"><button className={pdfKind==="original"?"active":""} onClick={()=>setPdfKind("original")}>Originál</button>{invoice.approved_pdf?.status==="STORED"&&<button className={pdfKind==="approved"?"active":""} onClick={()=>setPdfKind("approved")}>Schválená kopie</button>}</div>{sourceMissing && pdfKind==="original" ? <div className="source-missing">Originální PDF již není v Paperless dostupné.</div> : <><iframe title={pdfKind==="original"?"Originální faktura":"Schválená kopie"} src={pdfKind==="original"?`/api/invoices/${invoice.id}/pdf`:`/api/invoices/${invoice.id}/approved-pdf`} /><a className="button secondary" href={pdfKind==="original"?`/api/invoices/${invoice.id}/pdf`:`/api/invoices/${invoice.id}/approved-pdf`} target="_blank" rel="noreferrer">Otevřít PDF v novém okně</a></>}</div>
       <div className="work-panel">
+        <div className="card classification-card"><div className="card-title"><div><h2>Klasifikace a zpracování</h2><p>Typ dokladu a režim jsou nezávislé údaje.</p></div><StatusBadge value={invoice.classification.extraction_source}/></div>
+          <div className="form-grid"><label>Typ dokladu<select disabled={!isManager||Boolean(pending)} value={documentType} onChange={(e)=>setDocumentType(e.target.value)}>{documentTypes.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><label>Režim<select disabled={!isManager||Boolean(pending)} value={processingMode} onChange={(e)=>setProcessingMode(e.target.value)}>{processingModes.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label></div>
+          {isManager&&<button className="button secondary" disabled={Boolean(pending)} onClick={saveClassification}>{pending==="classification"?"Ukládám…":"Uložit klasifikaci"}</button>}
+          <dl className="metadata-grid"><div><dt>Zdroj dat</dt><dd>{invoice.classification.extraction_source==="ISDOC"?"ISDOC":invoice.classification.extraction_source==="OCR_AI"?"OCR + AI":"Ruční / neurčeno"}</dd></div><div><dt>ISDOC</dt><dd>{invoice.isdoc.status}{invoice.isdoc.version?` · ${invoice.isdoc.version}`:""}</dd></div><div><dt>Import do POHODY</dt><dd>{invoice.classification.pohoda_import_method==="PDF_ISDOC"?"PDF + ISDOC":invoice.classification.pohoda_import_method==="GENERATED_XML"?"Generované XML":"Neprovádí se"}</dd></div><div><dt>Schválená kopie</dt><dd>{invoice.approved_pdf?.status||"Zatím nevytvořena"}</dd></div></dl>
+          {invoice.isdoc.validation_error&&<div className="alert warning">ISDOC byl nalezen, ale nelze jej použít: {invoice.isdoc.validation_error} Použita OCR/AI extrakce.</div>}
+          {invoice.classification.document_type==="RECEIVED_ADVANCE_INVOICE"&&<div className="alert warning"><strong>Zálohová faktura se do interní POHODY neimportuje.</strong></div>}
+        </div>
         <div className="card"><div className="card-title"><div><h2>Zdrojová metadata</h2><p>Načteno výhradně přes Paperless REST API</p></div></div>
           <dl className="metadata-grid"><div><dt>Název</dt><dd>{invoice.paperless.title || "—"}</dd></div><div><dt>Vloženo do zdroje</dt><dd>{pragueDateTime(invoice.paperless.created_at)}</dd></div><div><dt>Vytvořeno v Approval</dt><dd>{pragueDateTime(invoice.created_at)}</dd></div><div><dt>Nahrál</dt><dd>{invoice.paperless.uploaded_by || "—"}</dd></div><div><dt>Korespondent</dt><dd>{invoice.paperless.correspondent || "—"}</dd></div><div><dt>Původní soubor</dt><dd>{invoice.paperless.original_filename || "—"}</dd></div><div><dt>SHA-256 originálu</dt><dd className="hash">{invoice.paperless.source_pdf_sha256 || "—"}</dd></div><div><dt>Tagy</dt><dd>{invoice.paperless.tags.join(", ") || "—"}</dd></div><div><dt>Poslední synchronizace</dt><dd>{pragueDateTime(invoice.paperless.last_synced_at)}</dd></div></dl>
           {invoice.paperless.sync_error && <div className="alert danger">{invoice.paperless.sync_error}</div>}
@@ -251,15 +298,15 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
           {invoice.disposition.status === "ACTIVE" ? <p>Faktura je aktivní.</p> : <dl className="metadata-grid"><div><dt>Důvod</dt><dd>{invoice.disposition.reason || "—"}</dd></div><div><dt>Rozhodl</dt><dd>{invoice.disposition.actor || "—"}</dd></div><div><dt>Čas</dt><dd>{pragueDateTime(invoice.disposition.changed_at)}</dd></div><div><dt>Duplicita faktury</dt><dd>{invoice.disposition.duplicate_of_invoice_id || "—"}</dd></div></dl>}
           {isManager && <div className="disposition-actions">{invoice.disposition.status === "ACTIVE" ? <><button className="button warning" disabled={Boolean(pending)} onClick={markDuplicate}>Označit jako duplicitu</button><button className="button secondary" disabled={Boolean(pending)} onClick={ignoreOther}>Označit jako nepotřebnou</button></> : <button className="button secondary" disabled={Boolean(pending)} onClick={() => void call("restore", `/invoices/${invoice.id}/restore`, { method: "POST", body: JSON.stringify({ comment: "Obnoveno ve frontě" }) }, "Dokument byl vrácen do aktivní fronty.")}>{pending==="restore"?"Obnovuji…":"Obnovit do aktivní fronty"}</button>}</div>}
         </div>
-        <div className="card ai-card"><div className="card-title"><div><h2>AI extrakce</h2><p>Technický stav je oddělený od workflow faktury.</p></div><StatusBadge value={invoice.ai_status}/></div>
-          {latestAI ? <>
+        <div className="card ai-card"><div className="card-title"><div><h2>Strukturovaná extrakce</h2><p>ISDOC má přednost; OCR + AI se používá pouze jako fallback.</p></div><StatusBadge value={invoice.classification.extraction_source}/></div>
+          {invoice.isdoc.status==="VALID" ? <div className="alert success"><strong>Údaje byly načteny z validního ISDOC.</strong> Qwen3 se pro standardní fakturační pole nespouští.</div> : latestAI ? <>
             <dl className="metadata-grid"><div><dt>Model</dt><dd>{latestAI.model}</dd></div><div><dt>Verze</dt><dd>{latestAI.schema_version} · {latestAI.prompt_version}</dd></div><div><dt>Doba inference</dt><dd>{latestAI.duration_ms != null ? `${(latestAI.duration_ms / 1000).toFixed(2)} s` : "—"}</dd></div><div><dt>Běh</dt><dd>#{latestAI.extraction_revision}{latestAI.applied ? " · použit" : latestAI.requires_confirmation ? " · čeká na potvrzení" : ""}</dd></div></dl>
             {latestAI.error_message && <div className="alert danger"><strong>{latestAI.error_code}</strong>: {latestAI.error_message}{latestAI.schema_validation_errors?.length ? <><p>AI vrátila hodnotu v neočekávaném formátu:</p><ul>{latestAI.schema_validation_errors.map((item,index)=><li key={`${item.attempt}-${item.path}-${index}`}><strong>{schemaFieldLabel(item.path)}</strong>: {diagnosticValue(item.actual)} · očekáváno {item.expected} · {item.message} (pokus {item.attempt})</li>)}</ul><small>Raw odpověď zachována: {latestAI.raw_response_preserved?"ano":"ne"} · opravný retry: {latestAI.corrective_retry_count||0}</small></> : null}</div>}
             {latestAI.parsed_result && <details className="candidate"><summary>Strukturovaný výsledek běhu #{latestAI.extraction_revision}</summary><dl>{Object.entries(latestAI.parsed_result).filter(([key])=>key!=="schema_version").map(([key,value])=><div key={key}><dt>{key}</dt><dd>{shown(value && typeof value === "object" && "value" in value ? (value as {value: unknown}).value : value)}</dd></div>)}</dl></details>}
             {latestAI.requires_confirmation && candidateDifferences.length > 0 && <details className="candidate"><summary>Porovnat kandidát s aktuálními údaji ({candidateDifferences.length})</summary><dl>{candidateDifferences.map((row)=><div key={row.key}><dt>{row.label}</dt><dd>aktuálně: {shown(row.current)} → kandidát: {shown(row.candidate)}</dd></div>)}</dl></details>}
             {latestAI.requires_confirmation && isManager && <button className="button warning" disabled={Boolean(pending)} onClick={()=>{if(window.confirm("Nová extrakce nahradí rozdílné pracovní údaje, vytvoří novou revizi a audit. Ruční změny nebudou přepsány bez tohoto potvrzení. Pokračovat?")) void call("ai-apply", `/invoices/${invoice.id}/ai-extractions/${latestAI.id}/apply`,{method:"POST",body:JSON.stringify({confirm_overwrite:true})},"Kandidát byl převzat do nové revize.")}}>{pending==="ai-apply"?"Přebírám…":"Použít novou extrakci"}</button>}
           </> : <p>Extrakce zatím nebyla spuštěna.</p>}
-          {isManager && <button className="button secondary" disabled={Boolean(pending)||["AI_PENDING","AI_PROCESSING"].includes(invoice.ai_status)} onClick={()=>void call("ai", `/invoices/${invoice.id}/ai-extractions`,{method:"POST"},"Extrakce byla zařazena do fronty.")}>{pending==="ai"?"Zařazuji…":"Spustit bezpečnou re-extrakci"}</button>}
+          {isManager && invoice.isdoc.status!=="VALID" && <button className="button secondary" disabled={Boolean(pending)||["AI_PENDING","AI_PROCESSING"].includes(invoice.ai_status)} onClick={()=>void call("ai", `/invoices/${invoice.id}/ai-extractions`,{method:"POST"},"Extrakce byla zařazena do fronty.")}>{pending==="ai"?"Zařazuji…":"Spustit bezpečnou re-extrakci"}</button>}
           {invoice.ai.history.length > 1 && <details><summary>Historie AI běhů ({invoice.ai.history.length})</summary><ol>{invoice.ai.history.map((run)=><li key={run.id}>#{run.extraction_revision} · {run.model} · {run.status} · {run.duration_ms != null ? `${(run.duration_ms/1000).toFixed(2)} s` : "bez času"}{run.applied ? " · použit" : ""}</li>)}</ol></details>}
         </div>
         <div className="card"><div className="card-title"><div><h2>OCR text</h2><p>{invoice.paperless.ocr_text.length.toLocaleString("cs-CZ")} znaků · zdroj pro LLM je nedůvěryhodný vstup</p></div></div><pre className="ocr-text">{invoice.paperless.ocr_text || "Paperless zatím nevrátil OCR text."}</pre></div>
@@ -284,12 +331,21 @@ export function InvoiceDetail({ invoice, user, onBack, onRefresh }: { invoice: I
           {invoice.allocations.map((allocation)=><div className="assignment-summary" key={allocation.id}><strong>{allocation.cost_center.code}: {money(allocation.amount,String(invoice.data.currency||"CZK"))}{allocation.percentage!=null?` · ${allocation.percentage} %`:""}</strong>{allocation.note&&<small>{allocation.note}</small>}{isManager&&<div className="approver-picker">{approvers.map((approver)=><label className="check-row" key={approver.subject}><input type="checkbox" disabled={Boolean(pending)} checked={(approverChoices[allocation.id]||[]).includes(approver.subject)} onChange={(e)=>{setApproverChoices({...approverChoices,[allocation.id]:e.target.checked?[...(approverChoices[allocation.id]||[]),approver.subject]:(approverChoices[allocation.id]||[]).filter(x=>x!==approver.subject)});setDirty(true)}}/><span>{approver.username}</span></label>)}<button className="button secondary" disabled={Boolean(pending)} onClick={()=>saveApprovers(allocation.id)}>{pending===`approvers-${allocation.id}`?"Ukládám…":"Uložit schvalovatele"}</button></div>}<span>{allocation.assignments.length ? allocation.assignments.map((a)=>`${approvers.find(x=>x.subject===a.approver_subject)?.username||a.approver_subject} (${a.status})`).join(", ") : "Schvalovatel není přiřazen"}</span></div>)}
         </div>
         {isManager&&<div className="card actions"><h2>Kontrola originálu a workflow</h2><p>{invoice.original_review_confirmed ? `Originál zkontroloval ${invoice.original_reviewed_by} (${pragueDateTime(invoice.original_reviewed_at)}).` : "Originál zatím nebyl explicitně potvrzen jako zkontrolovaný."}</p><div><button className="button secondary" disabled={!actionable||Boolean(pending)} onClick={()=>void call("original", `/invoices/${invoice.id}/confirm-original`,{method:"POST"},"Kontrola originálu byla potvrzena.")}>{pending==="original"?"Potvrzuji…":"Potvrdit kontrolu originálu"}</button><button className="button primary" disabled={!actionable||Boolean(pending)} onClick={()=>void call("submit", `/invoices/${invoice.id}/submit`,{method:"POST"},"Faktura byla předána ke schválení.")}>{pending==="submit"?"Předávám…":"Předat ke schválení"}</button>{invoice.status==="REJECTED"&&<button className="button warning" disabled={!actionable||Boolean(pending)} onClick={()=>void call("reopen", `/invoices/${invoice.id}/reopen`,{method:"POST"},"Faktura byla znovu otevřena.")}>{pending==="reopen"?"Otevírám…":"Znovu otevřít zamítnutou fakturu"}</button>}</div></div>}
-        {isManager&&<div className="card pohoda-export"><div className="card-title"><div><h2>POHODA export</h2><p>XSD ověřuje strukturu XML; cílová účetní jednotka se ověřuje samostatnou sémantickou kontrolou. Stažení samo nepotvrzuje import.</p></div>{invoice.pohoda_export&&<StatusBadge value={invoice.pohoda_export.status}/>}</div>
+        {isManager&&<div className="card pohoda-export"><div className="card-title"><div><h2>POHODA export</h2><p>Import zůstává ruční. Způsob určuje typ dokladu a výsledek bezpečné kontroly ISDOC.</p></div>{invoice.pohoda_export&&<StatusBadge value={invoice.pohoda_export.status}/>}</div>
+          {invoice.classification.document_type==="RECEIVED_ADVANCE_INVOICE"&&<div className="alert warning"><strong>Zálohová faktura se do interní POHODY neimportuje.</strong> Schválená PDF kopie zůstává auditním podkladem.</div>}
+          {invoice.classification.pohoda_import_method==="PDF_ISDOC"&&<div className="alert success"><strong>Import do POHODY: PDF + ISDOC.</strong> Použijte schválenou kopii se zachovaným původním ISDOC.</div>}
+          {invoice.classification.pohoda_import_method==="GENERATED_XML"&&<div className="alert info"><strong>Import do POHODY: generované XML.</strong> XSD a cílová účetní jednotka se ověřují odděleně.</div>}
           <div className={pohodaConfig?.identification==="NOT_CONFIGURED"?"alert danger":"alert info"}><strong>Cílová účetní jednotka:</strong> {pohodaConfig?.pohoda_target_ico ? `IČO ${pohodaConfig.pohoda_target_ico}` : "není nakonfigurována"}{pohodaConfig?.pohoda_target_key_configured ? " · key je nakonfigurován" : " · bez key"}</div>
           {invoice.pohoda_export?<dl className="metadata-grid"><div><dt>Cílové IČO artefaktu</dt><dd>{invoice.pohoda_export.pohoda_target_ico || "—"}</dd></div><div><dt>Sémantika cílové jednotky</dt><dd>{invoice.pohoda_export.pohoda_target_validation?.status || "NOT_RECORDED"}</dd></div><div><dt>XSD stav</dt><dd>{invoice.pohoda_export.status}</dd></div><div><dt>XSD verze</dt><dd>{invoice.pohoda_export.xsd_bundle_version}</dd></div><div><dt>Generátor</dt><dd>{invoice.pohoda_export.generator_version}</dd></div><div><dt>Encoding</dt><dd>{invoice.pohoda_export.encoding}</dd></div><div><dt>Velikost XML</dt><dd>{invoice.pohoda_export.xml_size.toLocaleString("cs-CZ")} B</dd></div><div><dt>SHA-256</dt><dd className="hash">{invoice.pohoda_export.xml_sha256}</dd></div><div><dt>Vygenerováno</dt><dd>{pragueDateTime(invoice.pohoda_export.generated_at)}</dd></div></dl>:<p>XML zatím nebylo vytvořeno.</p>}
           {invoice.pohoda_export?.validation_errors.map((row,index)=><div className="alert danger" key={index}>{row.message} {row.path&&<small>{row.path}</small>}</div>)}
           {invoice.pohoda_export?.status==="XSD_VALID"&&!targetUnitValid&&<div className="alert danger">XSD je platné, ale cílová účetní jednotka tohoto artefaktu nebyla sémanticky ověřena. Vytvořte re-export.</div>}
-          <div className="decision-buttons">{invoice.status==="APPROVED"&&invoice.pohoda_export?.status!=="XSD_VALID"&&<button className="button primary" disabled={!actionable||Boolean(pending)||pohodaConfig?.identification==="NOT_CONFIGURED"} onClick={()=>generateXml()}>{pending==="xml"?"Generuji a validuji…":"Vygenerovat XML"}</button>}{invoice.pohoda_export?.status==="XSD_VALID"&&<>{targetUnitValid&&<a className="button secondary" href={`/api/exports/artifacts/${invoice.pohoda_export.id}/xml`}>Stáhnout XML</a>}{actionable&&<><a className="button secondary" href={`/api/invoices/${invoice.id}/pdf`}>Stáhnout PDF</a>{targetUnitValid&&<button className="button secondary" disabled={Boolean(pending)} onClick={()=>void createZip()}>{pending==="zip"?"Vytvářím ZIP…":"Stáhnout ZIP"}</button>}<button className="button warning" disabled={Boolean(pending)} onClick={()=>{const reason=window.prompt("Důvod re-exportu (volitelný)");if(reason!==null)generateXml(reason)}}>{pending==="xml"?"Generuji…":"Re-export"}</button></>}{!actionable&&<span className="muted">Nový export, PDF a ZIP jsou zablokované.</span>}</>}{invoice.status==="EXPORT_CREATED"&&invoice.pohoda_export&&targetUnitValid&&<button className="button primary" disabled={!actionable||Boolean(pending)} onClick={()=>void markImported()}>{pending==="import"?"Potvrzuji…":"OZNAČIT JAKO IMPORTOVÁNO DO POHODY"}</button>}</div>
+          <div className="decision-buttons">
+            {invoice.classification.pohoda_import_method==="PDF_ISDOC"&&invoice.approved_pdf?.status==="STORED"&&<a className="button secondary" href={`/api/invoices/${invoice.id}/approved-pdf`}>Stáhnout schválené PDF + ISDOC</a>}
+            {invoice.classification.pohoda_import_method==="PDF_ISDOC"&&invoice.status==="EXPORT_CREATED"&&<button className="button primary" disabled={!actionable||Boolean(pending)} onClick={()=>void markPdfIsdocImported()}>{pending==="import-pdf-isdoc"?"Potvrzuji…":"OZNAČIT PDF + ISDOC JAKO IMPORTOVANÉ"}</button>}
+            {invoice.classification.pohoda_import_method==="GENERATED_XML"&&invoice.status==="APPROVED"&&invoice.pohoda_export?.status!=="XSD_VALID"&&<button className="button primary" disabled={!actionable||Boolean(pending)||pohodaConfig?.identification==="NOT_CONFIGURED"} onClick={()=>generateXml()}>{pending==="xml"?"Generuji a validuji…":"Vygenerovat XML"}</button>}
+            {invoice.classification.pohoda_import_method==="GENERATED_XML"&&invoice.pohoda_export?.status==="XSD_VALID"&&<>{targetUnitValid&&<a className="button secondary" href={`/api/exports/artifacts/${invoice.pohoda_export.id}/xml`}>Stáhnout XML</a>}{actionable&&<><a className="button secondary" href={`/api/invoices/${invoice.id}/pdf`}>Stáhnout PDF</a>{targetUnitValid&&<button className="button secondary" disabled={Boolean(pending)} onClick={()=>void createZip()}>{pending==="zip"?"Vytvářím ZIP…":"Stáhnout ZIP"}</button>}<button className="button warning" disabled={Boolean(pending)} onClick={()=>{const reason=window.prompt("Důvod re-exportu (volitelný)");if(reason!==null)generateXml(reason)}}>{pending==="xml"?"Generuji…":"Re-export"}</button></>}{!actionable&&<span className="muted">Nový export, PDF a ZIP jsou zablokované.</span>}</>}
+            {invoice.classification.pohoda_import_method==="GENERATED_XML"&&invoice.status==="EXPORT_CREATED"&&invoice.pohoda_export&&targetUnitValid&&<button className="button primary" disabled={!actionable||Boolean(pending)} onClick={()=>void markImported()}>{pending==="import"?"Potvrzuji…":"OZNAČIT JAKO IMPORTOVÁNO DO POHODY"}</button>}
+          </div>
           {invoice.pohoda_export&&<label className="response-upload">Nahrát POHODA response XML<input type="file" accept="application/xml,text/xml,.xml" onChange={(event)=>void uploadResponse(event.target.files?.[0])}/></label>}{responseSummary&&<div className="alert success">{responseSummary}</div>}
         </div>}
         <div className="card"><div className="card-title"><div><h2>Audit a historie</h2><p>Append-only události faktury a jejích revizí.</p></div><span>{audit.length}</span></div><ol className="audit-list">{audit.slice().reverse().map(event=><li key={event.id}><strong>{auditLabels[event.event_type] || event.event_type}</strong><span>revize {event.revision??"—"} · {String(event.metadata.actor_username || event.actor)} · {pragueDateTime(event.timestamp)}</span>{event.comment&&<p>{event.comment}</p>}<details><summary>Technické podrobnosti</summary><pre>{JSON.stringify({code:event.event_type,old:event.old_value,new:event.new_value,metadata:event.metadata},null,2)}</pre></details></li>)}</ol></div>

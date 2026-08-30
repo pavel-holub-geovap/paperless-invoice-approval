@@ -18,30 +18,41 @@ from app.models import (
     ApprovalAction,
     ApprovalAssignment,
     ApprovalDecision,
+    ApprovedPdfArtifact,
+    ApprovedPdfStatus,
     AuditEvent,
     CostCenter,
+    DocumentType,
     ExportArtifact,
+    ExtractionSource,
     Invoice,
     InvoiceDisposition,
     InvoiceStatus,
+    ProcessingMode,
     SourceDocumentStatus,
     ValidationResult,
     ValidationSeverity,
+    utcnow,
 )
 from app.schemas import (
     AIExtractionApply,
     AllocationSet,
     ApproverSet,
     CurrentUser,
+    DocumentClassificationSet,
+    ImportConfirmation,
     InvoiceCreate,
     InvoiceDispositionRestore,
     InvoiceDispositionSet,
     InvoiceListItem,
     InvoicePatch,
+    ManualHandoffSet,
 )
 from app.services.approval_setup import replace_allocations, replace_approvers
+from app.services.approved_pdf import mark_pdf_isdoc_imported
 from app.services.approver_history import user_can_access_invoice_history
 from app.services.audit import record_event
+from app.services.classification import classify_document, set_extraction_source
 from app.services.disposition import restore_disposition, set_disposition
 from app.services.exports import latest_valid_artifact
 from app.services.extraction import (
@@ -102,6 +113,8 @@ def _invoice_or_404(db: Session, invoice_id: str, lock: bool = False) -> Invoice
         .options(
             selectinload(Invoice.revisions),
             selectinload(Invoice.ai_extractions),
+            selectinload(Invoice.isdoc_extractions),
+            selectinload(Invoice.approved_pdf_artifacts),
             selectinload(Invoice.allocations).selectinload(Allocation.cost_center),
             selectinload(Invoice.allocations)
             .selectinload(Allocation.assignments)
@@ -150,6 +163,14 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             ExportArtifact.revision_id == revision.id,
         )
         .order_by(ExportArtifact.generated_at.desc())
+    )
+    approved_pdf = db.scalar(
+        select(ApprovedPdfArtifact)
+        .where(
+            ApprovedPdfArtifact.invoice_id == invoice.id,
+            ApprovedPdfArtifact.revision_id == revision.id,
+        )
+        .order_by(ApprovedPdfArtifact.created_at.desc())
     )
 
     def serialize_ai(row: AIExtraction, *, include_result: bool = False) -> dict[str, Any]:
@@ -207,6 +228,40 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             "uploaded_by": invoice.uploaded_by_username,
         },
         "status": invoice.status,
+        "classification": {
+            "document_type": invoice.document_type,
+            "processing_mode": invoice.processing_mode,
+            "extraction_source": invoice.extraction_source,
+            "pohoda_eligible": invoice.pohoda_eligible,
+            "pohoda_import_method": invoice.pohoda_import_method,
+            "manual_handoff_at": invoice.manual_handoff_at,
+            "manual_handoff_by": invoice.manual_handoff_by,
+            "manual_handoff_note": invoice.manual_handoff_note,
+        },
+        "isdoc": {
+            "has_embedded_isdoc": invoice.has_embedded_isdoc,
+            "status": invoice.isdoc_status,
+            "version": invoice.isdoc_version,
+            "filename": invoice.isdoc_filename,
+            "sha256": invoice.isdoc_sha256,
+            "validation_error": invoice.isdoc_validation_error,
+        },
+        "approved_pdf": (
+            {
+                "id": approved_pdf.id,
+                "status": approved_pdf.status,
+                "invoice_revision": revision.number,
+                "stamp_version": approved_pdf.stamp_version,
+                "original_pdf_sha256": approved_pdf.original_pdf_sha256,
+                "approved_pdf_sha256": approved_pdf.approved_pdf_sha256,
+                "paperless_document_id": approved_pdf.paperless_document_id,
+                "created_at": approved_pdf.created_at,
+                "stored_at": approved_pdf.stored_at,
+                "current": approved_pdf.revision_id == revision.id,
+            }
+            if approved_pdf
+            else None
+        ),
         "disposition": {
             "status": invoice.disposition,
             "reason": invoice.disposition_reason,
@@ -412,6 +467,11 @@ def list_invoices(
                 source_pdf_sha256=invoice.source_pdf_sha256,
                 sync_status=invoice.sync_status,
                 ai_status=invoice.ai_status,
+                document_type=invoice.document_type,
+                processing_mode=invoice.processing_mode,
+                extraction_source=invoice.extraction_source,
+                isdoc_status=invoice.isdoc_status,
+                pohoda_import_method=invoice.pohoda_import_method,
                 supplier_name=data.get("supplier_name"),
                 invoice_number=data.get("invoice_number"),
                 total_amount=data.get("total_amount"),
@@ -490,6 +550,119 @@ async def proxy_pdf(
     return Response(
         pdf, media_type="application/pdf", headers={"Cache-Control": "private, no-store"}
     )
+
+
+@router.get("/{invoice_id}/approved-pdf")
+async def proxy_approved_pdf(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    _manager(user)
+    invoice = _invoice_or_404(db, invoice_id)
+    revision = invoice.current_revision
+    artifact = db.scalar(
+        select(ApprovedPdfArtifact)
+        .where(
+            ApprovedPdfArtifact.invoice_id == invoice.id,
+            ApprovedPdfArtifact.revision_id == revision.id,
+            ApprovedPdfArtifact.status == ApprovedPdfStatus.STORED,
+        )
+        .order_by(ApprovedPdfArtifact.created_at.desc())
+    )
+    if artifact is None or artifact.paperless_document_id is None:
+        raise HTTPException(status_code=409, detail="Schválená PDF kopie není dostupná")
+    client = PaperlessClient(settings)
+    try:
+        pdf = await client.download_pdf(artifact.paperless_document_id)
+    except PaperlessError as exc:
+        raise HTTPException(status_code=502, detail="Schválená kopie není v Paperless dostupná") from exc
+    finally:
+        await client.close()
+    import hashlib
+
+    if hashlib.sha256(pdf).hexdigest() != artifact.approved_pdf_sha256:
+        raise HTTPException(status_code=409, detail="Hash schválené PDF kopie nesouhlasí")
+    record_event(
+        db, "APPROVED_PDF_DOWNLOADED", actor=user.subject, invoice=invoice,
+        metadata={"artifact_id": artifact.id, "paperless_document_id": artifact.paperless_document_id},
+    )
+    db.commit()
+    return Response(pdf, media_type="application/pdf", headers={"Cache-Control": "private, no-store"})
+
+
+@router.put("/{invoice_id}/classification")
+def set_classification(
+    invoice_id: str,
+    payload: DocumentClassificationSet,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_csrf),
+) -> dict[str, Any]:
+    _manager(user)
+    invoice = _invoice_or_404(db, invoice_id, lock=True)
+    _require_current_revision(invoice, payload.expected_revision)
+    try:
+        classify_document(
+            db,
+            invoice,
+            document_type=payload.document_type,
+            processing_mode=payload.processing_mode,
+            actor=user.subject,
+            pohoda_eligible=payload.pohoda_eligible,
+        )
+        db.commit()
+    except WorkflowError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return serialize_invoice(db, _invoice_or_404(db, invoice_id))
+
+
+@router.post("/{invoice_id}/manual-handoff")
+def record_manual_handoff(
+    invoice_id: str,
+    payload: ManualHandoffSet,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_csrf),
+) -> dict[str, Any]:
+    _manager(user)
+    invoice = _invoice_or_404(db, invoice_id, lock=True)
+    if invoice.document_type != DocumentType.CENTRAL_DOCUMENT or invoice.processing_mode != ProcessingMode.CENTRAL_MANUAL:
+        raise HTTPException(status_code=409, detail="Ruční předání je určeno jen pro centrální dokument")
+    invoice.manual_handoff_at = utcnow()
+    invoice.manual_handoff_by = user.subject
+    invoice.manual_handoff_note = payload.note
+    record_event(db, "CENTRAL_DOCUMENT_HANDED_OFF", actor=user.subject, invoice=invoice, comment=payload.note)
+    db.commit()
+    return serialize_invoice(db, _invoice_or_404(db, invoice_id))
+
+
+@router.post("/{invoice_id}/mark-pohoda-imported")
+def mark_pdf_imported(
+    invoice_id: str,
+    payload: ImportConfirmation,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_csrf),
+) -> dict[str, Any]:
+    _manager(user)
+    invoice = _invoice_or_404(db, invoice_id, lock=True)
+    artifact = db.scalar(
+        select(ApprovedPdfArtifact)
+        .where(
+            ApprovedPdfArtifact.invoice_id == invoice.id,
+            ApprovedPdfArtifact.revision_id == invoice.current_revision.id,
+        )
+        .order_by(ApprovedPdfArtifact.created_at.desc())
+    )
+    if artifact is None:
+        raise HTTPException(status_code=409, detail="Schválená PDF kopie neexistuje")
+    try:
+        mark_pdf_isdoc_imported(db, invoice, artifact, user.subject)
+        db.commit()
+    except WorkflowError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return serialize_invoice(db, _invoice_or_404(db, invoice_id))
 
 
 @router.post("/{invoice_id}/disposition")
@@ -580,6 +753,7 @@ def patch_invoice(
     _require_current_revision(invoice, payload.expected_revision)
     try:
         update_invoice_data(db, invoice, payload.changes, user.subject, payload.comment)
+        set_extraction_source(db, invoice, ExtractionSource.MANUAL)
         run_validations(db, invoice, user.subject)
         db.commit()
     except WorkflowError as exc:

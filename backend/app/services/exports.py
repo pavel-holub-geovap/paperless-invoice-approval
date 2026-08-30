@@ -24,6 +24,7 @@ from app.models import (
     Invoice,
     InvoiceRevision,
     InvoiceStatus,
+    PohodaImportMethod,
     PohodaResponseUpload,
     ValidationResult,
     ValidationSeverity,
@@ -224,6 +225,12 @@ async def generate_export_artifact(
     reexport_reason: str | None = None,
 ) -> ExportArtifact:
     ensure_actionable(invoice, "be exported")
+    if invoice.pohoda_import_method != PohodaImportMethod.GENERATED_XML:
+        if invoice.document_type.value == "RECEIVED_ADVANCE_INVOICE":
+            raise WorkflowError("Zálohová faktura se do interní POHODY neimportuje")
+        if invoice.pohoda_import_method == PohodaImportMethod.PDF_ISDOC:
+            raise WorkflowError("Faktura s validním ISDOC používá pro POHODU schválené PDF + ISDOC")
+        raise WorkflowError("Tento typ dokladu není způsobilý pro POHODA XML export")
     target_ico = settings.pohoda_target_ico.strip()
     if not target_ico:
         raise WorkflowError(
@@ -265,6 +272,8 @@ async def generate_export_artifact(
             "pohoda_target_key_sha256": _sha256(settings.pohoda_target_key.encode())
             if settings.pohoda_target_key
             else None,
+            "pohoda_import_method": invoice.pohoda_import_method.value,
+            "approval_allocations_are_informational": True,
         }
     )
 
@@ -470,6 +479,8 @@ def mark_batch_imported(db: Session, batch: ExportBatch, actor: str) -> None:
         artifact = db.get(ExportArtifact, item.export_artifact_id)
         if invoice is None or artifact is None or invoice.status != InvoiceStatus.EXPORT_CREATED:
             raise WorkflowError("Every batch invoice must be in EXPORT_CREATED with an artifact")
+        if invoice.pohoda_import_method != PohodaImportMethod.GENERATED_XML:
+            raise WorkflowError("XML batch contains an invoice with a different POHODA import method")
         ensure_actionable(invoice, "be marked as imported")
         if artifact.revision_id != invoice.current_revision.id:
             raise WorkflowError("Cannot confirm import of an obsolete invoice revision")
@@ -496,6 +507,8 @@ def mark_artifact_imported(
     db: Session, artifact: ExportArtifact, invoice: Invoice, actor: str
 ) -> None:
     ensure_actionable(invoice, "be marked as imported")
+    if invoice.pohoda_import_method != PohodaImportMethod.GENERATED_XML:
+        raise WorkflowError("This invoice cannot be marked imported through an XML artifact")
     if artifact.imported_at is not None and invoice.imported_export_id == artifact.id:
         return
     if invoice.status != InvoiceStatus.EXPORT_CREATED:

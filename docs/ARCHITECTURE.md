@@ -19,11 +19,19 @@
 
 ## POHODA export
 
-Exportní hranice je jednosměrná a offline: aplikace vytváří soubory, ale s POHODOU nekomunikuje. `PohodaInvoiceXmlGenerator` přijímá jen immutable snapshot schválené aktuální revize, allocations a platných approvals. LLM do této cesty nevstupuje. DOM se serializuje jako Windows-1250 a validuje lokálním `schemas/pohoda/2025-10-16/data.xsd`; transitivní závislosti se nikdy nestahují za běhu.
+Exportní hranice je jednosměrná a offline. `RECEIVED_INVOICE` s validním ISDOC používá `PDF_ISDOC`: ručně se předá schválená PDF kopie s byte-for-byte zachovanou přílohou. Bez validního ISDOC používá `GENERATED_XML`; deterministický DOM se serializuje jako Windows-1250 a validuje lokálním POHODA XSD bundle. Zálohové faktury a ostatní typy mají metodu `NONE`.
 
 `ExportArtifact` uchovává revizi, vstupní snapshot, verze, XSD výsledek, cestu/hash/velikost XML a hash aktuálního Paperless PDF. Samotné PDF zůstává v Paperless. `ExportBatch` archivuje stabilní ZIP s `invoice-<safe-number>/invoice.xml` a `invoice.pdf` a vlastním SHA-256. Re-export stejné revize vytvoří nový artifact s vazbou na předchozí; změna revize invaliduje použitelnost starého artifactu a vrací workflow ke schválení.
 
-Položky XML vznikají z allocations, ne z assignmentů. U jedné sazby se základ rozdělí metodou largest remainder a DPH je dopočet do schválené hrubé allocation. Kombinace více sazeb a více středisek bez explicitního `Allocation.vat_breakdown` export blokuje. Diagnostický parser POHODA response ukládá výsledek append-only, ale nemění stav; `IMPORTED_TO_POHODA` vyžaduje samostatnou potvrzenou akci správce.
+Approval allocations nejsou finální účetní rozúčtování. XML položky vznikají ze skutečných vytěžených invoice items, nebo z bezpečných DPH souhrnů bez `centre`; allocations jsou jen v deterministické informativní poznámce. Diagnostický response parser stav nemění a `IMPORTED_TO_POHODA` vždy vyžaduje potvrzení správce.
+
+## Klasifikace, ISDOC a schválená kopie
+
+Workflow status zůstává samostatný od `document_type`, `processing_mode`, `extraction_source`, `isdoc_status`, `approved_pdf_status` a `pohoda_import_method`. Nový dokument začíná `UNCLASSIFIED`; manager volí typ a režim. `FOR_APPROVAL`, `RECORD_ONLY` a `CENTRAL_MANUAL` jsou ortogonální k typu dokladu.
+
+Worker před AI stáhne originální PDF přes Paperless REST, ověří jeho hash a bezpečně enumeruje attachments. Podporovaný validační profil je ISDOC Invoice 6.0.2, namespace `http://isdoc.cz/namespace/2013`; vyžaduje správný root/verzi a povinnou fakturační sémantiku. DTD/entity/network resolving jsou zakázány, velikost je omezená a více platných kandidátů je odmítnuto. Validní snapshot je immutable s provenance `ISDOC`; jinak následuje OCR/AI fallback.
+
+Finální approval zařadí idempotentní `CREATE_APPROVED_PDF`. Kopie vždy rozšíří poslední MediaBox/CropBox dolů, původní obsah neposouvá ani nepřekrývá a přidá lidsky čitelné approvals/allocations. Před a po se porovnává manifest všech attachments; odlišný hash generování zablokuje. Artifact patří revizi, approval snapshotu a verzi razítka. Nová revize označí starý artifact `HISTORICAL`.
 
 ## Paperless snapshot
 

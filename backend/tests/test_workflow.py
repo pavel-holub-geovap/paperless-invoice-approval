@@ -6,15 +6,22 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import Settings
 from app.models import (
     Allocation,
     ApprovalAction,
     ApprovalAssignment,
     ApprovalDecision,
+    ApprovedPdfStatus,
     CostCenter,
+    DocumentType,
+    ExtractionSource,
     InvoiceStatus,
+    IsdocStatus,
+    ProcessingJob,
     UserIdentity,
 )
+from app.services.approved_pdf import prepare_approved_pdf_artifact
 from app.services.validation import run_validations
 from app.services.workflow import (
     WorkflowError,
@@ -31,6 +38,9 @@ from app.services.workflow import (
 
 def prepared_invoice(db: Session, approvers: tuple[str, ...] = ("approver-1",)):
     invoice = create_invoice(db, 101, "system")
+    invoice.document_type = DocumentType.RECEIVED_INVOICE
+    invoice.isdoc_status = IsdocStatus.NOT_PRESENT
+    invoice.extraction_source = ExtractionSource.OCR_AI
     update_invoice_data(
         db,
         invoice,
@@ -86,6 +96,17 @@ def test_single_approver_happy_path(db: Session) -> None:
     assert invoice.status == InvoiceStatus.AWAITING_APPROVAL
     decide(db, assignments[0], ApprovalAction.APPROVE, "approver-1", None)
     assert invoice.status == InvoiceStatus.APPROVED
+    job = db.scalar(
+        select(ProcessingJob).where(
+            ProcessingJob.invoice_id == invoice.id,
+            ProcessingJob.job_type == "CREATE_APPROVED_PDF",
+        )
+    )
+    assert job is not None
+    assert job.payload["revision_id"] == invoice.current_revision.id
+    first = prepare_approved_pdf_artifact(db, invoice, Settings())
+    second = prepare_approved_pdf_artifact(db, invoice, Settings())
+    assert first.id == second.id
 
 
 def test_parallel_approval_waits_for_every_required_assignment(db: Session) -> None:
@@ -149,16 +170,21 @@ def test_significant_change_invalidates_historical_decision(db: Session) -> None
     invoice, assignments = prepared_invoice(db)
     submit_for_approval(db, invoice, "manager")
     decide(db, assignments[0], ApprovalAction.APPROVE, "approver-1", None)
+    artifact = prepare_approved_pdf_artifact(db, invoice, Settings())
     old_revision = invoice.current_revision_number
     update_invoice_data(db, invoice, {"total_amount": "122.00"}, "manager")
     assert invoice.current_revision_number == old_revision + 1
     assert invoice.status == InvoiceStatus.NEEDS_REVIEW
     decision = db.scalar(select(ApprovalDecision).where(ApprovalDecision.assignment_id == assignments[0].id))
     assert decision is not None and not decision.valid and decision.invalidated_at is not None
+    assert artifact.status == ApprovedPdfStatus.HISTORICAL
 
 
 def test_three_cost_centres_are_approved_in_parallel(db: Session) -> None:
     invoice = create_invoice(db, 303, "system")
+    invoice.document_type = DocumentType.RECEIVED_INVOICE
+    invoice.isdoc_status = IsdocStatus.NOT_PRESENT
+    invoice.extraction_source = ExtractionSource.OCR_AI
     update_invoice_data(
         db,
         invoice,

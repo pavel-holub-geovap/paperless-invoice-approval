@@ -53,7 +53,7 @@ Model určuje `OLLAMA_MODEL`; výchozí je `qwen3:8b`. `ollama-pull` ho stáhne 
 
 ## Etapy E–F: workflow a export
 
-Projděte paralelní approvals, RETURN, REJECT a invalidaci revize. Nakonec ověřte APPROVED → POHODA XML → XSD → PDF + XML ZIP → `EXPORT_CREATED`. POHODA import zůstává ruční a `IMPORTED_TO_POHODA` vyžaduje explicitní potvrzení.
+Projděte paralelní approvals, RETURN, REJECT a invalidaci revize. Bez ISDOC ověřte `APPROVED → POHODA XML → XSD → EXPORT_CREATED`; s ISDOC ověřte schválené PDF, shodný embedded hash a metodu `PDF_ISDOC`. Zálohová faktura musí export odmítnout. Import zůstává ruční.
 
 ## Opravná migrace 0006
 

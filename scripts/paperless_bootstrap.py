@@ -39,11 +39,16 @@ tag_settings = (
     ("PAPERLESS_TAG_POHODA_READY", "#00838f", False),
     ("PAPERLESS_TAG_EXPORTED", "#455a64", False),
     ("PAPERLESS_TAG_IMPORTED", "#37474f", False),
+    ("PAPERLESS_TAG_APPROVED_COPY", "#1565c0", False),
     ("PAPERLESS_TAG_DUPLICATE", "#6d4c41", False),
     ("PAPERLESS_TAG_IGNORED", "#757575", False),
 )
 for setting_name, color, is_inbox_tag in tag_settings:
-    name = required(setting_name)
+    name = (
+        os.getenv(setting_name, "Approval - schválená kopie")
+        if setting_name == "PAPERLESS_TAG_APPROVED_COPY"
+        else required(setting_name)
+    )
     tag, _ = Tag.objects.get_or_create(
         name=name,
         defaults={"color": color, "is_inbox_tag": is_inbox_tag},

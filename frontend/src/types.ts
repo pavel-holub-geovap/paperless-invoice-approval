@@ -24,6 +24,11 @@ export type InvoiceListItem = {
   source_pdf_sha256?: string;
   sync_status: "PENDING" | "SYNCED" | "ERROR";
   ai_status: AIStatus;
+  document_type: string;
+  processing_mode: string;
+  extraction_source: string;
+  isdoc_status: string;
+  pohoda_import_method: string;
   supplier_name?: string;
   invoice_number?: string;
   total_amount?: string;
@@ -133,6 +138,36 @@ export type Invoice = {
   id: string;
   paperless_document_id: number;
   status: string;
+  classification: {
+    document_type: string;
+    processing_mode: string;
+    extraction_source: "UNDETERMINED" | "ISDOC" | "OCR_AI" | "MANUAL";
+    pohoda_eligible: boolean;
+    pohoda_import_method: "NONE" | "PDF_ISDOC" | "GENERATED_XML" | "MANUAL_REVIEW";
+    manual_handoff_at?: string;
+    manual_handoff_by?: string;
+    manual_handoff_note?: string;
+  };
+  isdoc: {
+    has_embedded_isdoc: boolean;
+    status: "UNCHECKED" | "NOT_PRESENT" | "DETECTED" | "VALID" | "INVALID" | "ERROR";
+    version?: string;
+    filename?: string;
+    sha256?: string;
+    validation_error?: string;
+  };
+  approved_pdf?: {
+    id: string;
+    status: "PENDING" | "CREATED" | "STORED" | "FAILED" | "HISTORICAL";
+    invoice_revision: number;
+    stamp_version: string;
+    original_pdf_sha256: string;
+    approved_pdf_sha256?: string;
+    paperless_document_id?: number;
+    created_at: string;
+    stored_at?: string;
+    current: boolean;
+  };
   disposition: {
     status: "ACTIVE" | "IGNORED_DUPLICATE" | "IGNORED_OTHER";
     reason?: string;

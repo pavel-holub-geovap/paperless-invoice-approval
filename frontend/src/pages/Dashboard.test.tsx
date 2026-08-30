@@ -13,6 +13,8 @@ const invoiceRow: InvoiceListItem = {
   id: "invoice-1", paperless_document_id: 24, status: "QUEUE_REVIEW", disposition: "ACTIVE",
   source_status: "AVAILABLE", current_revision_number: 1, title: "invoice.pdf", sync_status: "SYNCED",
   ai_status: "AI_COMPLETED", approvals_done: 0, approvals_required: 0, warning_count: 0,
+  document_type: "RECEIVED_INVOICE", processing_mode: "FOR_APPROVAL",
+  extraction_source: "OCR_AI", isdoc_status: "NOT_PRESENT", pohoda_import_method: "GENERATED_XML",
   blocking_error_count: 0, updated_at: "2026-08-26T08:00:00Z",
 };
 

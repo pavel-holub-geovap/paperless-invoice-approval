@@ -6,7 +6,9 @@ OIDC používá Authorization Code flow; aplikace drží session serverově a po
 
 Změnové operace vyžadují autentizaci, roli, kontrolu původu a audit. Exportní názvy jsou normalizované, resolved cesta musí zůstat v exportním rootu a XSD-invalidní XML nelze stáhnout. XML parser i XSD validátor zakazují síť, externí entity a huge-tree režim; response upload má limit 5 MiB a je pouze diagnostický. Externí volání používají TLS, timeouty a omezené retry.
 
-Immutable export ukládá jen účetní snapshot, XML a hashe. Originální PDF se při generování načte z Paperless pouze pro SHA-256 a trvale se kopíruje jen do explicitně vytvořeného exportního ZIPu, nikoli do Approval DB. Před tvorbou ZIPu se PDF načte znovu a hash musí odpovídat snapshotu. LLM nemá přístup do XML generátoru a nesmí určovat střediska ani VAT split.
+Immutable export a approved-PDF artifact ukládají pouze snapshoty, reference a hashe, nikdy PDF bytes do Approval DB. Originál se nemění. Schválená kopie je samostatný Paperless dokument; před uložením se ověří hash originálu a byte-for-byte manifest všech embedded attachments. LLM nemá přístup do PDF/ISDOC ani XML generátoru a nesmí určovat střediska.
+
+Embedded XML je nedůvěryhodný vstup. Parser zakazuje DTD, entity, síťové resolving a huge tree, neprovádí XInclude, má velikostní limit a filename redukuje na bezpečný leaf pouze pro metadata. Neznámý namespace/verze, neúplný profil, více validních kandidátů nebo poškozené XML nikdy nedostanou `VALID`; následuje OCR/AI fallback.
 
 `QUEUE_MANAGER` může měnit faktury, střediska, rozúčtování a assignments. `APPROVER` získá aktivní úkol jen pro vlastní assignment aktuální revize. Read-only historický detail a PDF může získat také tehdy, pokud měl vlastní assignment v libovolné starší revizi; centrální backendová kontrola tuto podmínku ověřuje z Approval DB při každém přístupu. Znalost cizího invoice ID vede k HTTP 403. Backend znovu ověřuje aktivní Keycloak identitu a roli každého approvera při předání. `RETURN`/`REJECT` vyžadují komentář. Rozhodování používá databázové řádkové zámky a unikátní platné rozhodnutí, takže opakovaný nebo souběžný request nevytvoří dvě approvals.
 

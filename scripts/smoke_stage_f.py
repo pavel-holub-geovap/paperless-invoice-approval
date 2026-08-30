@@ -126,14 +126,17 @@ def xml_semantics(xml: bytes, expected: dict[str, Any]) -> dict[str, Any]:
             }
         )
     require(
-        {row["centre"] for row in items} == {"200", "300"},
-        "Allocation centres are wrong",
+        {row["centre"] for row in items} == {""},
+        "Approval allocations leaked into POHODA accounting centres",
     )
     require(
         sum((Decimal(row["gross"]) for row in items), Decimal(0)) == Decimal("1210.00"),
         "Item total is wrong",
     )
     require(xml.decode("windows-1250"), "XML cannot be decoded as Windows-1250")
+    note = root.findtext(".//inv:invoiceHeader/inv:text", namespaces=NS) or ""
+    require("středisko 200" in note and "středisko 300" in note, "Allocation note is missing")
+    require("Finální účetní rozúčtování provádí účetní" in note, "Accounting handoff note is missing")
     return {
         "target_ico": root.get("ico"),
         "target_key": root.get("key"),

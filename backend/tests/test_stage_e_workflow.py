@@ -17,7 +17,10 @@ from app.models import (
     ApprovalDecision,
     AuditEvent,
     CostCenter,
+    DocumentType,
+    ExtractionSource,
     InvoiceStatus,
+    IsdocStatus,
     UserIdentity,
     ValidationResult,
     ValidationSeverity,
@@ -48,6 +51,9 @@ def approver(subject: str) -> CurrentUser:
 
 def base_invoice(db, paperless_id: int = 8001):
     invoice = create_invoice(db, paperless_id)
+    invoice.document_type = DocumentType.RECEIVED_INVOICE
+    invoice.isdoc_status = IsdocStatus.NOT_PRESENT
+    invoice.extraction_source = ExtractionSource.OCR_AI
     update_invoice_data(
         db,
         invoice,

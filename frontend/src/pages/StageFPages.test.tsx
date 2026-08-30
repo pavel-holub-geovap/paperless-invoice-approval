@@ -14,6 +14,8 @@ const approved: Invoice = {
   id: "invoice-f",
   paperless_document_id: 1,
   status: "APPROVED",
+  classification: { document_type: "RECEIVED_INVOICE", processing_mode: "FOR_APPROVAL", extraction_source: "OCR_AI", pohoda_eligible: true, pohoda_import_method: "GENERATED_XML" },
+  isdoc: { has_embedded_isdoc: false, status: "NOT_PRESENT" },
   disposition: { status: "ACTIVE" },
   source: { status: "AVAILABLE" },
   ai_status: "AI_COMPLETED",
@@ -47,7 +49,7 @@ describe("Stage F POHODA export", () => {
     render(<InvoiceDetail invoice={approved} user={manager} onBack={() => undefined} onRefresh={() => undefined}/>);
     expect(screen.getByRole("heading", { name: "POHODA export" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Vygenerovat XML" })).toBeVisible();
-    expect(screen.getByText(/stažení samo nepotvrzuje import/i)).toBeVisible();
+    expect(screen.getByText(/import zůstává ruční/i)).toBeVisible();
     expect(await screen.findByText(/IČO 15049248/)).toBeVisible();
   });
 
@@ -69,5 +71,36 @@ describe("Stage F POHODA export", () => {
     expect(screen.getByRole("button", { name: "Stáhnout ZIP" })).toBeVisible();
     expect(screen.getByRole("button", { name: "OZNAČIT JAKO IMPORTOVÁNO DO POHODY" })).toBeVisible();
     expect(screen.getByLabelText("Nahrát POHODA response XML")).toBeVisible();
+  });
+
+  it("offers the approved PDF with preserved ISDOC instead of generated XML", () => {
+    emptyApi();
+    const pdfIsdoc: Invoice = {
+      ...approved,
+      status: "EXPORT_CREATED",
+      classification: { ...approved.classification, extraction_source: "ISDOC", pohoda_import_method: "PDF_ISDOC" },
+      isdoc: { has_embedded_isdoc: true, status: "VALID", version: "6.0.2", sha256: "a".repeat(64) },
+      approved_pdf: {
+        id: "approved-1", status: "STORED", invoice_revision: 22,
+        stamp_version: "approval-stamp.v1", original_pdf_sha256: "b".repeat(64),
+        approved_pdf_sha256: "c".repeat(64), paperless_document_id: 77,
+        created_at: "2026-08-28T10:00:00Z", current: true,
+      },
+    };
+    render(<InvoiceDetail invoice={pdfIsdoc} user={manager} onBack={() => undefined} onRefresh={() => undefined}/>);
+    expect(screen.getByText(/Import do POHODY: PDF \+ ISDOC/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Stáhnout schválené PDF + ISDOC" })).toHaveAttribute("href", "/api/invoices/invoice-f/approved-pdf");
+    expect(screen.queryByRole("button", { name: "Vygenerovat XML" })).not.toBeInTheDocument();
+  });
+
+  it("clearly blocks POHODA for an advance invoice", () => {
+    emptyApi();
+    const advance: Invoice = {
+      ...approved,
+      classification: { ...approved.classification, document_type: "RECEIVED_ADVANCE_INVOICE", pohoda_eligible: false, pohoda_import_method: "NONE" },
+    };
+    render(<InvoiceDetail invoice={advance} user={manager} onBack={() => undefined} onRefresh={() => undefined}/>);
+    expect(screen.getAllByText(/Zálohová faktura se do interní POHODY neimportuje/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Vygenerovat XML" })).not.toBeInTheDocument();
   });
 });

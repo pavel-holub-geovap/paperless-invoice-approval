@@ -10,7 +10,7 @@ Approval backend nikdy nepřistupuje do Paperless databáze. Používá výhradn
 
 ## Tagy a synchronizace
 
-Výchozí tagy jsou `Přijatá faktura`, `AI zpracování`, `Kontrola správce`, `Ke schválení`, `Schváleno`, `Zamítnuto`, `Připraveno pro Pohodu`, `Exportováno`, `Importováno do Pohody`, `Duplicita` a `Ignorováno`. Názvy jsou v `.env`, nikoli rozptýlené v kódu. Chybějící dokument se netaguje; není co bezpečně změnit.
+Výchozí tagy zahrnují také technický `Approval - schválená kopie` (`PAPERLESS_TAG_APPROVED_COPY`). Tento tag není inbox tag. Derived PDF nedostává `PAPERLESS_INBOX_TAG`, a proto jej discovery nemůže synchronizovat jako novou invoice. Názvy jsou v `.env`, nikoli rozptýlené v kódu.
 
 Synchronizace je idempotentní: unikátní index zabrání duplicitní faktuře a beze změny snapshotu nevzniká další datový audit. Worker hledá dokumenty s `PAPERLESS_INBOX_TAG`, přes API dohledá názvy tagů a korespondenta, uloží metadata a OCR a centralizovaně přejde do `QUEUE_REVIEW`. Stav synchronizace je `PENDING`, `SYNCED` nebo `ERROR`. Klient před změnou načte dokument a nahrazuje pouze spravované stavové tagy; ostatní tagy zachová.
 
@@ -20,7 +20,13 @@ Výchozí OCR je `ces+eng`; image obsahuje dodatečné balíky `ces` a `slk`. `P
 
 Upload probíhá přes UI nebo `/api/documents/post_document/`. Stav zpracování se sleduje přes `/api/tasks/?task_id=...`; po dokončení musí `/api/documents/{id}/` vrátit neprázdný `content` a download endpoint původní PDF.
 
-Approval databáze ukládá OCR text, ale nikdy PDF bytes. Autorizovaný PDF proxy endpoint vždy volá Paperless download REST endpoint; browser Paperless token nezná. Etapy B/C nespouštějí Ollamu ani nevytvářejí extrakční job.
+Approval databáze ukládá OCR text, reference a hashe, ale nikdy PDF bytes. Autorizovaný proxy originálu i manager-only proxy schválené kopie vždy volají Paperless download REST endpoint; browser Paperless token nezná.
+
+## Schválená kopie
+
+Po finálním approval worker stáhne originál, ověří `source_pdf_sha256`, vytvoří odvozené PDF a odešle jej přes oficiální `post_document` endpoint jako samostatný Paperless dokument. V Approval DB zůstává `ApprovedPdfArtifact` s revision/approval snapshot/stamp identitou, Paperless task/document ID a hash manifestem. Retry nejprve dohledá existující artifact/task a nesmí vytvářet nekontrolované kopie.
+
+Originál se nepřepisuje a approver history jej dál získává přes původní `paperless_document_id`. Schválená kopie je dostupná přes `/api/invoices/{id}/approved-pdf`; backend znovu ověří její SHA-256. Technický tag bez inbox tagu izoluje derived fulltext od standardního invoice ingestion.
 
 ## Fulltext pro Moji historii
 

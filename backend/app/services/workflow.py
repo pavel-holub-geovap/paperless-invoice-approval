@@ -13,10 +13,15 @@ from app.models import (
     ApprovalAssignment,
     ApprovalAssignmentStatus,
     ApprovalDecision,
+    ApprovedPdfArtifact,
+    ApprovedPdfStatus,
+    DocumentType,
     Invoice,
     InvoiceDisposition,
     InvoiceRevision,
     InvoiceStatus,
+    IsdocStatus,
+    ProcessingMode,
     SourceDocumentStatus,
     UserIdentity,
     ValidationResult,
@@ -46,7 +51,11 @@ ALLOWED_TRANSITIONS: dict[InvoiceStatus, set[InvoiceStatus]] = {
     },
     InvoiceStatus.RETURNED: {InvoiceStatus.VALIDATION, InvoiceStatus.READY_FOR_APPROVAL},
     InvoiceStatus.REJECTED: {InvoiceStatus.NEEDS_REVIEW},
-    InvoiceStatus.APPROVED: {InvoiceStatus.XML_READY, InvoiceStatus.AWAITING_APPROVAL},
+    InvoiceStatus.APPROVED: {
+        InvoiceStatus.XML_READY,
+        InvoiceStatus.READY_FOR_EXPORT,
+        InvoiceStatus.AWAITING_APPROVAL,
+    },
     InvoiceStatus.XML_READY: {InvoiceStatus.READY_FOR_EXPORT, InvoiceStatus.AWAITING_APPROVAL},
     InvoiceStatus.READY_FOR_EXPORT: {InvoiceStatus.EXPORT_CREATED, InvoiceStatus.AWAITING_APPROVAL},
     InvoiceStatus.EXPORT_CREATED: {InvoiceStatus.IMPORTED_TO_POHODA, InvoiceStatus.AWAITING_APPROVAL},
@@ -265,6 +274,22 @@ def fork_revision(
     )
     db.add(new_revision)
     db.flush()
+    for artifact in db.scalars(
+        select(ApprovedPdfArtifact).where(
+            ApprovedPdfArtifact.invoice_id == invoice.id,
+            ApprovedPdfArtifact.revision_id == current.id,
+            ApprovedPdfArtifact.status != ApprovedPdfStatus.HISTORICAL,
+        )
+    ).all():
+        artifact.status = ApprovedPdfStatus.HISTORICAL
+        record_event(
+            db,
+            "APPROVED_PDF_SUPERSEDED",
+            actor=actor,
+            invoice=invoice,
+            revision_number=current.number,
+            metadata={"artifact_id": artifact.id, "new_revision": new_revision.number},
+        )
     _copy_allocations_and_assignments(db, invoice, current.id, new_revision, actor)
     invoice.current_revision_number = new_revision.number
     invalidate_approvals(db, invoice, actor, reason, keep_revision_id=new_revision.id)
@@ -441,6 +466,12 @@ def ready_for_approval(db: Session, invoice: Invoice) -> tuple[bool, list[str]]:
     if revision is None:
         return False, ["Faktura nemá revizi."]
     errors: list[str] = []
+    if invoice.document_type == DocumentType.UNCLASSIFIED:
+        errors.append("Dokument není klasifikován.")
+    if invoice.isdoc_status == IsdocStatus.UNCHECKED:
+        errors.append("Dokument čeká na bezpečnou kontrolu vloženého ISDOC.")
+    if invoice.processing_mode != ProcessingMode.FOR_APPROVAL:
+        errors.append("Zvolený režim dokumentu nevytváří schvalovací workflow.")
     if invoice.disposition != InvoiceDisposition.ACTIVE:
         errors.append("Faktura je ignorovaná.")
     if invoice.source_status == SourceDocumentStatus.MISSING:
@@ -606,6 +637,18 @@ def decide(
         transition(db, invoice, InvoiceStatus.REJECTED, actor, comment)
     elif all_required_approved(db, invoice):
         transition(db, invoice, InvoiceStatus.APPROVED, actor)
+        from app.config import get_settings
+        from app.services.jobs import enqueue_job
+
+        revision = invoice.current_revision
+        assert revision is not None
+        enqueue_job(
+            db,
+            "CREATE_APPROVED_PDF",
+            f"approved-pdf:{invoice.id}:{revision.id}:{get_settings().approved_pdf_stamp_version}",
+            invoice_id=invoice.id,
+            payload={"revision_id": revision.id},
+        )
     return decision
 
 

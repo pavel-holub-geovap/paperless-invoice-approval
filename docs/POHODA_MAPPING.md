@@ -26,20 +26,19 @@ Mapování je odvozené z oficiálních `data.xsd`, `invoice.xsd`, `type.xsd` a 
 | `vat_lines[].vat_amount` | `.../typ:priceVAT` | schválená revize | povinné aplikací | `Decimal`, 2 desetinná místa |
 | `vat_lines[].adjustment_type=ROUNDING` | agreguje se do stejné sazby v položkách a summary | explicitní řádek faktury | volitelné | základ, DPH a hrubá korekce se zachovají; nerozbíjí jednu sazbu na falešné více-sazbové rozhodnutí |
 | souhrny DPH | `inv:invoiceSummary/inv:homeCurrency/typ:price*` | schválený VAT breakdown | povinné aplikací pro CZK | sazby se agregují přesně, bez float |
-| `total_amount` | součet všech položkových `typ:price + typ:priceVAT` a summary | schválená revize | povinné aplikací | musí souhlasit s allocations a VAT breakdown do 0,01 |
-| `Allocation.amount` | hrubá částka jedné nebo více `inv:invoiceItem` | aktuální schválená revize | povinné | exportuje se allocation, nikoli approval assignment |
-| `CostCenter.pohoda_code` | `inv:invoiceItem/inv:centre/typ:ids` | databázové středisko | povinné aplikací | prázdný kód blokuje export |
-| `Allocation.vat_breakdown` | položky allocation podle sazeb | ručně potvrzené účetní rozdělení | podmíněně povinné | povinné pouze při kombinaci více středisek a více sazeb |
+| `total_amount` | součet položek a summary | schválená revize | povinné aplikací | nesmí být vymyšleno z allocations |
+| `invoice_items[]` | `inv:invoiceDetail/inv:invoiceItem` | skutečně vytěžené položky | volitelné | mají přednost před DPH summary fallbackem; bez `inv:centre` |
+| `Allocation.amount` + středisko | `inv:invoiceHeader/inv:text` | aktuální schválená revize | informativní | český deterministický summary; nejde o finální zaúčtování |
+| `CostCenter.pohoda_code` | nikam do účetních položek | Approval workflow | — | Approval nikdy nevydává interní středisko za účetní středisko POHODY |
 
 ## Rozdělení DPH a rounding
 
-- Jedno středisko: použijí se přesné VAT řádky faktury.
-- Více středisek a jedna sazba: základ se rozdělí podle hrubých allocation částek metodou largest remainder na haléře; DPH každé allocation je `allocation gross − allocated base`. Tím se přesně zachová částka allocation, celkový základ, DPH i total.
-- Jedno středisko a více sazeb: použijí se přesné VAT řádky faktury.
-- Více středisek a více sazeb: automatický odhad je zakázán. Každá allocation musí mít explicitní `vat_breakdown`; součet po allocation i agregace po sazbě musí přesně rekonstruovat schválené hodnoty. Jinak export končí `MULTI_RATE_ALLOCATION_REQUIRES_EXPLICIT_VAT_SPLIT`.
+- Jsou-li dostupné skutečné `invoice_items`, exportují se jejich popisy, množství, ceny a sazby.
+- Jinak vzniknou položky z vytěžených DPH souhrnů. Neobsahují předkontaci, účet ani `inv:centre`.
+- Allocations zůstávají ve schvalovacím PDF, auditu a informativním textu. Finální účetní rozúčtování provádí účetní firma.
 - Samostatné, deterministicky ověřené zaokrouhlení ve stejné sazbě se před rozdělením do POHODY agreguje s hlavním VAT řádkem. Neověřená klasifikace LLM se do snapshotu ani XML nedostane. Deklarované součty z faktury se nedopočítávají ani nepřepisují; reconciliation odchylka je WARNING.
 
-Pro syntetickou fakturu s jedinou sazbou 21 % vzniknou přesně dvě účetní položky: 700 Kč se střediskem 200 a 510 Kč se střediskem 300. Dva schvalovatelé druhé allocation nevytvářejí druhou účetní položku.
+Pro syntetickou fakturu se souhrnem 1 000 + 210 Kč vznikne jeden DPH řádek bez střediska. Allocation 700/510 Kč se objeví pouze v poznámce a schváleném PDF.
 
 ## Identifikace účetní jednotky
 

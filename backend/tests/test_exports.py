@@ -17,8 +17,12 @@ from app.models import (
     ApprovalAction,
     ApprovalAssignment,
     CostCenter,
+    DocumentType,
     ExportArtifact,
+    ExtractionSource,
     InvoiceStatus,
+    IsdocStatus,
+    PohodaImportMethod,
     UserIdentity,
     ValidationResult,
 )
@@ -73,6 +77,11 @@ def approved_invoice(
     total_amount: str = "121.00",
 ):
     invoice = create_invoice(db, paperless_id)
+    invoice.document_type = DocumentType.RECEIVED_INVOICE
+    invoice.isdoc_status = IsdocStatus.NOT_PRESENT
+    invoice.extraction_source = ExtractionSource.OCR_AI
+    invoice.pohoda_eligible = True
+    invoice.pohoda_import_method = PohodaImportMethod.GENERATED_XML
     update_invoice_data(
         db,
         invoice,
