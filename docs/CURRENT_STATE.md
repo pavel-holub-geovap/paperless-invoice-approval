@@ -8,6 +8,12 @@
 - POHODA metoda je `PDF_ISDOC`, `GENERATED_XML`, nebo `NONE`. Zálohové faktury a centrální/ostatní doklady jsou backendem blokované. Allocations se už nemapují na účetní položky/střediska; jsou pouze informativní.
 - Manager může existující Paperless originál bezpečně znovu zpracovat přes auditovaný ISDOC reprocess job. Přechod z dřívějších OCR/AI dat na validní ISDOC vytvoří novou invoice revision a zachová historické AI extraction i audit.
 
+### Skutečná regrese iDoklad / Pixel Design
+
+- Paperless dokument `50`, Approval invoice `5ea0bd1a-7694-42de-9693-7cc242252455` a attachment `Vydaná faktura - 260104-invoice.isdoc` byly bezpečně znovu zpracovány bez duplicitního uploadu. Oficiální XSD 6.0.2 i semantic mapping prošly: `Invoice/ID=260104`, supplier IČO `06668712`, VS `260104`, data `2026-03-02 / 2026-03-02 / 2026-03-09`, částky `4300.00 + 903.00 = 5203.00` a účet `115-5596880207/0100`.
+- Stav je `VALID`, zdroj `ISDOC`, provenance čísla dokladu je `/Invoice/ID`. Vznikla invoice revision 2 a immutable ISDOC extraction `bbbce28f-9c2f-436f-9267-1f86055758e0`; historický jediný AI běh zůstal zachován, nový Qwen běh nevznikl. Validace neobsahuje `VAT_ROUNDING_ADJUSTMENT`.
+- Po skutečném approval vznikl artifact `fc57891e-c708-4f5c-b94a-e084958594ca` a Paperless derived dokument `51`. Originál má SHA-256 `655560654f11a127b50b5afd3c41ea40cc3edf87c9f55f0a30262050f03abcb8`; embedded ISDOC v originálu i approved PDF má shodně `0eedab709f99f22d76a994d3d2b7f2a7244150b432c2982d8b3c4c7245453748`. Importní metoda je `PDF_ISDOC` a generated POHODA XML je backendem odmítnuto HTTP 409.
+
 - Datum ověření: 2026-08-26
 - Branch: `main`
 - Git remote: `git@github-paperless-approval:pavel-holub-geovap/paperless-invoice-approval.git`
