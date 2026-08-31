@@ -22,6 +22,14 @@ Upload probíhá přes UI nebo `/api/documents/post_document/`. Stav zpracován�
 
 Approval databáze ukládá OCR text, reference a hashe, ale nikdy PDF bytes. Autorizovaný proxy originálu i manager-only proxy schválené kopie vždy volají Paperless download REST endpoint; browser Paperless token nezná.
 
+## Embedded ISDOC 6.0.2
+
+Worker čte embedded attachment pouze z originálních PDF bytes získaných přes Paperless REST. Bezpečný parser zakazuje DTD, entity a síťové resolvování, sanitizuje filename a vynucuje limit velikosti. Detekovaný ISDOC musí mít default namespace `http://isdoc.cz/namespace/2013`, root `Invoice`, verzi `6.0.2` a projít lokálním oficiálním XSD bundle.
+
+Mapování je namespace-aware a schématicky explicitní. `invoice_number` pochází z root `Invoice/ID`; supplier IČO z `AccountingSupplierParty/Party/PartyIdentification/ID`; line ID z `InvoiceLines/InvoiceLine/ID`. Žádné jméno attachmentu ani obecný descendant lookup neurčuje business typ nebo význam `ID`. Semantic required-field validace běží až po XSD validaci, mapování a deterministické normalizaci.
+
+Manager reprocessing znovu stáhne existující dokument a zařadí samostatný `INSPECT_ISDOC` job. Validní výsledek uchová immutable ISDOC snapshot, přesné strukturální provenance a při nahrazení dřívějších OCR/AI dat vytvoří novou revizi. Originální PDF, historické AI běhy a audit zůstávají nedotčené.
+
 ## Schválená kopie
 
 Po finálním approval worker stáhne originál, ověří `source_pdf_sha256`, vytvoří odvozené PDF a odešle jej přes oficiální `post_document` endpoint jako samostatný Paperless dokument. V Approval DB zůstává `ApprovedPdfArtifact` s revision/approval snapshot/stamp identitou, Paperless task/document ID a hash manifestem. Retry nejprve dohledá existující artifact/task a nesmí vytvářet nekontrolované kopie.

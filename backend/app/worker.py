@@ -224,7 +224,12 @@ async def process_one(paperless: PaperlessClient, ollama: OllamaClient | None) -
                 if invoice.source_pdf_sha256 and invoice.source_pdf_sha256 != actual_hash:
                     raise ValueError("Paperless original PDF hash changed")
                 invoice.source_pdf_sha256 = actual_hash
-                apply_isdoc_inspection(db, invoice, inspection)
+                apply_isdoc_inspection(
+                    db,
+                    invoice,
+                    inspection,
+                    actor=str(job_payload.get("requested_by") or "system"),
+                )
                 if (
                     inspection.status != IsdocStatus.VALID
                     and get_settings().ai_extraction_enabled

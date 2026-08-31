@@ -71,6 +71,7 @@ SIGNIFICANT_FIELDS = {
     "supplier_street",
     "supplier_city",
     "supplier_zip",
+    "supplier_country",
     "ico",
     "dic",
     "address",
@@ -92,6 +93,8 @@ SIGNIFICANT_FIELDS = {
     "total_without_vat",
     "total_vat",
     "total_amount",
+    "invoice_items",
+    "payable_rounding_amount",
 }
 
 PAPERLESS_TAG_SETTING: dict[InvoiceStatus, str] = {

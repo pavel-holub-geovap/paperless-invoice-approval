@@ -32,6 +32,7 @@ from app.models import (
     SourceDocumentStatus,
     ValidationResult,
     ValidationSeverity,
+    new_id,
     utcnow,
 )
 from app.schemas import (
@@ -60,6 +61,7 @@ from app.services.extraction import (
     queue_ai_extraction,
     stored_extraction_to_invoice_data,
 )
+from app.services.jobs import enqueue_job
 from app.services.paperless_sync import mark_source_missing
 from app.services.validation import run_validations
 from app.services.workflow import (
@@ -797,6 +799,35 @@ def request_ai_extraction(
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"id": extraction.id, "status": extraction.status}
+
+
+@router.post("/{invoice_id}/isdoc-reprocess", status_code=202)
+def request_isdoc_reprocessing(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_csrf),
+) -> dict[str, Any]:
+    _manager(user)
+    invoice = _invoice_or_404(db, invoice_id, lock=True)
+    if invoice.source_status == SourceDocumentStatus.MISSING:
+        raise HTTPException(status_code=409, detail="Zdrojový dokument v Paperless chybí")
+    request_id = new_id()
+    job = enqueue_job(
+        db,
+        "INSPECT_ISDOC",
+        f"inspect-isdoc:{invoice.id}:manual:{request_id}",
+        invoice_id=invoice.id,
+        payload={"requested_by": user.subject, "reprocess": True},
+    )
+    record_event(
+        db,
+        "ISDOC_REPROCESS_REQUESTED",
+        actor=user.subject,
+        invoice=invoice,
+        metadata={"job_id": job.id, "request_id": request_id},
+    )
+    db.commit()
+    return {"id": job.id, "status": job.status}
 
 
 @router.post("/{invoice_id}/ai-extractions/{extraction_id}/apply")

@@ -9,6 +9,7 @@ COPY backend/app /app/app
 COPY backend/alembic /app/alembic
 COPY backend/alembic.ini /app/alembic.ini
 COPY schemas/pohoda/2025-10-16 /app/pohoda-xsd
+COPY schemas/isdoc/6.0.2 /app/isdoc-xsd
 RUN pip install --no-cache-dir .
 
 EXPOSE 8000

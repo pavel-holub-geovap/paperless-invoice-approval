@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+
+  Schéma pro fakturu ISDOC
+  Schema for ISDOC invoice
+  
+  (c) 2022 MVČR, https://www.mvcr.cz/
+  
+  (c) 2010-2014 ICT UNIE o.s., http://www.ictu.cz/
+  (c) 2010-2014 ICT UNIE o.s. - ASSOCIATION FOR INFORMATION TECHNOLOGIES AND TELECOMMUNICATIONS, http://www.ictu.cz/ 
+  
+  (c) 2009 Sdružení pro informační společnost, http://www.spis.cz/
+  (c) 2009 Association for Information Society, http://www.spis.cz/
+  
+  Permission to use, copy, modify and distribute this schema and its
+  documentation for any purpose and without fee is hereby granted in
+  perpetuity, provided that the above copyright notice and this paragraph
+  appear in all copies. The copyright holders make no representation about the
+  suitability of the schema for any purpose. It is provided "as is" without
+  expressed or implied warranty.
+  
+  Neither the name of the SPIS, ICT UNIE, nor the name ISDOC may be used to 
+  endorse or promote products derived from this software without specific 
+  prior written permission.
+
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://isdoc.cz/namespace/2013"
+           xmlns="http://isdoc.cz/namespace/2013"
+           xmlns:isdoc="http://isdoc.cz/namespace/2013"
+           elementFormDefault="qualified"
+           version="6.0.2"
+           xml:lang="cs">
+  
+  <xs:include schemaLocation="isdoc-core-6.0.2.xsd"/>
+  
+  <xs:element name="Invoice">
+    <xs:annotation>
+      <xs:documentation xml:lang="cs">Hlavní element dokumentu, jeho subtyp viz položka DocumentType</xs:documentation>
+      <xs:documentation xml:lang="en">Document root element, subtype is stored in DocumentType element</xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="DocumentType" type="DocumentTypeType"/>
+        <xs:sequence minOccurs="0">
+          <xs:element name="SubDocumentType" type="SubDocumentTypeType"/>
+          <xs:element name="SubDocumentTypeOrigin" type="SubDocumentTypeOriginType"/>
+        </xs:sequence>
+        <xs:element name="TargetConsolidator" type="TargetConsolidatorType" minOccurs="0"/>
+        <xs:element name="ClientOnTargetConsolidator" type="ClientOnTargetConsolidatorType" minOccurs="0"/>
+        <xs:element name="ClientBankAccount" type="ClientBankAccountType" minOccurs="0"/>
+        <xs:element name="ID" type="IDType">
+          <xs:annotation>
+            <xs:documentation xml:lang="cs">Lidsky čitelné číslo dokladu</xs:documentation>
+            <xs:documentation xml:lang="en">Human readable document number</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="UUID" type="UUIDType">
+          <xs:annotation>
+            <xs:documentation xml:lang="cs">GUID identifikace od emitujícího systému</xs:documentation>
+            <xs:documentation xml:lang="en">GUID identifier produced by emitting system</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="EgovFlag" type="EgovFlagType" minOccurs="0"/>
+        <xs:element name="ISDS_ID" type="ISDS_IDType" minOccurs="0"/>
+        <xs:element name="FileReference" type="FileReferenceType" minOccurs="0"/>
+        <xs:element name="ReferenceNumber" type="ReferenceNumberType" minOccurs="0"/>
+        <xs:element name="EgovClassifiers" type="EgovClassifiersType" minOccurs="0"/>
+        <xs:element name="IssuingSystem" type="IssuingSystemType" minOccurs="0"/>
+        <xs:element name="IssueDate" type="IssueDateType"/>
+        <xs:element name="TaxPointDate" type="TaxPointDateType" minOccurs="0"/>
+        <xs:element name="VATApplicable" type="VATApplicableType"/>
+        <xs:element name="ElectronicPossibilityAgreementReference" type="NoteType">
+          <xs:annotation>
+            <xs:documentation xml:lang="cs">Označení dokumentu, kterým dal příjemce vystaviteli souhlas s elektronickou formou faktury</xs:documentation>
+            <xs:documentation xml:lang="en">Reference to agreement about acceptance of electronic invoices</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="Note" type="NoteType" minOccurs="0"/>
+        <xs:element name="LocalCurrencyCode" type="CurrencyCodeType"/>
+        <xs:element name="ForeignCurrencyCode" type="CurrencyCodeType" minOccurs="0"/>
+        <xs:element name="CurrRate" type="CurrRateType"/>
+        <xs:element name="RefCurrRate" type="RefCurrRateType"/>
+        <xs:element name="Extensions" type="ExtensionsType" minOccurs="0"/>
+        <xs:element name="AccountingSupplierParty" type="AccountingSupplierPartyType"/>
+        <xs:element name="SellerSupplierParty" type="SellerSupplierPartyType" minOccurs="0"/>
+        <xs:choice>
+          <xs:element name="AccountingCustomerParty" type="AccountingCustomerPartyType"/>
+          <xs:sequence>
+            <xs:element name="AnonymousCustomerParty" type="AnonymousCustomerPartyType"/>
+            <xs:element name="AccountingCustomerParty" type="AccountingCustomerPartyType" minOccurs="0"/>
+          </xs:sequence>
+        </xs:choice>
+        <xs:element name="BuyerCustomerParty" type="BuyerCustomerPartyType" minOccurs="0"/>
+        <xs:element name="OrderReferences" type="OrderReferencesType" minOccurs="0"/>
+        <xs:element name="DeliveryNoteReferences" type="DeliveryNoteReferencesType" minOccurs="0"/>
+        <xs:element name="OriginalDocumentReferences" type="OriginalDocumentReferencesType" minOccurs="0"/>
+        <xs:element name="ContractReferences" type="ContractReferencesType" minOccurs="0"/>
+        <xs:element name="Delivery" type="DeliveryType" minOccurs="0"/>
+        <xs:element name="InvoiceLines" type="InvoiceLinesType"/>
+        <xs:element name="NonTaxedDeposits" type="NonTaxedDepositsType" minOccurs="0"/>
+        <xs:element name="TaxedDeposits" type="TaxedDepositsType" minOccurs="0"/>
+        <xs:element name="TaxTotal" type="TaxTotalType"/>
+        <xs:element name="LegalMonetaryTotal" type="LegalMonetaryTotalType"/>
+        <xs:element name="PaymentMeans" type="PaymentMeansType" minOccurs="0"/>
+        <xs:element name="SupplementsList" type="SupplementsListType" minOccurs="0"/>
+        <xs:group ref="Signature" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="version" use="required" type="VersionType"/>
+    </xs:complexType>
+    <xs:unique name="OrderReferences">
+      <xs:selector xpath="isdoc:OrderReferences/isdoc:OrderReference"/>
+      <xs:field xpath="@id"/>
+    </xs:unique>
+    <xs:keyref name="OrderReferencesRef" refer="OrderReferences">
+      <xs:selector xpath="isdoc:InvoiceLines/isdoc:InvoiceLine/isdoc:OrderReference"/>
+      <xs:field xpath="@ref"/>
+    </xs:keyref>
+    <xs:unique name="DeliveryNoteReferences">
+      <xs:selector xpath="isdoc:DeliveryNoteReferences/isdoc:DeliveryNoteReference"/>
+      <xs:field xpath="@id"/>
+    </xs:unique>
+    <xs:keyref name="DeliveryNoteReferencesRef" refer="DeliveryNoteReferences">
+      <xs:selector xpath="isdoc:InvoiceLines/isdoc:InvoiceLine/isdoc:DeliveryNoteReference"/>
+      <xs:field xpath="@ref"/>
+    </xs:keyref>
+    <xs:unique name="OriginalDocumentReferences">
+      <xs:selector xpath="isdoc:OriginalDocumentReferences/isdoc:OriginalDocumentReference"/>
+      <xs:field xpath="@id"/>
+    </xs:unique>
+    <xs:keyref name="OriginalDocumentReferencesRef" refer="OriginalDocumentReferences">
+      <xs:selector xpath="isdoc:InvoiceLines/isdoc:InvoiceLine/isdoc:OriginalDocumentReference"/>
+      <xs:field xpath="@ref"/>
+    </xs:keyref>    
+    <xs:unique name="ContractReferences">
+      <xs:selector xpath="isdoc:ContractReferences/isdoc:ContractReference"/>
+      <xs:field xpath="@id"/>
+    </xs:unique>
+    <xs:keyref name="ContractReferencesRef" refer="ContractReferences">
+      <xs:selector xpath="isdoc:InvoiceLines/isdoc:InvoiceLine/isdoc:ContractReference"/>
+      <xs:field xpath="@ref"/>
+    </xs:keyref>
+    <xs:key name="InvoiceLines">
+      <xs:selector xpath="isdoc:InvoiceLines/isdoc:InvoiceLine"/>
+      <xs:field xpath="isdoc:ID"/>
+    </xs:key>
+  </xs:element>
+  
+</xs:schema>

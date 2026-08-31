@@ -15,15 +15,20 @@ ISDOC_NAMESPACE = "http://isdoc.cz/namespace/2013"
 def isdoc_xml() -> bytes:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Invoice xmlns="{ISDOC_NAMESPACE}" version="6.0.2">
-  <DocumentID>SMOKE-ISDOC-2026-001</DocumentID><IssueDate>2026-08-20</IssueDate>
-  <TaxPointDate>2026-08-20</TaxPointDate><LocalCurrencyCode>CZK</LocalCurrencyCode>
-  <AccountingSupplierParty><Party><PartyName><Name>Smoke ISDOC s.r.o.</Name></PartyName>
-  <CompanyID>28652240</CompanyID><PartyTaxScheme><CompanyID>CZ28652240</CompanyID></PartyTaxScheme>
-  <PostalAddress><StreetName>Testovací</StreetName><BuildingNumber>1</BuildingNumber><CityName>Praha</CityName><PostalZone>10000</PostalZone></PostalAddress>
-  </Party></AccountingSupplierParty>
-  <PaymentMeans><ID>123456789</ID><BankCode>0100</BankCode><VariableSymbol>2026001</VariableSymbol><PaymentDueDate>2026-09-03</PaymentDueDate></PaymentMeans>
-  <TaxTotal><TaxAmount>210.00</TaxAmount><TaxSubTotal><TaxableAmount>1000.00</TaxableAmount><TaxAmount>210.00</TaxAmount><Percent>21</Percent></TaxSubTotal></TaxTotal>
-  <LegalMonetaryTotal><TaxExclusiveAmount>1000.00</TaxExclusiveAmount><PayableAmount>1210.00</PayableAmount></LegalMonetaryTotal>
+  <DocumentType>1</DocumentType><ID>SMOKE-ISDOC-2026-001</ID><UUID>77692e7d-77aa-40b2-b3bc-b7bb23432d15</UUID>
+  <IssueDate>2026-08-20</IssueDate><TaxPointDate>2026-08-20</TaxPointDate><VATApplicable>true</VATApplicable>
+  <ElectronicPossibilityAgreementReference>Smoke fixture</ElectronicPossibilityAgreementReference>
+  <LocalCurrencyCode>CZK</LocalCurrencyCode><CurrRate>1</CurrRate><RefCurrRate>1</RefCurrRate>
+  <AccountingSupplierParty><Party><PartyIdentification><ID>28652240</ID></PartyIdentification><PartyName><Name>Smoke ISDOC s.r.o.</Name></PartyName>
+  <PostalAddress><StreetName>Testovací</StreetName><BuildingNumber>1</BuildingNumber><CityName>Praha</CityName><PostalZone>10000</PostalZone><Country><IdentificationCode>CZ</IdentificationCode><Name>Česká republika</Name></Country></PostalAddress>
+  <PartyTaxScheme><CompanyID>CZ28652240</CompanyID><TaxScheme>VAT</TaxScheme></PartyTaxScheme></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyIdentification><ID>15049248</ID></PartyIdentification><PartyName><Name>Smoke odběratel s.r.o.</Name></PartyName>
+  <PostalAddress><StreetName>Odběratelská</StreetName><BuildingNumber>2</BuildingNumber><CityName>Praha</CityName><PostalZone>10000</PostalZone><Country><IdentificationCode>CZ</IdentificationCode><Name>Česká republika</Name></Country></PostalAddress>
+  <PartyTaxScheme><CompanyID>CZ15049248</CompanyID><TaxScheme>VAT</TaxScheme></PartyTaxScheme></Party></AccountingCustomerParty>
+  <InvoiceLines><InvoiceLine><ID>0</ID><InvoicedQuantity unitCode="ks">1</InvoicedQuantity><LineExtensionAmount>1000.00</LineExtensionAmount><LineExtensionAmountTaxInclusive>1210.00</LineExtensionAmountTaxInclusive><LineExtensionTaxAmount>210.00</LineExtensionTaxAmount><UnitPrice>1000.00</UnitPrice><UnitPriceTaxInclusive>1210.00</UnitPriceTaxInclusive><ClassifiedTaxCategory><Percent>21</Percent><VATCalculationMethod>0</VATCalculationMethod></ClassifiedTaxCategory><Item><Description>Smoke služba</Description></Item></InvoiceLine></InvoiceLines>
+  <TaxTotal><TaxSubTotal><TaxableAmount>1000.00</TaxableAmount><TaxAmount>210.00</TaxAmount><TaxInclusiveAmount>1210.00</TaxInclusiveAmount><AlreadyClaimedTaxableAmount>0.00</AlreadyClaimedTaxableAmount><AlreadyClaimedTaxAmount>0.00</AlreadyClaimedTaxAmount><AlreadyClaimedTaxInclusiveAmount>0.00</AlreadyClaimedTaxInclusiveAmount><DifferenceTaxableAmount>1000.00</DifferenceTaxableAmount><DifferenceTaxAmount>210.00</DifferenceTaxAmount><DifferenceTaxInclusiveAmount>1210.00</DifferenceTaxInclusiveAmount><TaxCategory><Percent>21</Percent><TaxScheme>VAT</TaxScheme><VATApplicable>true</VATApplicable></TaxCategory></TaxSubTotal><TaxAmount>210.00</TaxAmount></TaxTotal>
+  <LegalMonetaryTotal><TaxExclusiveAmount>1000.00</TaxExclusiveAmount><TaxInclusiveAmount>1210.00</TaxInclusiveAmount><AlreadyClaimedTaxExclusiveAmount>0.00</AlreadyClaimedTaxExclusiveAmount><AlreadyClaimedTaxInclusiveAmount>0.00</AlreadyClaimedTaxInclusiveAmount><DifferenceTaxExclusiveAmount>1000.00</DifferenceTaxExclusiveAmount><DifferenceTaxInclusiveAmount>1210.00</DifferenceTaxInclusiveAmount><PayableRoundingAmount>0.00</PayableRoundingAmount><PaidDepositsAmount>0.00</PaidDepositsAmount><PayableAmount>1210.00</PayableAmount></LegalMonetaryTotal>
+  <PaymentMeans><Payment><PaidAmount>1210.00</PaidAmount><PaymentMeansCode>42</PaymentMeansCode><Details><PaymentDueDate>2026-09-03</PaymentDueDate><ID>123456789</ID><BankCode>0100</BankCode><Name>Smoke banka</Name><IBAN>CZ6501000000000123456789</IBAN><BIC>KOMBCZPPXXX</BIC><VariableSymbol>2026001</VariableSymbol></Details></Payment></PaymentMeans>
 </Invoice>""".encode()
 
 

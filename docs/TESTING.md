@@ -104,9 +104,11 @@ Doménová sada testuje skutečné invoice items, DPH summary fallback bez `cent
 
 ## ISDOC a schválené PDF
 
-`test_isdoc_approved_pdf.py` generuje bezpečné syntetické PDF bez attachmentu, s validním ISDOC 6.0.2, invalidním/cizím/malicious XML, více kandidáty a více přílohami. Ověřuje extraction source, zákaz AI a provenance. Portrait/landscape i multi-page kopie musí být deterministická, vyšší než originální poslední stránka, obsahovat lidské razítko a zachovat filename/content/SHA-256 všech attachments. Originální bytes se nesmějí změnit.
+`test_isdoc_approved_pdf.py` generuje bezpečné syntetické PDF bez attachmentu, s XSD-validním iDoklad-kompatibilním ISDOC 6.0.2, invalidním/cizím/malicious XML, více kandidáty a více přílohami. Fixture záměrně obsahuje rozdílné `Invoice/ID=260104`, supplier `PartyIdentification/ID=06668712` a `InvoiceLine/ID=0..3`; test tak dokazuje, že mapper nepoužívá globální lookup. Ověřuje namespace, XSD, supplier/adresu/data/platbu/banku, DPH a totals 4300.00 + 903.00 = 5203.00, kladné/nulové/záporné položky, absenci falešného rounding, přesnou provenance, novou revizi při přechodu z OCR a zákaz AI. Portrait/landscape i multi-page kopie musí být deterministická, vyšší než originální poslední stránka, obsahovat lidské razítko a zachovat filename/content/SHA-256 všech attachments. Originální bytes se nesmějí změnit.
 
 VM smoke používá `scripts/generate_isdoc_smoke_fixtures.py` a scénáře bez ISDOC, validní ISDOC, invalidní ISDOC, zálohovou fakturu a novou revizi po approved artifactu. Kontroluje skutečné Paperless document ID, worker joby, API download, hashe, AI běh i POHODA metodu.
+
+Regrese skutečného dokumentu Pixel Design používá existující Paperless dokument bez duplicitního uploadu. Auditovaný `POST /api/invoices/{id}/isdoc-reprocess` musí skončit `VALID`, `extraction_source=ISDOC`, vytvořit navazující revizi a nesmí vytvořit nový `AI_EXTRACT_INVOICE` běh. UI detail nesmí obsahovat semantic fallback warning.
 
 Regrese detekce zaokrouhlení pokrývá Pixel Design (`4300.00 + 903.00 = 5203.00`): raw model smí chybně navrhnout `ROUNDING`, ale evidence ze souhrnného řádku jej musí deterministicky odmítnout bez `VAT_ROUNDING_ADJUSTMENT` a bez samostatné exportní položky. Negativní varianty zahrnují CELKEM, CELKEM K ÚHRADĚ, Celkem s DPH a VAT rekapitulaci. Pozitivní varianty používají explicitní `Zaokrouhlení +0.30/-0.25`, další jednoznačné štítky a skutečný GIRITON řádek `0.29 + 0.06 = 0.35`.
 

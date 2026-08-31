@@ -3,9 +3,10 @@
 ## Klasifikace, ISDOC a schválená PDF kopie
 
 - Migrace `0010` přidává ortogonální osy `document_type`, `processing_mode`, `extraction_source`, `isdoc_status`, `approved_pdf_status` a `pohoda_import_method`. Historické faktury jsou bezpečně backfillnuty jako `RECEIVED_INVOICE + FOR_APPROVAL`; nové dokumenty začínají `UNCLASSIFIED`.
-- Worker kontroluje attachments před AI. Validní ISDOC Invoice 6.0.2 vytvoří immutable extraction snapshot s provenance `ISDOC` a nepovolí Qwen3. Chybějící/nevalidní ISDOC pokračuje přes OCR + AI.
+- Worker kontroluje attachments před AI. Validní ISDOC Invoice 6.0.2 projde bezpečným XML parserem a lokálním oficiálním XSD bundle, vytvoří immutable extraction snapshot s přesnou provenance `ISDOC` a nepovolí Qwen3. Číslo faktury se mapuje výhradně z namespace-aware root cesty `Invoice/ID`; IČO dodavatele a IDs položek mají vlastní explicitní cesty. Chybějící/nevalidní ISDOC pokračuje přes OCR + AI.
 - Finální approval vytváří idempotentní schválené PDF v Paperless pod technickým tagem. Originální PDF zůstává byte-for-byte stejné, razítko je v rozšířeném spodním pásu a všechny attachments včetně ISDOC musí mít stejné SHA-256.
 - POHODA metoda je `PDF_ISDOC`, `GENERATED_XML`, nebo `NONE`. Zálohové faktury a centrální/ostatní doklady jsou backendem blokované. Allocations se už nemapují na účetní položky/střediska; jsou pouze informativní.
+- Manager může existující Paperless originál bezpečně znovu zpracovat přes auditovaný ISDOC reprocess job. Přechod z dřívějších OCR/AI dat na validní ISDOC vytvoří novou invoice revision a zachová historické AI extraction i audit.
 
 - Datum ověření: 2026-08-26
 - Branch: `main`

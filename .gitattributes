@@ -8,3 +8,6 @@ Dockerfile text eol=lf
 
 *.pdf binary
 *.docx binary
+
+# Preserve byte-exact official schema bundles and their published checksums.
+schemas/isdoc/**/*.xsd -text -diff

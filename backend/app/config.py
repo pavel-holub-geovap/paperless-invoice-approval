@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     external_retry_attempts: int = 3
     upload_max_bytes: int = 8 * 1024 * 1024
     isdoc_max_attachment_bytes: int = 4 * 1024 * 1024
+    isdoc_xsd_path: Path = Path("schemas/isdoc/6.0.2/isdoc-invoice-6.0.2.xsd")
     approved_pdf_stamp_version: str = "approval-stamp.v1"
 
     @field_validator("paperless_base_url", "ollama_base_url", "keycloak_base_url")

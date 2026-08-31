@@ -109,3 +109,9 @@ Paperless 3.0.5 neposkytuje pro tento účel bezpečné přepsání/verzování 
 ## ADR-023: Typ dokumentu a processing mode jsou nezávislé
 
 `document_type` popisuje dokument, `processing_mode` proces. Pouze `FOR_APPROVAL` vytváří standardní schvalování. `RECORD_ONLY` nic nepředstírá a případná způsobilost přijaté faktury vyžaduje explicitní volbu managera. `CENTRAL_DOCUMENT + CENTRAL_MANUAL` zůstává mimo approval i POHODU. `RECEIVED_ADVANCE_INVOICE` smí projít approval, ale backend vždy blokuje POHODA export/import.
+
+## ADR-024: ISDOC mapper je verzovaný proti oficiálnímu schématu
+
+ISDOC 6.0.2 se neinterpretuje podle interních názvů polí ani podle producenta. Repozitář obsahuje oficiální invoice/core XSD s kontrolními součty; runtime nepoužívá síť. Po bezpečném parsování a detekci namespace/verze následuje XSD, verzi specifický mapper, normalizace a semantic required-field kontrola.
+
+Mapper používá výhradně explicitní namespace-aware strukturální cesty. `Invoice/ID` je číslo dokladu, supplier `PartyIdentification/ID` je IČO a `InvoiceLine/ID` je řádkový identifikátor. Tato volba zabraňuje významovým kolizím globálních XPath a současně není vázaná na iDoklad. Ruční reprocessing je auditovaný job; validní ISDOC nahrazující aktuální OCR data vytváří novou standardní revizi a nemaže historický AI běh.

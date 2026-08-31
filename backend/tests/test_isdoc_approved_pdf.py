@@ -11,10 +11,12 @@ from reportlab.pdfgen import canvas
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.routes.invoices import request_isdoc_reprocessing
 from app.config import Settings
 from app.models import (
     Allocation,
     ApprovalAssignment,
+    AuditEvent,
     CostCenter,
     DocumentType,
     ExtractionSource,
@@ -25,7 +27,9 @@ from app.models import (
     ProcessingJob,
     ProcessingMode,
     UserIdentity,
+    ValidationResult,
 )
+from app.schemas import CurrentUser
 from app.services.approval_setup import replace_approvers
 from app.services.approved_pdf import create_approved_pdf, prepare_approved_pdf_artifact
 from app.services.classification import classify_document
@@ -41,23 +45,41 @@ from app.services.workflow import WorkflowError, create_invoice
 ISDOC_NAMESPACE = "http://isdoc.cz/namespace/2013"
 
 
-def valid_isdoc(*, number: str = "ISDOC-2026-001") -> bytes:
+def valid_isdoc(*, number: str = "260104") -> bytes:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Invoice xmlns="{ISDOC_NAMESPACE}" version="6.0.2">
-  <DocumentID>{number}</DocumentID>
-  <IssueDate>2026-08-20</IssueDate>
-  <TaxPointDate>2026-08-20</TaxPointDate>
+  <DocumentType>1</DocumentType>
+  <ID>{number}</ID>
+  <UUID>02e3f24d-c833-4dc8-a09e-51bd694d325a</UUID>
+  <IssuingSystem>synthetic iDoklad-compatible fixture</IssuingSystem>
+  <IssueDate>2026-03-02</IssueDate>
+  <TaxPointDate>2026-03-02</TaxPointDate>
+  <VATApplicable>true</VATApplicable>
+  <ElectronicPossibilityAgreementReference>Test fixture</ElectronicPossibilityAgreementReference>
   <LocalCurrencyCode>CZK</LocalCurrencyCode>
+  <CurrRate>1</CurrRate>
+  <RefCurrRate>1</RefCurrRate>
   <AccountingSupplierParty><Party>
-    <PartyName><Name>ISDOC Dodavatel s.r.o.</Name></PartyName>
-    <CompanyID>28652240</CompanyID>
-    <PartyTaxScheme><CompanyID>CZ28652240</CompanyID></PartyTaxScheme>
-    <PostalAddress><StreetName>Testovací</StreetName><BuildingNumber>1</BuildingNumber><CityName>Praha</CityName><PostalZone>10000</PostalZone></PostalAddress>
+    <PartyIdentification><ID>06668712</ID></PartyIdentification>
+    <PartyName><Name>Pixel Design s.r.o.</Name></PartyName>
+    <PostalAddress><StreetName>Testovací</StreetName><BuildingNumber>1</BuildingNumber><CityName>Praha</CityName><PostalZone>10000</PostalZone><Country><IdentificationCode>CZ</IdentificationCode><Name>Česká republika</Name></Country></PostalAddress>
+    <PartyTaxScheme><CompanyID>CZ06668712</CompanyID><TaxScheme>VAT</TaxScheme></PartyTaxScheme>
   </Party></AccountingSupplierParty>
-  <PaymentMeans><ID>123456789</ID><BankCode>0100</BankCode><VariableSymbol>2026001</VariableSymbol><PaymentDueDate>2026-09-03</PaymentDueDate></PaymentMeans>
-  <TaxTotal><TaxAmount>210.00</TaxAmount><TaxSubTotal><TaxableAmount>1000.00</TaxableAmount><TaxAmount>210.00</TaxAmount><Percent>21</Percent></TaxSubTotal></TaxTotal>
-  <LegalMonetaryTotal><TaxExclusiveAmount>1000.00</TaxExclusiveAmount><PayableAmount>1210.00</PayableAmount></LegalMonetaryTotal>
-  <InvoiceLines><InvoiceLine><InvoicedQuantity>1</InvoicedQuantity><LineExtensionAmount>1000.00</LineExtensionAmount><Item><Description>Licence</Description><ClassifiedTaxCategory><Percent>21</Percent></ClassifiedTaxCategory></Item><UnitPrice>1000.00</UnitPrice></InvoiceLine></InvoiceLines>
+  <AccountingCustomerParty><Party>
+    <PartyIdentification><ID>15049248</ID></PartyIdentification>
+    <PartyName><Name>Testovací odběratel s.r.o.</Name></PartyName>
+    <PostalAddress><StreetName>Odběratelská</StreetName><BuildingNumber>2</BuildingNumber><CityName>Praha</CityName><PostalZone>10000</PostalZone><Country><IdentificationCode>CZ</IdentificationCode><Name>Česká republika</Name></Country></PostalAddress>
+    <PartyTaxScheme><CompanyID>CZ15049248</CompanyID><TaxScheme>VAT</TaxScheme></PartyTaxScheme>
+  </Party></AccountingCustomerParty>
+  <InvoiceLines>
+    <InvoiceLine><ID>0</ID><InvoicedQuantity unitCode="ks">1</InvoicedQuantity><LineExtensionAmount>3600.00</LineExtensionAmount><LineExtensionAmountTaxInclusive>4356.00</LineExtensionAmountTaxInclusive><LineExtensionTaxAmount>756.00</LineExtensionTaxAmount><UnitPrice>3600.00</UnitPrice><UnitPriceTaxInclusive>4356.00</UnitPriceTaxInclusive><ClassifiedTaxCategory><Percent>21</Percent><VATCalculationMethod>0</VATCalculationMethod></ClassifiedTaxCategory><Item><Description>Webhosting geovap.cz</Description></Item></InvoiceLine>
+    <InvoiceLine><ID>1</ID><InvoicedQuantity unitCode="ks">1</InvoicedQuantity><LineExtensionAmount>1000.00</LineExtensionAmount><LineExtensionAmountTaxInclusive>1210.00</LineExtensionAmountTaxInclusive><LineExtensionTaxAmount>210.00</LineExtensionTaxAmount><UnitPrice>1000.00</UnitPrice><UnitPriceTaxInclusive>1210.00</UnitPriceTaxInclusive><ClassifiedTaxCategory><Percent>21</Percent><VATCalculationMethod>0</VATCalculationMethod></ClassifiedTaxCategory><Item><Description>Provoz HTTPS certifikátu zabezpečení</Description></Item></InvoiceLine>
+    <InvoiceLine><ID>2</ID><InvoicedQuantity unitCode="ks">1</InvoicedQuantity><LineExtensionAmount>0.00</LineExtensionAmount><LineExtensionAmountTaxInclusive>0.00</LineExtensionAmountTaxInclusive><LineExtensionTaxAmount>0.00</LineExtensionTaxAmount><UnitPrice>0.00</UnitPrice><UnitPriceTaxInclusive>0.00</UnitPriceTaxInclusive><ClassifiedTaxCategory><Percent>21</Percent><VATCalculationMethod>0</VATCalculationMethod></ClassifiedTaxCategory><Item><Description>Informace o období</Description></Item></InvoiceLine>
+    <InvoiceLine><ID>3</ID><InvoicedQuantity unitCode="ks">1</InvoicedQuantity><LineExtensionAmount>-300.00</LineExtensionAmount><LineExtensionAmountTaxInclusive>-363.00</LineExtensionAmountTaxInclusive><LineExtensionTaxAmount>-63.00</LineExtensionTaxAmount><UnitPrice>-300.00</UnitPrice><UnitPriceTaxInclusive>-363.00</UnitPriceTaxInclusive><ClassifiedTaxCategory><Percent>21</Percent><VATCalculationMethod>0</VATCalculationMethod></ClassifiedTaxCategory><Item><Description>Jednorázová sleva za výpadek hostingu</Description></Item></InvoiceLine>
+  </InvoiceLines>
+  <TaxTotal><TaxSubTotal><TaxableAmount>4300.00</TaxableAmount><TaxAmount>903.00</TaxAmount><TaxInclusiveAmount>5203.00</TaxInclusiveAmount><AlreadyClaimedTaxableAmount>0.00</AlreadyClaimedTaxableAmount><AlreadyClaimedTaxAmount>0.00</AlreadyClaimedTaxAmount><AlreadyClaimedTaxInclusiveAmount>0.00</AlreadyClaimedTaxInclusiveAmount><DifferenceTaxableAmount>4300.00</DifferenceTaxableAmount><DifferenceTaxAmount>903.00</DifferenceTaxAmount><DifferenceTaxInclusiveAmount>5203.00</DifferenceTaxInclusiveAmount><TaxCategory><Percent>21</Percent><TaxScheme>VAT</TaxScheme><VATApplicable>true</VATApplicable></TaxCategory></TaxSubTotal><TaxAmount>903.00</TaxAmount></TaxTotal>
+  <LegalMonetaryTotal><TaxExclusiveAmount>4300.00</TaxExclusiveAmount><TaxInclusiveAmount>5203.00</TaxInclusiveAmount><AlreadyClaimedTaxExclusiveAmount>0.00</AlreadyClaimedTaxExclusiveAmount><AlreadyClaimedTaxInclusiveAmount>0.00</AlreadyClaimedTaxInclusiveAmount><DifferenceTaxExclusiveAmount>4300.00</DifferenceTaxExclusiveAmount><DifferenceTaxInclusiveAmount>5203.00</DifferenceTaxInclusiveAmount><PayableRoundingAmount>0.00</PayableRoundingAmount><PaidDepositsAmount>0.00</PaidDepositsAmount><PayableAmount>5203.00</PayableAmount></LegalMonetaryTotal>
+  <PaymentMeans><Payment><PaidAmount>5203.00</PaidAmount><PaymentMeansCode>42</PaymentMeansCode><Details><PaymentDueDate>2026-03-09</PaymentDueDate><ID>115-5596880207</ID><BankCode>0100</BankCode><Name>Komerční banka</Name><IBAN>CZ9001000001155596880207</IBAN><BIC>KOMBCZPPXXX</BIC><VariableSymbol>260104</VariableSymbol></Details></Payment></PaymentMeans>
 </Invoice>""".encode()
 
 
@@ -146,11 +168,15 @@ def test_valid_isdoc_is_primary_immutable_extraction_and_ai_is_blocked(db: Sessi
     assert invoice.isdoc_sha256 == hashlib.sha256(payload).hexdigest()
     assert invoice.extraction_source == ExtractionSource.ISDOC
     assert invoice.pohoda_import_method == PohodaImportMethod.PDF_ISDOC
-    assert invoice.current_revision.data["supplier_name"] == "ISDOC Dodavatel s.r.o."
-    assert invoice.current_revision.data["supplier_ico"] == "28652240"
-    assert invoice.current_revision.data["invoice_number"] == "ISDOC-2026-001"
+    assert invoice.current_revision.data["supplier_name"] == "Pixel Design s.r.o."
+    assert invoice.current_revision.data["supplier_ico"] == "06668712"
+    assert invoice.current_revision.data["invoice_number"] == "260104"
     assert snapshot is not None
-    assert snapshot.provenance["supplier_name"] == {"source": "ISDOC"}
+    assert snapshot.provenance["invoice_number"] == {
+        "source": "ISDOC",
+        "path": "/Invoice/ID",
+        "raw_value": "260104",
+    }
     assert db.scalar(select(IsdocExtraction).where(IsdocExtraction.invoice_id == invoice.id))
     with pytest.raises(ValueError, match="ISDOC"):
         queue_ai_extraction(db, invoice, Settings(), "manager")
@@ -158,6 +184,129 @@ def test_valid_isdoc_is_primary_immutable_extraction_and_ai_is_blocked(db: Sessi
         select(ProcessingJob).where(
             ProcessingJob.invoice_id == invoice.id,
             ProcessingJob.job_type == "AI_EXTRACT_INVOICE",
+        )
+    )
+
+
+def test_idoklad_isdoc_602_maps_explicit_paths_totals_payment_and_items() -> None:
+    inspection = inspect_pdf_isdoc(
+        source_pdf(
+            attachments=[("Vydaná faktura - 260104-invoice.isdoc", valid_isdoc())]
+        ),
+        Settings(),
+    )
+
+    assert inspection.status == IsdocStatus.VALID, inspection.error
+    assert inspection.version == "6.0.2"
+    data = inspection.mapped_data or {}
+    assert data["invoice_number"] == "260104"
+    assert data["supplier_name"] == "Pixel Design s.r.o."
+    assert data["supplier_ico"] == "06668712"
+    assert data["supplier_dic"] == "CZ06668712"
+    assert data["supplier_country"] == "CZ"
+    assert data["variable_symbol"] == "260104"
+    assert data["issue_date"] == "2026-03-02"
+    assert data["taxable_supply_date"] == "2026-03-02"
+    assert data["due_date"] == "2026-03-09"
+    assert data["currency"] == "CZK"
+    assert data["bank_account_raw"] == "115-5596880207/0100"
+    assert data["bank_account_prefix"] == "115"
+    assert data["bank_account_number"] == "5596880207"
+    assert data["bank_code"] == "0100"
+    assert data["iban"] == "CZ9001000001155596880207"
+    assert data["swift_bic"] == "KOMBCZPPXXX"
+    assert data["total_without_vat"] == "4300.00"
+    assert data["total_vat"] == "903.00"
+    assert data["total_amount"] == "5203.00"
+    assert data["payable_rounding_amount"] == "0.00"
+    assert data["vat_lines"] == [
+        {
+            "vat_rate": "21",
+            "taxable_base": "4300.00",
+            "vat_amount": "903.00",
+            "gross_amount": "5203.00",
+            "adjustment_type": None,
+            "source_text": "/Invoice/TaxTotal/TaxSubTotal[1]",
+        }
+    ]
+    items = data["invoice_items"]
+    assert [row["line_id"] for row in items] == ["0", "1", "2", "3"]
+    assert [row["line_extension_amount"] for row in items] == [
+        "3600.00", "1000.00", "0.00", "-300.00"
+    ]
+    assert [row["line_vat_amount"] for row in items] == [
+        "756.00", "210.00", "0.00", "-63.00"
+    ]
+    assert [row["line_gross_amount"] for row in items] == [
+        "4356.00", "1210.00", "0.00", "-363.00"
+    ]
+    assert inspection.provenance["supplier_ico"]["path"].endswith(
+        "/PartyIdentification/ID"
+    )
+
+
+def test_valid_isdoc_reprocessing_creates_revision_and_preserves_ocr_history(
+    db: Session,
+) -> None:
+    invoice = create_invoice(db, 8106)
+    original_revision = invoice.current_revision
+    original_revision.data = {
+        "invoice_number": "OCR-OLD",
+        "supplier_name": "Historická OCR hodnota",
+        "total_amount": "1.00",
+    }
+    inspection = inspect_pdf_isdoc(
+        source_pdf(attachments=[("invoice.isdoc", valid_isdoc())]), Settings()
+    )
+
+    snapshot = apply_isdoc_inspection(db, invoice, inspection, actor="manager")
+    db.flush()
+
+    assert snapshot is not None
+    assert invoice.current_revision_number == 2
+    assert original_revision.data["invoice_number"] == "OCR-OLD"
+    assert invoice.current_revision.data["invoice_number"] == "260104"
+    assert snapshot.invoice_revision_id == invoice.current_revision.id
+    codes = set(
+        db.scalars(
+            select(ValidationResult.code).where(
+                ValidationResult.revision_id == invoice.current_revision.id
+            )
+        ).all()
+    )
+    assert "VAT_ROUNDING_ADJUSTMENT" not in codes
+    assert "VAT_ROW_MATH" not in codes
+
+
+def test_invalid_isdoc_keeps_ocr_ai_fallback(db: Session) -> None:
+    invoice = create_invoice(db, 8107)
+    inspection = inspect_pdf_isdoc(
+        source_pdf(attachments=[("broken.isdoc", b"<Invoice")]), Settings()
+    )
+
+    assert inspection.status == IsdocStatus.INVALID
+    assert apply_isdoc_inspection(db, invoice, inspection) is None
+    assert invoice.extraction_source == ExtractionSource.OCR_AI
+
+
+def test_manager_can_enqueue_audited_isdoc_reprocessing(db: Session) -> None:
+    invoice = create_invoice(db, 8108)
+    user = CurrentUser(
+        subject="manager-subject",
+        username="queue-manager",
+        roles=["QUEUE_MANAGER"],
+        csrf_token="csrf",
+    )
+
+    response = request_isdoc_reprocessing(invoice.id, db, user)
+
+    job = db.get(ProcessingJob, response["id"])
+    assert job.job_type == "INSPECT_ISDOC"
+    assert job.payload["requested_by"] == "manager-subject"
+    assert db.scalar(
+        select(AuditEvent).where(
+            AuditEvent.invoice_id == invoice.id,
+            AuditEvent.event_type == "ISDOC_REPROCESS_REQUESTED",
         )
     )
 
