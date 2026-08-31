@@ -12,7 +12,7 @@ Approval backend nikdy nepřistupuje do Paperless databáze. Používá výhradn
 
 Výchozí tagy zahrnují také technický `Approval - schválená kopie` (`PAPERLESS_TAG_APPROVED_COPY`). Tento tag není inbox tag. Derived PDF nedostává `PAPERLESS_INBOX_TAG`, a proto jej discovery nemůže synchronizovat jako novou invoice. Názvy jsou v `.env`, nikoli rozptýlené v kódu.
 
-Synchronizace je idempotentní: unikátní index zabrání duplicitní faktuře a beze změny snapshotu nevzniká další datový audit. Worker hledá dokumenty s `PAPERLESS_INBOX_TAG`, přes API dohledá názvy tagů a korespondenta, uloží metadata a OCR a centralizovaně přejde do `QUEUE_REVIEW`. Stav synchronizace je `PENDING`, `SYNCED` nebo `ERROR`. Klient před změnou načte dokument a nahrazuje pouze spravované stavové tagy; ostatní tagy zachová.
+Synchronizace je idempotentní: unikátní index zabrání duplicitní faktuře a beze změny snapshotu nevzniká další datový audit. Worker hledá dokumenty s `PAPERLESS_INBOX_TAG`, přes API dohledá názvy tagů a korespondenta, uloží metadata a OCR a centralizovaně přejde do `QUEUE_REVIEW`. Stav synchronizace je `PENDING`, `SYNCED` nebo `ERROR`. Klient používá oficiální filtr `tags__id__all`, ale zároveň u každého výsledku znovu ověří skutečné členství v tag ID. Odvozený dokument se tak nemůže stát novou invoice ani tehdy, pokud konkrétní Paperless verze nebo proxy neznámý filtr tiše ignoruje. Klient před změnou načte dokument a nahrazuje pouze spravované stavové tagy; ostatní tagy zachová.
 
 ## OCR a persistence
 

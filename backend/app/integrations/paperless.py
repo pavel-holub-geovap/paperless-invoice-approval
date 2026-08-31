@@ -148,7 +148,12 @@ class PaperlessClient:
     async def iter_documents_with_tag(self, tag_name: str) -> AsyncIterator[PaperlessDocument]:
         tag_id = await self.resolve_tag_id(tag_name)
         async for document in self.iter_documents(tag_id=tag_id):
-            yield document
+            # Paperless is the source of truth for the inbox membership.  Keep
+            # this check even though the API request is filtered: unsupported
+            # or silently ignored filter parameters must never make a derived
+            # approved copy look like a new invoice.
+            if tag_id in document.tags:
+                yield document
 
     async def iter_documents(self, *, tag_id: int | None = None) -> AsyncIterator[PaperlessDocument]:
         path: str | None = "/documents/"

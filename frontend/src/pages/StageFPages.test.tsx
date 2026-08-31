@@ -88,6 +88,7 @@ describe("Stage F POHODA export", () => {
       },
     };
     render(<InvoiceDetail invoice={pdfIsdoc} user={manager} onBack={() => undefined} onRefresh={() => undefined}/>);
+    expect(screen.getByText("Nalezen a validní · 6.0.2")).toBeVisible();
     expect(screen.getByText(/Import do POHODY: PDF \+ ISDOC/)).toBeVisible();
     expect(screen.getByRole("link", { name: "Stáhnout schválené PDF + ISDOC" })).toHaveAttribute("href", "/api/invoices/invoice-f/approved-pdf");
     expect(screen.queryByRole("button", { name: "Vygenerovat XML" })).not.toBeInTheDocument();

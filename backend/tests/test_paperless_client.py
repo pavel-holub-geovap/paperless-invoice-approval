@@ -95,6 +95,62 @@ async def test_fulltext_search_uses_paginated_document_query_without_n_plus_one(
 
 
 @pytest.mark.asyncio
+async def test_inbox_iterator_rechecks_tag_membership_when_api_filter_is_ignored() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/api/tags/":
+            return httpx.Response(
+                200,
+                json={"results": [{"id": 5, "name": "Přijatá faktura"}]},
+            )
+        if request.url.path == "/api/documents/":
+            assert request.url.params["tags__id__all"] == "5"
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {"id": 50, "title": "Original", "tags": [5]},
+                        {
+                            "id": 51,
+                            "title": "Schválená kopie",
+                            "tags": [12],
+                        },
+                    ],
+                    "next": None,
+                },
+            )
+        if request.url.path == "/api/tags/5/":
+            return httpx.Response(200, json={"id": 5, "name": "Přijatá faktura"})
+        if request.url.path == "/api/tags/12/":
+            return httpx.Response(
+                200,
+                json={"id": 12, "name": "Approval - schválená kopie"},
+            )
+        raise AssertionError(request.url)
+
+    settings = Settings(
+        paperless_base_url="http://paperless.test",
+        paperless_api_token=SecretStr("test-token"),
+        paperless_api_token_file=None,
+    )
+    client = PaperlessClient(settings, transport=httpx.MockTransport(handler))
+    try:
+        documents = [
+            document
+            async for document in client.iter_documents_with_tag(
+                settings.paperless_inbox_tag
+            )
+        ]
+    finally:
+        await client.close()
+
+    assert [document.id for document in documents] == [50]
+    assert len(requests) == 3
+
+
+@pytest.mark.asyncio
 async def test_only_http_404_is_classified_as_missing_source() -> None:
     settings = Settings(
         paperless_base_url="http://paperless.test",
