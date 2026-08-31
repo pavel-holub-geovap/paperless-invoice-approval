@@ -106,7 +106,7 @@ Podporujeme deterministický validační profil ISDOC Invoice 6.0.2. Validní vl
 
 Paperless 3.0.5 neposkytuje pro tento účel bezpečné přepsání/verzování originálu. Kopie se proto ukládá jako samostatný Paperless dokument s technickým tagem `Approval - schválená kopie`, bez inbox tagu, a její document ID je v Approval DB. Tím zůstává Paperless binary backendem a derived dokument se nevrátí do ingestion fronty.
 
-Izolace není založena pouze na query parametru. Paperless klient po serverovém `tags__id__all` filtru kontroluje, že vrácený dokument skutečně obsahuje resolved inbox tag ID. Jde o bezpečnostní invariant proti verzím či mezivrstvám, které mohou neznámý filtr vrátit bez chyby a ignorovat.
+Izolace není založena pouze na query parametru. Paperless klient po serverovém `tags__id__all` filtru kontroluje resolved inbox tag ID a zároveň vždy vyloučí `PAPERLESS_TAG_APPROVED_COPY`. Paperless totiž může svůj inbox tag automaticky doplnit během consume i explicitně technicky označenému uploadu; samotné členství v inbox tagu proto není dostatečná hranice.
 
 ## ADR-023: Typ dokumentu a processing mode jsou nezávislé
 

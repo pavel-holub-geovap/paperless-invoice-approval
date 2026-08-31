@@ -95,7 +95,7 @@ async def test_fulltext_search_uses_paginated_document_query_without_n_plus_one(
 
 
 @pytest.mark.asyncio
-async def test_inbox_iterator_rechecks_tag_membership_when_api_filter_is_ignored() -> None:
+async def test_inbox_iterator_excludes_approved_copy_even_with_automatic_inbox_tag() -> None:
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -115,7 +115,7 @@ async def test_inbox_iterator_rechecks_tag_membership_when_api_filter_is_ignored
                         {
                             "id": 51,
                             "title": "Schválená kopie",
-                            "tags": [12],
+                            "tags": [5, 12],
                         },
                     ],
                     "next": None,

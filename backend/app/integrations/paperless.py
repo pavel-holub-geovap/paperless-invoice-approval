@@ -147,12 +147,17 @@ class PaperlessClient:
 
     async def iter_documents_with_tag(self, tag_name: str) -> AsyncIterator[PaperlessDocument]:
         tag_id = await self.resolve_tag_id(tag_name)
+        approved_copy_tag = self.settings.paperless_tag_approved_copy.strip().casefold()
         async for document in self.iter_documents(tag_id=tag_id):
-            # Paperless is the source of truth for the inbox membership.  Keep
-            # this check even though the API request is filtered: unsupported
-            # or silently ignored filter parameters must never make a derived
-            # approved copy look like a new invoice.
-            if tag_id in document.tags:
+            # Paperless may automatically add its inbox tag while consuming an
+            # explicitly tagged upload.  The Approval-derived copy therefore
+            # has to be excluded by its technical tag even if it also carries
+            # the requested inbox tag during the discovery race window.
+            is_approved_copy = any(
+                tag.strip().casefold() == approved_copy_tag
+                for tag in document.tag_names
+            )
+            if tag_id in document.tags and not is_approved_copy:
                 yield document
 
     async def iter_documents(self, *, tag_id: int | None = None) -> AsyncIterator[PaperlessDocument]:
