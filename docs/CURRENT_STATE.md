@@ -1,5 +1,37 @@
 # Aktuální stav
 
+## Čistý idempotentní testovací bootstrap (2026-09-01)
+
+- Nový Linux host lze připravit přes `generate-test-env.sh`, read-only
+  `bootstrap-test.sh --check` a jediný idempotentní `bootstrap-test.sh`. Samostatný
+  `status.sh` ověřuje 9 dlouhodobých služeb, 3 jednorázové joby, Alembic, DB,
+  Keycloak/OIDC, Paperless REST/tagy, Qwen3 a oba XSD bundle bez změny stavu.
+- Skutečný čistý Compose projekt `paperless-invoice-clean-20260901` vznikl s
+  vlastními náhodnými secrets, sítěmi, PostgreSQL/Redis/Paperless/API-token/export
+  volumes a porty 18080/18000/18081. Sdílel pouze explicitně povolenou
+  neautoritativní 5,2GB Ollama cache. První bootstrap z prázdných databází i
+  následný status skončily `PASS`; Alembic je `0010 (head)`.
+- Druhý bootstrap prošel beze změny dat. Po bezpečném zastavení přesně clean
+  workeru jej stejný příkaz obnovil jako healthy a znovu úspěšně ověřil
+  provisioning i migrace. Žádný volume, dokument, audit ani databáze nebyly
+  odstraněny.
+- Plný syntetický smoke přihlásil `queue-manager` i `approver1`. Paperless dokument
+  2 má OCR délky 911 a jeden skutečný `qwen3:8b` běh skončil `AI_COMPLETED`.
+  Dokument 3 má validní vložený ISDOC 6.0.2, `extraction_source=ISDOC` a nulový
+  počet AI běhů.
+- Čistý test odhalil a opravil centrální stahování Paperless archivní OCR varianty
+  místo originálu. Všechna PDF čtení nyní používají podporovaný REST parametr
+  `original=true`; živý worker jej potvrdil a hash/ISDOC/AI tok prošel. Regrese
+  parsuje request query parametr.
+- Paralelní čisté kontejnery byly po důkazu pouze zastaveny; jejich volumes a
+  syntetická historie zůstaly zachovány pro audit nebo opakované spuštění.
+  Hlavní testovací stack poté znovu prošel `status.sh`: všech 9 služeb healthy,
+  3 joby `exited/0`, Alembic `0010`, Qwen3 a runtime smoke `PASS`.
+- Clean konfigurace záměrně neměla `POHODA_TARGET_ICO`, takže pouze generovaný XML
+  export byl bezpečně vypnutý. Hlavní testovací stack nadále ověřil cílové IČO
+  `15049248`. Jediným host warningem je chybějící kernel swap-limit capability;
+  kontejnery používají memory limity bez swap limitu a test nevyvolal OOM.
+
 ## Klasifikace, ISDOC a schválená PDF kopie
 
 - Migrace `0010` přidává ortogonální osy `document_type`, `processing_mode`, `extraction_source`, `isdoc_status`, `approved_pdf_status` a `pohoda_import_method`. Historické faktury jsou bezpečně backfillnuty jako `RECEIVED_INVOICE + FOR_APPROVAL`; nové dokumenty začínají `UNCLASSIFIED`.
@@ -74,14 +106,14 @@
 
 ## Závěrečné automatické ověření
 
-- Backend: 161/161 testů; úplná sada obsahuje také regresní testy historie, Paperless fulltext průniku, historického RBAC, chybějícího originálu a složených filtrů. Frontend: 37/37 testů a production build. Ruff je čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty.
+- Backend: 189/189 testů; úplná sada obsahuje také regresní testy bootstrapu, skutečného Paperless originálu, historie, Paperless fulltext průniku, historického RBAC, chybějícího originálu a složených filtrů. Frontend: 39/39 testů a production build. Ruff je čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty.
 
 ## Moje historie schvalovatele
 
 APPROVER má vedle aktuální fronty „Ke schválení“ paginovanou „Moji historii“. Jedna faktura je jeden řádek, zatímco detail zobrazuje všechny vlastní assignmenty, allocation, středisko, částku, rozhodnutí, revizi a případnou pozdější invalidaci. Detail je pouze pro čtení a jasně odděluje historické rozhodnutí od aktuálního workflow stavu.
 
 Vyhledávání kombinuje strukturovaná Approval data s OCR fulltextem Paperless. Paperless vrací pouze kandidátní document ID; Approval backend provede průnik s množinou faktur, ke kterým měl přihlášený subject někdy historický assignment. Stejná centrální autorizace chrání history detail a PDF proxy. `MISSING` fakturu z historie neodstraní, pouze znepřístupní originální PDF.
-- Frontend: 8 testovacích souborů, 33/33 testů; TypeScript a produkční Vite build prošly. Regrese navíc ověřuje manažerské zobrazení pole, skutečné hodnoty, očekávání, zprávy, pokusu, zachování raw odpovědi a počtu retry i výběr/drag-and-drop více PDF, individuální dočasné stavy, retry, jedinou permanentní invoice tabulku, společný action bar a aktualizaci bez F5.
+- Frontend: 8 testovacích souborů, 39/39 testů; TypeScript a produkční Vite build prošly. Regrese navíc ověřuje manažerské zobrazení pole, skutečné hodnoty, očekávání, zprávy, pokusu, zachování raw odpovědi a počtu retry i výběr/drag-and-drop více PDF, individuální dočasné stavy, retry, jedinou permanentní invoice tabulku, společný action bar a aktualizaci bez F5.
 - Stage B: OIDC queue-manager/approver1, role, PDF a manažerský endpoint 403 pro approvera prošly.
 - Stage D/Qwen3 8B: skutečné inference proběhly na Paperless dokumentech 1, 2, 4, 8, 11, 14 a 17. Nejnovější RawV1 regrese nad dokumenty 17/14/11 skončila třikrát `AI_COMPLETED`, kanonická validace vždy prošla a workflow se nezměnilo. Starší úplná regrese nad dokumentem 1 měla inference 258 136 ms a 254 989 ms, prompt-injection 262 097 ms, 12 OK / 0 WARNING / 0 blocking a zachovala stav `EXPORT_CREATED`. Kandidáti se bez potvrzení neaplikovali a prompt injection nezměnila žádné pole.
 - Stage E: allocations 700/510 Kč, tři assignments, RETURN/REJECT/REOPEN, invalidace, idempotentní/souběžné approvals, 403 a Paperless tagy prošly; skončilo `APPROVED`.
