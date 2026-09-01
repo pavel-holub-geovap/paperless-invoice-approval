@@ -4,7 +4,7 @@ Kompletní testovací prostředí obsahuje vlastní izolovaný Paperless-ngx 3.0
 
 ## Runtime hranice
 
-Approval backend nikdy nepřistupuje do Paperless databáze. Používá výhradně REST API v10 na interní URL `http://paperless:8000`, ukládá unikátní `paperless_document_id` a přes API načítá OCR text, metadata a originální PDF. PDF se mimo autoritativní Paperless trvale uchovává jen v auditovatelném exportním ZIPu.
+Approval backend nikdy nepřistupuje do Paperless databáze. Používá výhradně REST API v10 na interní URL `http://paperless:8000`, ukládá unikátní `paperless_document_id` a přes API načítá OCR text, metadata a originální PDF. Download vždy posílá `original=true`; bez něj Paperless může vrátit archivní OCR/PDF-A variantu s jinými bytes a hashem. ISDOC inspekce, UI náhled, schválená kopie i export proto pracují se skutečným nahraným originálem. PDF se mimo autoritativní Paperless trvale uchovává jen v auditovatelném exportním ZIPu.
 
 `paperless-bootstrap` je jednorázová idempotentní Paperless management úloha, nikoli approval runtime. Vytvoří skupiny `QUEUE_MANAGER`/`APPROVER`, konfigurovatelné tagy a test-only API service account. Token uloží s oprávněním 0600 do volume `paperless_api_secret`; backend/worker jej mountují read-only. Token se netiskne a není v `.env` ani Gitu.
 

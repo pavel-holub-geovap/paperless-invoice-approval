@@ -202,7 +202,11 @@ class PaperlessClient:
         return document_ids
 
     async def download_pdf(self, document_id: int) -> bytes:
-        response = await self._request("GET", f"/documents/{document_id}/download/")
+        response = await self._request(
+            "GET",
+            f"/documents/{document_id}/download/",
+            params={"original": "true"},
+        )
         content_type = response.headers.get("content-type", "")
         if "pdf" not in content_type.lower() and not response.content.startswith(b"%PDF"):
             raise PaperlessError("Paperless did not return a PDF")

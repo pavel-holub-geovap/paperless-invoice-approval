@@ -37,6 +37,7 @@ async def test_document_metadata_and_pdf_are_loaded_only_over_rest() -> None:
         if request.url.path == "/api/correspondents/3/":
             return httpx.Response(200, json={"id": 3, "name": "Supplier"})
         if request.url.path == "/api/documents/1/download/":
+            assert request.url.params["original"] == "true"
             return httpx.Response(200, content=b"%PDF-1.7 test", headers={"content-type": "application/pdf"})
         return httpx.Response(404, content=json.dumps({"detail": "not found"}))
 
