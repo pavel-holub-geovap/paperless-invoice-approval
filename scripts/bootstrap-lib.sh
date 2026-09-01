@@ -186,14 +186,26 @@ wait_for_job() {
   die "Timed out waiting for one-shot service $service."
 }
 
-wait_for_stack() {
+reconcile_stack() {
   local service
+  log_info "Starting core stateful services"
+  compose up -d postgres redis keycloak paperless ollama
   for service in postgres redis keycloak paperless ollama; do
     wait_for_service "$service"
   done
-  for service in keycloak-provision paperless-bootstrap ollama-pull; do
+
+  log_info "Recreating idempotent Keycloak and Ollama jobs on current project networks"
+  compose up -d --force-recreate --no-deps keycloak-provision ollama-pull
+  for service in keycloak-provision ollama-pull; do
     wait_for_job "$service"
   done
+
+  log_info "Recreating idempotent Paperless provisioning after Keycloak provisioning"
+  compose up -d --force-recreate --no-deps paperless-bootstrap
+  wait_for_job paperless-bootstrap
+
+  log_info "Starting Approval application services and reverse proxy"
+  compose up -d backend worker frontend reverse-proxy
   for service in backend worker frontend reverse-proxy; do
     wait_for_service "$service"
   done

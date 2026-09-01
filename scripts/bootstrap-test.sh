@@ -59,13 +59,10 @@ log_info "Building project images"
 compose build
 
 log_info "Starting or reconciling the Compose stack without deleting data"
-if ! compose up -d; then
+if ! reconcile_stack; then
   compose ps -a || true
-  die "docker compose up failed. Inspect the short service logs, correct the cause and rerun bootstrap."
+  die "Compose reconciliation failed. Inspect the short service logs, correct the cause and rerun bootstrap."
 fi
-
-log_info "Waiting for 9 long-running services and 3 idempotent provisioning jobs"
-wait_for_stack
 
 log_info "Applying all repository Alembic migrations"
 compose exec -T backend alembic upgrade head

@@ -65,7 +65,8 @@ Standardní bootstrap potom:
 1. sestaví projektové image;
 2. provede `compose up -d` bez mazání dat;
 3. počká na PostgreSQL, Redis, Keycloak, Paperless a Ollamu;
-4. ověří idempotentní Keycloak a Paperless provisioning a stažení modelu;
+4. znovu vytvoří krátkodobé provisioning kontejnery na aktuálních projektových
+   sítích a ověří idempotentní Keycloak/Paperless provisioning i model;
 5. počká na backend, worker, frontend a reverse proxy;
 6. explicitně aplikuje všechny Alembic migrace a porovná `current` s `heads`;
 7. read-only ověří DB, health endpointy, OIDC discovery, Paperless REST API,
