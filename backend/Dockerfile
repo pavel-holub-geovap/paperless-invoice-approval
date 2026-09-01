@@ -10,6 +10,7 @@ COPY backend/alembic /app/alembic
 COPY backend/alembic.ini /app/alembic.ini
 COPY schemas/pohoda/2025-10-16 /app/pohoda-xsd
 COPY schemas/isdoc/6.0.2 /app/isdoc-xsd
+COPY scripts/bootstrap_smoke.py /app/ops/bootstrap_smoke.py
 RUN pip install --no-cache-dir .
 
 EXPOSE 8000

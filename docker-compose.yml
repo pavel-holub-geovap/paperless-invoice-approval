@@ -345,9 +345,9 @@ services:
       context: .
       dockerfile: infrastructure/nginx/Dockerfile
     ports:
-      - "80:80"
-      - "8000:8000"
-      - "8081:8081"
+      - "${APPROVAL_HTTP_PORT:-80}:80"
+      - "${PAPERLESS_HTTP_PORT:-8000}:8000"
+      - "${KEYCLOAK_HTTP_PORT:-8081}:8081"
     depends_on:
       keycloak:
         condition: service_healthy
@@ -371,7 +371,5 @@ volumes:
 
 networks:
   app_net:
-    name: paperless-invoice-app
   data_net:
-    name: paperless-invoice-data
     internal: true

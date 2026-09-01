@@ -1,5 +1,22 @@
 # Testování
 
+## Bootstrap a čistý deployment
+
+Pomocné funkce preflightu, generování `.env`, detekce Compose/modelu/migrací a
+ochrana před chybnou konfigurací mají unit regresi v
+`backend/tests/test_bootstrap_support.py`. Compose model kontroluje
+`scripts/validate_compose.py`. Na Linuxu nejprve spusťte read-only preflight:
+
+```text
+./scripts/bootstrap-test.sh --check
+```
+
+Povinná release regrese zahrnuje také skutečnou čistou instanci s vlastním
+`COMPOSE_PROJECT_NAME`, porty a volumes: první bootstrap, `status.sh`, druhý
+idempotentní bootstrap a pokračování po bezpečném zastavení jedné služby. Data a
+volumes se během testu nemažou. Volitelný `--full-smoke` navíc dokazuje OIDC,
+Paperless upload/OCR, Qwen3 8B a validní ISDOC s nulovým AI během.
+
 ## Lokální kontroly
 
 Backend používá `pytest` a SQLite pro doménové testy; frontend Vitest, Testing Library, TypeScript a Vite. Před commitem spusťte Ruff, backend testy, frontend test/build, XSD kompilaci, syntaktickou Compose validaci a kontrolu secrets.

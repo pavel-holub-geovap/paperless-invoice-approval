@@ -1,66 +1,117 @@
 # Paperless Invoice Approval
 
-Interní systém pro klasifikaci dokumentů, vytěžení, věcné schválení nákladu a přípravu podkladů pro ruční účetní zpracování. Paperless je autorita pro originály/OCR, Approval není druhé účetnictví a s POHODOU přímo nekomunikuje.
+Interní aplikace pro příjem, klasifikaci, vytěžení a věcné schvalování přijatých
+dokladů. Originál a OCR spravuje Paperless-ngx, přihlášení Keycloak, strukturované
+vytěžení lokální Ollama/Qwen3 a účetní předání vzniká jako schválené PDF s ISDOC
+nebo deterministické POHODA XML. Import do POHODY zůstává ruční.
 
-## Nejdůležitější invarianty
+## Co stack obsahuje
 
-- Originální PDF zůstává v Paperless; aplikace ukládá jeho ID a načítá jej přes API.
-- Správce fronty musí před schvalováním explicitně potvrdit kontrolu originálu.
-- Schvaluje se konkrétní rozúčtovaná část za konkrétní středisko a konkrétní revizi.
-- Významná změna invaliduje všechna dosavadní schválení aktuální faktury.
-- Jediné `REJECT` zamítne celou fakturu; `RETURN` ji vrátí správci.
-- Validní vložený ISDOC je primární strukturovaný zdroj a přeskočí AI; bez něj se použije OCR + Qwen3 8B.
-- Přijatá faktura s ISDOC se předává jako schválené PDF se zachovaným ISDOC, bez ISDOC jako deterministické XSD-validní POHODA XML.
-- Import do POHODY je výhradně ruční. Až správce explicitně potvrdí import, vznikne stav `IMPORTED_TO_POHODA`.
-- Audit je append-only. Secrets, skutečné faktury ani modely se necommitují.
-- Workflow, dispozice (`ACTIVE`/ignorováno) a dostupnost Paperless zdroje (`AVAILABLE`/`MISSING`) jsou tři nezávislé osy. Ignorování ani ztráta zdroje nemažou historii.
+- Paperless-ngx pro originály, přílohy, OCR a technické tagy;
+- Approval FastAPI backend, worker a responzivní React UI;
+- Keycloak/OIDC s rolemi `QUEUE_MANAGER` a `APPROVER`;
+- oddělené databáze Approval, Keycloak a Paperless v PostgreSQL;
+- Redis, CPU-only Ollamu s modelem `qwen3:8b` a Nginx reverse proxy;
+- lokální ISDOC 6.0.2 a POHODA XSD bundle bez přístupu do účetního systému.
 
-## Rychlý start
+Approval nikdy nečte databázi Paperless přímo. Originální PDF neduplikuje do své
+databáze a Paperless token neposílá do prohlížeče. Audit i AI běhy jsou append-only.
 
-1. Zkopírujte `.env.example` na `.env` a doplňte všechny hodnoty `change-me`.
-2. Spusťte `docker-compose config` a zkontrolujte výslednou konfiguraci.
-3. Postupujte po etapách podle `docs/DEPLOYMENT.md`. Výchozí Compose v Etapě D spouští také CPU-only Ollamu a jednorázově stáhne nakonfigurovaný model.
-4. Na testovací VM otevřete Approval na `http://172.30.172.167/`, Paperless na `http://172.30.172.167:8000/` a Keycloak na `http://172.30.172.167:8081/`.
+## První testovací nasazení na Linuxu
 
-Etapy B/C synchronizují metadata, tagy a OCR text z Paperless REST API do samostatné approval databáze. Originální PDF se do ní neukládá a UI jej načítá přes autorizovanou backend proxy. Etapa D posílá OCR do lokální Ollamy, přijímá pouze striktní `invoice-extraction.v3`, ukládá každý běh append-only a výsledek ověřuje deterministicky. AI technický stav nikdy nenahrazuje obchodní workflow stav.
+Požadavky: moderní Linux, Git, Docker Engine, Docker Compose v2, Python 3,
+nejméně 4 CPU, 8 GiB RAM a 15 GiB volného místa. Pro Qwen3 doporučujeme 12 GiB
+RAM a 30 GiB volného místa. Uživatel musí mít běžný přístup k Docker daemonu.
 
-`QUEUE_MANAGER` může nové PDF faktury nahrát přímo ve frontě Approval tlačítkem nebo drag & drop, jednotlivě i hromadně. Browser posílá multipart pouze na `POST /api/uploads`; backend kontroluje roli, PDF signaturu a konfigurovatelný limit `UPLOAD_MAX_BYTES` (výchozí 8 MiB), počítá SHA-256 a předává soubor oficiálním Paperless REST endpointem. Paperless token nikdy neopustí server. Worker sleduje Paperless task, OCR a AI bez přihlášení do Paperless nebo ručního F5. Hlavní tabulka faktur je jediný trvalý seznam; aktuální upload dávka se zobrazuje jen v kompaktním dočasném panelu, úspěšné položky po objevení v tabulce zmizí a chyby zůstanou dostupné pro retry nebo zavření.
+```bash
+git clone <URL_TO_THIS_REPOSITORY> paperless-invoice-approval
+cd paperless-invoice-approval
+./scripts/generate-test-env.sh test-server.example.test
+./scripts/bootstrap-test.sh --check
+./scripts/bootstrap-test.sh
+```
 
-Etapa E přidává konfigurovatelná střediska, Decimal rozúčtování, povinnou kontrolu originálu a paralelní assignmenty navázané na konkrétní revizi, středisko a částku. `RETURN` vrací celou fakturu správci, `REJECT` ji globálně zamítá a `REOPEN` vytváří novou auditovanou revizi. Významná změna dat, allocations nebo approverů invaliduje všechna dřívější rozhodnutí bez mazání historie. Podrobný kontrakt je v [docs/APPROVAL_WORKFLOW.md](docs/APPROVAL_WORKFLOW.md).
+Generátor vytvoří necommitovaný `.env` s nezávislými náhodnými testovacími
+secrets a nic citlivého nevypíše. Před startem lze upravit veřejné hostname,
+publikované porty a volitelné POHODA hodnoty. První start stáhne image a přibližně
+několik GB modelových dat, proto může trvat výrazně déle než další spuštění.
 
-POHODA XML používá skutečné vytěžené položky, případně bezpečné DPH souhrny; Approval allocations se do účetních středisek nepřevádějí. Jsou věcným schvalovacím údajem, objeví se v auditu, schváleném PDF a informativní poznámce. Finální účetní rozúčtování provádí účetní firma. Přijaté zálohové faktury se do interní POHODY nikdy neimportují. Viz [docs/POHODA_EXPORT.md](docs/POHODA_EXPORT.md) a [docs/POHODA_MAPPING.md](docs/POHODA_MAPPING.md).
+Po dokončení otevřete URL uvedené bootstrapem:
 
-Opravná iterace po Etapě F normalizuje český účet deterministicky na `bank_account_raw`, `bank_account_prefix`, `bank_account_number`, `bank_code` a zpětně kompatibilní `bank_account`. Schéma v3 odděluje dodavatelský `supplier_address_raw` na street/city/zip pouze z dodavatelského bloku. `ROUNDING` VAT řádek se přijme jen s explicitním tištěným štítkem zaokrouhlení; souhrnné řádky CELKEM/Základ/DPH nejsou důkaz. Odmítnutý návrh modelu zůstane v raw a normalizační diagnostice, ale nevstoupí do pracovních dat, validace ani exportu. Matematické reconciliation rozdíly jsou review WARNING; neblokují kontrolu, schválení ani export. Správce má zvláštní pohledy aktivních, ignorovaných a zdrojově chybějících dokladů. Frontend používá skutečné SPA URL včetně přímého `/invoices/{id}`.
+- Approval: `APP_BASE_URL`;
+- Paperless: `PAPERLESS_PUBLIC_URL`;
+- Keycloak: `KEYCLOAK_PUBLIC_URL`.
 
-Výchozí model je konfigurovatelný přes `OLLAMA_MODEL` (`qwen3:8b`), inference běží s teplotou 0, jedním paralelním požadavkem, kontextem 4096 a `num_gpu=0`. Podrobnosti a bezpečnostní hranice jsou v [docs/AI_EXTRACTION.md](docs/AI_EXTRACTION.md).
+Testovací identity jsou `queue-manager`, `approver1`, `approver2` a `approver3`.
+Jejich hesla jsou pouze v chráněném `.env`. Provozní stav bez změny dat ověří:
 
-Nový POHODA export vyžaduje serverovou hodnotu `POHODA_TARGET_ICO`. Jde o IČO cílové účetní jednotky v POHODĚ, nikoli dodavatele faktury. `POHODA_TARGET_KEY` je volitelný a při prázdné hodnotě se do XML vůbec nezapisuje. UI ukazuje cílové IČO před generováním i u vytvořeného artefaktu.
+```bash
+./scripts/status.sh
+```
 
-Dashboard a detail se průběžně obnovují pollingem. Mutace používají očekávané číslo revize; konflikt vrací HTTP 409 a rozepsaná data v prohlížeči zůstávají zachována.
+Bootstrap je idempotentní. Lze jej spustit znovu po úspěchu i po částečném
+selhání; nemaže volumes, databáze, dokumenty, audit, exporty ani modely.
+Podrobný čistý deployment, obnova po chybě, zálohování a síťové požadavky jsou v
+[docs/DEPLOYMENT_TEST.md](docs/DEPLOYMENT_TEST.md).
 
-Datumy zůstávají v databázi, API a POHODA XML ve formátu ISO. Uživatelské UI je jednotně zobrazuje a přijímá jako `DD.MM.YYYY`; neexistující datum se odmítne inline. Extrakce rozlišuje Datum vystavení, explicitní české varianty DUZP a Datum splatnosti včetně samostatné provenance a chybějící DUZP neodhaduje.
+## Ověření celého toku
 
-Testovací Paperless používá vlastní PostgreSQL databázi, Redis a persistentní volumes a nesmí sdílet produkční data ani tokeny. Postup je v [docs/PAPERLESS_INTEGRATION.md](docs/PAPERLESS_INTEGRATION.md) a OIDC v [docs/PAPERLESS_KEYCLOAK.md](docs/PAPERLESS_KEYCLOAK.md).
+Standardní bootstrap ověřuje služby, provisionované role/uživatele/klienty,
+Paperless tagy, REST integraci, migrace, model a oba XSD bundle. Volitelná úplná
+zkouška navíc nahraje pouze syntetické doklady a provede skutečné OCR a Qwen3
+inferenci:
 
-## Vývoj
+```bash
+./scripts/bootstrap-test.sh --full-smoke
+```
 
-Backend:
+Tento test může na CPU běžet desítky minut. Vytvořené syntetické doklady zůstávají
+v izolovaném testovacím prostředí jako dohledatelná historie.
 
-```text
+## Vývoj a regrese
+
+```bash
 cd backend
 python -m pip install -e ".[dev]"
 pytest
-uvicorn app.main:app --reload
-```
 
-Frontend:
-
-```text
-cd frontend
+cd ../frontend
 npm ci
 npm run test
 npm run build
 npm run lint
 ```
 
-Kompletní architektura, nasazení a testovací scénáře jsou v adresáři `docs/`.
+Další statická kontrola Compose je `python scripts/validate_compose.py`. Integrační
+a smoke scénáře jsou popsány v [docs/TESTING.md](docs/TESTING.md).
+
+## Doménové zásady
+
+- Workflow stav mění pouze centralizovaná služba a významná změna vytváří novou
+  revizi a invaliduje stará schválení bez mazání historie.
+- Schvalují se allocations konkrétní revize. `RETURN` a `REJECT` vyžadují komentář.
+- Validní vložený ISDOC je primární zdroj a AI přeskočí. Jinak Qwen převádí OCR
+  pouze do striktního schématu; neurčuje workflow, střediska ani schvalovatele.
+- XML generuje deterministický backend ze schváleného immutable snapshotu. XSD
+  validita a cílová účetní jednotka jsou dvě samostatné kontroly.
+- `dataPack/@ico` smí pocházet jen z `POHODA_TARGET_ICO`. Bez cílového IČO je
+  generovaný XML export blokovaný; bez explicitního GUID se `key` nevytváří.
+- `EXPORT_CREATED` neznamená import. `IMPORTED_TO_POHODA` vyžaduje explicitní
+  potvrzení správce po ručním importu.
+
+## Dokumentace
+
+- [Architektura](docs/ARCHITECTURE.md)
+- [Testovací deployment](docs/DEPLOYMENT_TEST.md)
+- [Testování](docs/TESTING.md)
+- [Schvalovací workflow](docs/APPROVAL_WORKFLOW.md)
+- [Paperless integrace](docs/PAPERLESS_INTEGRATION.md)
+- [Keycloak/OIDC](docs/PAPERLESS_KEYCLOAK.md)
+- [AI extrakce](docs/AI_EXTRACTION.md)
+- [ISDOC](docs/ISDOC.md)
+- [POHODA export](docs/POHODA_EXPORT.md)
+- [Aktuální ověřený stav](docs/CURRENT_STATE.md)
+
+Produkční prostředí musí mít vlastní secrets, hostname/TLS, zálohy a provozní
+politiku. Testovací `.env`, identity, data ani Paperless token se do produkce
+nepřenášejí.

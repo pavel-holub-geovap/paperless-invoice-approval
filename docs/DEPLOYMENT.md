@@ -1,78 +1,45 @@
-# Nasazení kompletního testovacího stacku
+# Nasazení
 
-Testovací checkout patří do `/home/codex/paperless-invoice-approval` na VM `ssh ubuntudocker`. Přenos zdrojového kódu probíhá pouze přes správný GitHub remote; nekopírujte pracovní strom na server bokem.
+Autoritativní postup pro čisté kompletní testovací nasazení je v
+[DEPLOYMENT_TEST.md](DEPLOYMENT_TEST.md). Nový server se připravuje jediným
+idempotentním příkazem `./scripts/bootstrap-test.sh`; skript provede preflight,
+build, start, provisioning, migrace a základní runtime smoke bez mazání dat.
 
-## Předpoklady
+## Bezpečný upgrade existujícího testovacího stacku
 
-1. Lokální i serverový checkout mají správný remote a čistou větev `main`.
-2. Serverová `.env` vznikla z `.env.example`; všechny hodnoty `change-me` byly nahrazeny nezávislými náhodnými secrets.
-3. `APP_BASE_URL`, `PAPERLESS_PUBLIC_URL` a `KEYCLOAK_PUBLIC_URL` odpovídají skutečné IP/hostname VM.
-4. `free -h` potvrzuje přibližně 8 GiB RAM a 4 GiB swap; průběžně se sleduje `docker stats`.
-5. Neexistuje žádné napojení na produkční Paperless ani POHODU.
-
-Před každou etapou spusťte `docker compose config --quiet`. Nikdy nepoužívejte `down -v`, prune příkazy ani nemažte databáze/storage bez výslovného souhlasu.
-
-## Etapa A: infrastruktura, identita a Paperless
-
-```text
-docker compose up -d --build postgres redis keycloak keycloak-provision paperless paperless-bootstrap reverse-proxy
-docker compose ps
-```
-
-Ověřte health PostgreSQL, Redis, Keycloak, Paperless a Nginx. `keycloak-provision` a `paperless-bootstrap` mají skončit kódem 0; jde o idempotentní jednorázové úlohy. Otevřete:
-
-- Paperless: `http://172.30.172.167:8000/`
-- Keycloak: `http://172.30.172.167:8081/`
-
-Ověřte přihlášení queue managera přes Keycloak, upload syntetické fixture, dokončení OCR, OCR text a API. Běžný Paperless login zatím nevypínejte.
-
-## Etapa B: Approval aplikace
-
-```text
-docker compose up -d --build backend frontend worker
-docker compose ps
-```
-
-Backend při startu spustí `alembic upgrade head` a seed středisek. Ověřte `http://172.30.172.167/api/health`, UI a přihlášení všech rolí přes Keycloak.
-
-## Etapa C: Paperless REST API → Approval
-
-Nahrajte pouze syntetickou fakturu, nastavte tag `Přijatá faktura` a ověřte, že worker přes REST API vytvoří právě jednu fakturu s autoritativním `paperless_document_id`. Ověřte snapshot metadat/OCR, audit, originální PDF v Approval UI a přechod `NEW → VALIDATION → QUEUE_REVIEW`. V této etapě nevzniká LLM job.
-
-## Etapa D: Ollama
-
-```text
+```bash
+git fetch origin
 git pull --ff-only
-docker compose config
-docker compose build
-docker compose up -d
-docker compose ps
+./scripts/bootstrap-test.sh --check
+./scripts/bootstrap-test.sh
+./scripts/status.sh
 ```
 
-Model určuje `OLLAMA_MODEL`; výchozí je `qwen3:8b`. `ollama-pull` ho stáhne do `ollama_data` a worker začne až po úspěšném dokončení. Konfigurace vynucuje jednu paralelní CPU inferenci (`OLLAMA_NUM_GPU=0`), teplotu 0, kontext 4096 a timeout 900 s. Před stažením modelu, po něm a během první inference zaznamenejte `free -h` a `docker stats`. Potom spusťte Stage D smoke test z `docs/TESTING.md` a ověřte golden accuracy i prompt injection. OOM se řeší jako chyba, nikoli automatickým fallbackem.
+Zdrojový kód se na server přenáší pouze přes ověřený Git remote. Serverový `.env`
+je chráněný a necommitovaný. Upgrade nepoužívá `down -v`, prune ani mazání
+databází, storage, auditů, dokumentů, artifactů či modelů.
 
-## Etapy E–F: workflow a export
+## Co bootstrap zachovává
 
-Projděte paralelní approvals, RETURN, REJECT a invalidaci revize. Bez ISDOC ověřte `APPROVED → POHODA XML → XSD → EXPORT_CREATED`; s ISDOC ověřte schválené PDF, shodný embedded hash a metodu `PDF_ISDOC`. Zálohová faktura musí export odmítnout. Import zůstává ruční.
+- PostgreSQL data Approval, Keycloak a Paperless;
+- Redis stav a Paperless data/media/consume/export;
+- runtime Paperless servisní API token;
+- Ollama model cache;
+- Approval exporty, immutable artifacty a auditní historii.
 
-## Opravná migrace 0006
+Provisioning realm/clients/rolí/uživatelů, Paperless tagů a servisního účtu je
+idempotentní. Alembic migrace jsou dopředné a bootstrap vždy ověří, že databáze
+odpovídá repository head. Obnova ze zálohy nebo downgrade je samostatná
+potenciálně destruktivní operace a není součástí automatického deploymentu.
 
-Před `docker compose config` doplňte do chráněného serverového `.env` ne-secret hodnoty `PAPERLESS_TAG_DUPLICATE=Duplicita`, `PAPERLESS_TAG_IGNORED=Ignorováno`, `POHODA_GENERATOR_VERSION=pohoda-received-invoice.v3` a správné cílové `POHODA_TARGET_ICO`. Volitelný `POHODA_TARGET_KEY` ponechte prázdný, pokud jej cílová jednotka výslovně nevyžaduje. Potom použijte beze změny standardní pořadí:
+## Diagnostika
 
-```text
-git pull --ff-only
-docker compose config
-docker compose build
-docker compose up -d
-docker compose ps
+```bash
+./scripts/status.sh
+docker compose ps -a
+docker compose logs --tail=100 <service>
 ```
 
-Migrace nastaví všem existujícím fakturám `disposition=ACTIVE` a `source_status=AVAILABLE`; teprve následný REST reconciliation smí označit skutečné 404 jako `MISSING`. `paperless-bootstrap` idempotentně přidá tagy Duplicita/Ignorováno. Neprovádějte `down -v`, prune ani ruční mazání DB/Paperless dokumentů.
-
-Po startu spusťte read-only inventuru, úplnou regresi B–F a correction smoke z `docs/TESTING.md`. Zkontrolujte zvlášť existující orphan, uživatelské nově nahrané faktury, aktivní/ignorované/missing filtry, OIDC 403 pro approvera a nový immutable POHODA artifact generátoru v2. Starší artifact ani batch nemažte.
-
-## Persistence a diagnostika
-
-Persistentní volumes: PostgreSQL, Redis, Paperless data/media/consume/export, runtime API token, Ollama modely a approval export. Restart kontejneru je nesmí odstranit.
-
-Při chybě nejdřív použijte `docker compose ps` a `docker compose logs --tail=200 <service>`. Změnu zdrojů proveďte lokálně, otestujte, commitněte, pushněte a na VM použijte `git pull --ff-only`.
+Konkrétní inventura integrační VM patří do `DEPLOYMENT_ENVIRONMENT.md`, nikoli do
+obecného onboarding návodu. Testovací konfigurace se nesmí spojovat s produkčním
+Paperless ani přímo zapisovat do POHODY.

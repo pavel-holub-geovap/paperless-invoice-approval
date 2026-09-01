@@ -27,10 +27,12 @@ def interpolate(raw: str, values: dict[str, str]) -> str:
 
     def replace(match: re.Match[str]) -> str:
         name, default = match.groups()
-        value = values.get(name)
-        if value is None or value == "":
+        if name not in values:
             if default is None:
                 raise ValueError(f"Missing Compose variable: {name}")
+            return default
+        value = values[name]
+        if value == "" and default is not None:
             return default
         return value
 
@@ -65,8 +67,12 @@ def main() -> None:
         raise ValueError(f"Unexpected services: {sorted(set(services) ^ expected_services)}")
     if any("ports" in service for name, service in services.items() if name != "reverse-proxy"):
         raise ValueError("Only reverse-proxy may publish host ports")
+    if services["reverse-proxy"].get("ports") != ["80:80", "8000:8000", "8081:8081"]:
+        raise ValueError("Reverse proxy must publish all three configurable test ports")
     if not compose["networks"]["data_net"].get("internal"):
         raise ValueError("Data network must remain internal")
+    if any((network or {}).get("name") for network in compose["networks"].values()):
+        raise ValueError("Compose networks must remain project-scoped")
 
     required_volumes = {
         "postgres_data",
