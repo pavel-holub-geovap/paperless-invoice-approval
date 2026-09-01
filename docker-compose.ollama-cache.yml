@@ -1,0 +1,7 @@
+# Optional test-only override. Shares only the non-authoritative Ollama model cache.
+# Set OLLAMA_CACHE_VOLUME to an existing Docker volume and include this file via
+# COMPOSE_FILE=docker-compose.yml:docker-compose.ollama-cache.yml.
+volumes:
+  ollama_data:
+    external: true
+    name: ${OLLAMA_CACHE_VOLUME:?Set OLLAMA_CACHE_VOLUME to an existing model-cache volume}

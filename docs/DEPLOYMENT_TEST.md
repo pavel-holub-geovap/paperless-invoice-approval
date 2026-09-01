@@ -141,6 +141,18 @@ ENV_FILE=/secure/test-b.env ./scripts/bootstrap-test.sh --check
 ENV_FILE=/secure/test-b.env ./scripts/bootstrap-test.sh
 ```
 
+Pouze pro vědomé sdílení již staženého modelu nastavte v chráněném env souboru
+`OLLAMA_CACHE_VOLUME` na přesný název existujícího modelového volume a spusťte:
+
+```bash
+COMPOSE_FILE=docker-compose.yml:docker-compose.ollama-cache.yml \
+  ENV_FILE=/secure/test-b.env ./scripts/bootstrap-test.sh
+```
+
+Override nesdílí žádnou databázi, Paperless storage, token ani export. Ollama
+cache není autoritou aplikačních dat. Bez tohoto explicitního override má každá
+instance vlastní modelové volume.
+
 Veřejné URL musí používat porty stejné instance. Bootstrap nesmí být spuštěn s
 `APP_ENV=production`.
 
