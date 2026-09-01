@@ -116,6 +116,16 @@ PORT_VARIABLES = (
     "KEYCLOAK_HTTP_PORT",
 )
 
+DEFAULT_VALUES = {
+    "PAPERLESS_TAG_APPROVED_COPY": "Approval - schválená kopie",
+    "ISDOC_XSD_PATH": "/app/isdoc-xsd/isdoc-invoice-6.0.2.xsd",
+    "POHODA_XSD_BUNDLE_VERSION": "2025-10-16",
+    "POHODA_XML_ENCODING": "Windows-1250",
+    "APPROVAL_HTTP_PORT": "80",
+    "PAPERLESS_HTTP_PORT": "8000",
+    "KEYCLOAK_HTTP_PORT": "8081",
+}
+
 
 def parse_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
@@ -187,6 +197,9 @@ def _effective_port(url: str) -> int:
 
 
 def validate_environment(values: dict[str, str]) -> tuple[list[str], list[str]]:
+    values = dict(values)
+    for key, default in DEFAULT_VALUES.items():
+        values[key] = values.get(key) or default
     errors: list[str] = []
     warnings: list[str] = []
     for key in REQUIRED_VARIABLES:
@@ -353,7 +366,8 @@ def main() -> int:
             print(f"[OK] Environment validation ({len(values)} variables; secrets redacted)")
             return 0
         if args.command == "get":
-            print(parse_env(args.path).get(args.key, ""))
+            values = parse_env(args.path)
+            print(values.get(args.key) or DEFAULT_VALUES.get(args.key, ""))
             return 0
         if args.command == "generate-env":
             generate_env(args.template, args.destination, args.host)

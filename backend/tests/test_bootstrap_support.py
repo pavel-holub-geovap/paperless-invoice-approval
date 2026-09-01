@@ -106,6 +106,18 @@ def test_environment_validation_covers_required_values_and_public_ports() -> Non
     assert any("KEYCLOAK_HTTP_PORT" in error for error in errors)
 
 
+def test_environment_validation_accepts_documented_defaults_for_legacy_env() -> None:
+    values = valid_environment()
+    values["APP_BASE_URL"] = "http://test.example"
+    values["PAPERLESS_PUBLIC_URL"] = "http://test.example:8000"
+    values["KEYCLOAK_PUBLIC_URL"] = "http://test.example:8081"
+    for key in bootstrap.DEFAULT_VALUES:
+        values.pop(key, None)
+    errors, warnings = bootstrap.validate_environment(values)
+    assert errors == []
+    assert warnings == ["POHODA_TARGET_ICO is empty; generated POHODA XML export is disabled"]
+
+
 def test_compose_detection_prefers_legacy_v2_binary_then_plugin() -> None:
     assert bootstrap.select_compose_command(True, True) == ("docker-compose",)
     assert bootstrap.select_compose_command(False, True) == ("docker", "compose")
