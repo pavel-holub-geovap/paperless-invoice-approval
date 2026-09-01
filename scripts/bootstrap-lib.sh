@@ -205,8 +205,12 @@ reconcile_stack() {
   wait_for_job paperless-bootstrap
 
   log_info "Starting Approval application services and reverse proxy"
-  compose up -d backend worker frontend reverse-proxy
-  for service in backend worker frontend reverse-proxy; do
+  compose up -d --no-deps backend reverse-proxy
+  for service in backend reverse-proxy; do
+    wait_for_service "$service"
+  done
+  compose up -d --no-deps worker frontend
+  for service in worker frontend; do
     wait_for_service "$service"
   done
 }

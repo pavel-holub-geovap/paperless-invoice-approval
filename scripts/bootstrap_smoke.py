@@ -48,7 +48,6 @@ def paperless_checks(settings: Settings) -> None:
         headers={"Authorization": f"Token {token}", "Accept": "application/json; version=10"},
         timeout=20,
     ) as client:
-        request_json(client, "/", "Paperless API")
         found: dict[str, dict[str, Any]] = {}
         for setting_name in TAG_SETTINGS:
             name = str(getattr(settings, setting_name))
