@@ -69,6 +69,8 @@ def main() -> None:
         raise ValueError("Only reverse-proxy may publish host ports")
     if services["reverse-proxy"].get("ports") != ["80:80", "8000:8000", "8081:8081"]:
         raise ValueError("Reverse proxy must publish all three configurable test ports")
+    if compose.get("name") != values["COMPOSE_PROJECT_NAME"]:
+        raise ValueError("Compose project name must be controlled by COMPOSE_PROJECT_NAME")
     if not compose["networks"]["data_net"].get("internal"):
         raise ValueError("Data network must remain internal")
     if any((network or {}).get("name") for network in compose["networks"].values()):
@@ -93,6 +95,11 @@ def main() -> None:
         raise ValueError("Paperless must use its own DB user")
     if services["keycloak"]["environment"]["KC_DB_USERNAME"] != "keycloak":
         raise ValueError("Keycloak must use its own DB user")
+    if services["keycloak-provision"]["environment"]["KEYCLOAK_BASE_URL"] != "http://keycloak:8080":
+        raise ValueError("Keycloak provisioning must use private Compose DNS")
+    paperless_health = " ".join(services["paperless"]["healthcheck"]["test"])
+    if "127.0.0.1:8000/api/" not in paperless_health or "-L" in paperless_health:
+        raise ValueError("Paperless healthcheck must remain local and public-URL independent")
     if services["backend"]["networks"] != ["app_net", "data_net"]:
         raise ValueError("Backend network isolation changed")
     if services["ollama"].get("profiles"):

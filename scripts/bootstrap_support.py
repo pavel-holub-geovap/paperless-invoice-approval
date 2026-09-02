@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import secrets
@@ -78,9 +79,9 @@ REQUIRED_VARIABLES = (
     "POHODA_XML_ENCODING",
     "POHODA_GENERATOR_VERSION",
     "ALLOCATION_TOLERANCE",
-    "APPROVAL_HTTP_PORT",
-    "PAPERLESS_HTTP_PORT",
-    "KEYCLOAK_HTTP_PORT",
+    "APP_HOST_PORT",
+    "PAPERLESS_HOST_PORT",
+    "KEYCLOAK_HOST_PORT",
 )
 
 SECRET_VARIABLES = {
@@ -111,19 +112,25 @@ URL_VARIABLES = (
 )
 
 PORT_VARIABLES = (
-    "APPROVAL_HTTP_PORT",
-    "PAPERLESS_HTTP_PORT",
-    "KEYCLOAK_HTTP_PORT",
+    "APP_HOST_PORT",
+    "PAPERLESS_HOST_PORT",
+    "KEYCLOAK_HOST_PORT",
 )
+
+LEGACY_PORT_ALIASES = {
+    "APP_HOST_PORT": "APPROVAL_HTTP_PORT",
+    "PAPERLESS_HOST_PORT": "PAPERLESS_HTTP_PORT",
+    "KEYCLOAK_HOST_PORT": "KEYCLOAK_HTTP_PORT",
+}
 
 DEFAULT_VALUES = {
     "PAPERLESS_TAG_APPROVED_COPY": "Approval - schválená kopie",
     "ISDOC_XSD_PATH": "/app/isdoc-xsd/isdoc-invoice-6.0.2.xsd",
     "POHODA_XSD_BUNDLE_VERSION": "2025-10-16",
     "POHODA_XML_ENCODING": "Windows-1250",
-    "APPROVAL_HTTP_PORT": "80",
-    "PAPERLESS_HTTP_PORT": "8000",
-    "KEYCLOAK_HTTP_PORT": "8081",
+    "APP_HOST_PORT": "80",
+    "PAPERLESS_HOST_PORT": "8000",
+    "KEYCLOAK_HOST_PORT": "8081",
 }
 
 
@@ -172,12 +179,39 @@ def redact_value(key: str, value: str) -> str:
     return value
 
 
-def select_compose_command(has_legacy: bool, has_plugin: bool) -> tuple[str, ...]:
-    if has_legacy:
-        return ("docker-compose",)
-    if has_plugin:
+def compose_major(version: str) -> int | None:
+    """Return a Compose major from short or human-readable version output."""
+    match = re.search(r"(?<!\d)v?(\d+)(?:\.\d+)+", version)
+    return int(match.group(1)) if match else None
+
+
+def select_compose_command(
+    plugin_version: str = "", standalone_version: str = ""
+) -> tuple[str, ...]:
+    """Prefer the Docker CLI plugin and accept every compatible major >= 2."""
+    if (compose_major(plugin_version) or 0) >= 2:
         return ("docker", "compose")
-    raise ValueError("Docker Compose v2 is not available")
+    if (compose_major(standalone_version) or 0) >= 2:
+        return ("docker-compose",)
+    detected = ", ".join(
+        value for value in (plugin_version.strip(), standalone_version.strip()) if value
+    ) or "none"
+    raise ValueError(
+        "Docker Compose >= 2 is required; detected versions: " + detected
+    )
+
+
+def effective_values(values: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    """Apply backward-compatible port aliases without hiding their deprecation."""
+    effective = dict(values)
+    warnings: list[str] = []
+    for key, legacy in LEGACY_PORT_ALIASES.items():
+        if not effective.get(key) and effective.get(legacy):
+            effective[key] = effective[legacy]
+            warnings.append(f"{legacy} is deprecated; rename it to {key}")
+    for key, default in DEFAULT_VALUES.items():
+        effective[key] = effective.get(key) or default
+    return effective, warnings
 
 
 def model_is_present(list_output: str, requested: str) -> bool:
@@ -197,11 +231,8 @@ def _effective_port(url: str) -> int:
 
 
 def validate_environment(values: dict[str, str]) -> tuple[list[str], list[str]]:
-    values = dict(values)
-    for key, default in DEFAULT_VALUES.items():
-        values[key] = values.get(key) or default
+    values, warnings = effective_values(values)
     errors: list[str] = []
-    warnings: list[str] = []
     for key in REQUIRED_VARIABLES:
         if not values.get(key, "").strip():
             errors.append(f"{key} is required")
@@ -243,9 +274,9 @@ def validate_environment(values: dict[str, str]) -> tuple[list[str], list[str]]:
         errors.append("Published HTTP ports must be distinct")
 
     url_port_pairs = (
-        ("APP_BASE_URL", "APPROVAL_HTTP_PORT"),
-        ("PAPERLESS_PUBLIC_URL", "PAPERLESS_HTTP_PORT"),
-        ("KEYCLOAK_PUBLIC_URL", "KEYCLOAK_HTTP_PORT"),
+        ("APP_BASE_URL", "APP_HOST_PORT"),
+        ("PAPERLESS_PUBLIC_URL", "PAPERLESS_HOST_PORT"),
+        ("KEYCLOAK_PUBLIC_URL", "KEYCLOAK_HOST_PORT"),
     )
     for url_key, port_key in url_port_pairs:
         if values.get(url_key) and port_key in parsed_ports:
@@ -254,7 +285,10 @@ def validate_environment(values: dict[str, str]) -> tuple[list[str], list[str]]:
             except ValueError:
                 continue
             if actual_port != parsed_ports[port_key]:
-                errors.append(f"{url_key} does not use {port_key}={parsed_ports[port_key]}")
+                warnings.append(
+                    f"{url_key} port {actual_port} differs from {port_key}="
+                    f"{parsed_ports[port_key]}; this is valid only with external proxy/NAT"
+                )
 
     internal_expected = {
         "KEYCLOAK_BASE_URL": "keycloak",
@@ -301,23 +335,39 @@ def validate_environment(values: dict[str, str]) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
-def generate_env(template: Path, destination: Path, host: str) -> None:
+def generate_env(
+    template: Path,
+    destination: Path,
+    host: str,
+    *,
+    project_name: str | None = None,
+    app_host_port: int | None = None,
+    paperless_host_port: int | None = None,
+    keycloak_host_port: int | None = None,
+) -> None:
     if destination.exists():
         raise FileExistsError(f"Refusing to overwrite existing {destination}")
     if not re.fullmatch(r"[A-Za-z0-9._:-]+", host) or "/" in host:
         raise ValueError("Host must be a hostname or IP address without a URL scheme")
     values = parse_env(template)
-    approval_port = int(values.get("APPROVAL_HTTP_PORT", "80"))
-    paperless_port = int(values.get("PAPERLESS_HTTP_PORT", "8000"))
-    keycloak_port = int(values.get("KEYCLOAK_HTTP_PORT", "8081"))
+    values, _ = effective_values(values)
+    approval_port = app_host_port or int(values["APP_HOST_PORT"])
+    paperless_port = paperless_host_port or int(values["PAPERLESS_HOST_PORT"])
+    keycloak_port = keycloak_host_port or int(values["KEYCLOAK_HOST_PORT"])
+    if any(not 1 <= port <= 65535 for port in (approval_port, paperless_port, keycloak_port)):
+        raise ValueError("Generated host ports must be between 1 and 65535")
 
     def public_url(port: int) -> str:
         return f"http://{host}" if port == 80 else f"http://{host}:{port}"
 
     replacements = {
+        "COMPOSE_PROJECT_NAME": project_name or values["COMPOSE_PROJECT_NAME"],
         "APP_BASE_URL": public_url(approval_port),
+        "APP_HOST_PORT": str(approval_port),
         "PAPERLESS_PUBLIC_URL": public_url(paperless_port),
+        "PAPERLESS_HOST_PORT": str(paperless_port),
         "KEYCLOAK_PUBLIC_URL": public_url(keycloak_port),
+        "KEYCLOAK_HOST_PORT": str(keycloak_port),
         "PAPERLESS_USERMAP_UID": str(getattr(os, "getuid", lambda: 1000)()),
         "PAPERLESS_USERMAP_GID": str(getattr(os, "getgid", lambda: 1000)()),
     }
@@ -340,6 +390,46 @@ def generate_env(template: Path, destination: Path, host: str) -> None:
     destination.chmod(0o600)
 
 
+def validate_compose_model_ports(
+    model: dict[str, object],
+    *,
+    project_name: str,
+    app_host_port: int,
+    paperless_host_port: int,
+    keycloak_host_port: int,
+) -> None:
+    """Validate the fully rendered Compose model, not source YAML text."""
+    if model.get("name") != project_name:
+        raise ValueError(
+            f"Compose project is {model.get('name')!r}, expected {project_name!r}"
+        )
+    services = model.get("services")
+    if not isinstance(services, dict) or "reverse-proxy" not in services:
+        raise ValueError("Rendered Compose model has no reverse-proxy service")
+    unexpected = [
+        name
+        for name, service in services.items()
+        if name != "reverse-proxy" and isinstance(service, dict) and service.get("ports")
+    ]
+    if unexpected:
+        raise ValueError(f"Only reverse-proxy may publish host ports: {unexpected}")
+    reverse_proxy = services["reverse-proxy"]
+    if not isinstance(reverse_proxy, dict):
+        raise TypeError("Invalid reverse-proxy service model")
+    actual: dict[int, int] = {}
+    for mapping in reverse_proxy.get("ports", []):
+        if not isinstance(mapping, dict):
+            raise TypeError(f"Unexpected rendered port mapping: {mapping!r}")
+        actual[int(mapping["target"])] = int(mapping["published"])
+    expected = {
+        80: app_host_port,
+        8000: paperless_host_port,
+        8081: keycloak_host_port,
+    }
+    if actual != expected:
+        raise ValueError(f"Rendered host ports are {actual!r}, expected {expected!r}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -352,6 +442,19 @@ def main() -> int:
     generate.add_argument("template", type=Path)
     generate.add_argument("destination", type=Path)
     generate.add_argument("host")
+    generate.add_argument("--project-name")
+    generate.add_argument("--app-host-port", type=int)
+    generate.add_argument("--paperless-host-port", type=int)
+    generate.add_argument("--keycloak-host-port", type=int)
+    select_compose = sub.add_parser("select-compose")
+    select_compose.add_argument("plugin_version")
+    select_compose.add_argument("standalone_version")
+    compose_ports = sub.add_parser("validate-compose-ports")
+    compose_ports.add_argument("path", type=Path)
+    compose_ports.add_argument("project_name")
+    compose_ports.add_argument("app_host_port", type=int)
+    compose_ports.add_argument("paperless_host_port", type=int)
+    compose_ports.add_argument("keycloak_host_port", type=int)
     args = parser.parse_args()
     try:
         if args.command == "validate-env":
@@ -367,13 +470,36 @@ def main() -> int:
             return 0
         if args.command == "get":
             values = parse_env(args.path)
-            print(values.get(args.key) or DEFAULT_VALUES.get(args.key, ""))
+            values, _ = effective_values(values)
+            print(values.get(args.key, ""))
             return 0
         if args.command == "generate-env":
-            generate_env(args.template, args.destination, args.host)
+            generate_env(
+                args.template,
+                args.destination,
+                args.host,
+                project_name=args.project_name,
+                app_host_port=args.app_host_port,
+                paperless_host_port=args.paperless_host_port,
+                keycloak_host_port=args.keycloak_host_port,
+            )
             print(f"Created {args.destination} with mode 0600; secrets were not printed.")
             return 0
-    except (OSError, ValueError) as exc:
+        if args.command == "select-compose":
+            print(" ".join(select_compose_command(args.plugin_version, args.standalone_version)))
+            return 0
+        if args.command == "validate-compose-ports":
+            model = json.loads(args.path.read_text(encoding="utf-8"))
+            validate_compose_model_ports(
+                model,
+                project_name=args.project_name,
+                app_host_port=args.app_host_port,
+                paperless_host_port=args.paperless_host_port,
+                keycloak_host_port=args.keycloak_host_port,
+            )
+            print("[OK] Rendered Compose project and host port mappings")
+            return 0
+    except (OSError, TypeError, ValueError) as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
     return 1

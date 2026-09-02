@@ -10,7 +10,8 @@ Host musí mít:
 
 - Linux, Git, Python 3, `awk`, `grep`, `sed`, `ss`, `df` a `nproc`;
 - běžící Docker Engine dostupný aktuálnímu ne-root uživateli;
-- Docker Compose v2 jako `docker compose` nebo `docker-compose`;
+- Docker Compose >= 2; preferovaný je plugin `docker compose` (včetně v5),
+  standalone `docker-compose` >= 2 je pouze fallback a verze 1.x není podporována;
 - nejméně 4 CPU, 8 GiB RAM a 15 GiB volného místa;
 - doporučeně 12 GiB RAM, swap a 30 GiB volného místa pro CPU Qwen3 8B;
 - tři volné TCP porty pro Approval, Paperless a Keycloak;
@@ -38,8 +39,8 @@ soubor lze zvolit pomocí `ENV_FILE=/bezpečná/cesta/test.env`.
 Před startem zkontrolujte bez zveřejnění secrets zejména:
 
 - `APP_BASE_URL`, `PAPERLESS_PUBLIC_URL`, `KEYCLOAK_PUBLIC_URL`;
-- odpovídající `APPROVAL_HTTP_PORT`, `PAPERLESS_HTTP_PORT`,
-  `KEYCLOAK_HTTP_PORT`;
+- odpovídající host bindy `APP_HOST_PORT`, `PAPERLESS_HOST_PORT`,
+  `KEYCLOAK_HOST_PORT`;
 - jedinečný `COMPOSE_PROJECT_NAME`, pokud na hostu běží více instancí;
 - mail testovacího Paperless správce;
 - volitelné `POHODA_TARGET_ICO` a `POHODA_TARGET_KEY`.
@@ -56,7 +57,7 @@ ponechte prázdný, pokud nemáte skutečný GUID účetní jednotky.
 ```
 
 `--check` je striktně read-only. Ověří operační systém, nástroje, Docker přístup,
-Compose v2, povinné soubory, `.env`, izolaci interních URL/databází, sílu a
+Compose >= 2, povinné soubory, `.env`, izolaci interních URL/databází, sílu a
 nezávislost secrets, zdroje hostu, volné publikované porty a výsledný Compose
 model. Nevytvoří kontejner, síť ani volume.
 
@@ -74,8 +75,9 @@ Standardní bootstrap potom:
 8. zkontroluje dva OIDC klienty, dvě role a čtyři unikátní testovací uživatele.
 
 První běh stahuje image a model o velikosti několika GB. Podle připojení a CPU
-může trvat desítky minut. Skript zobrazuje pouze stručný postup a při chybě krátký
-výřez relevantního logu; secrets netiskne.
+může trvat desítky minut. Skript zobrazuje pouze stručný postup. Při unhealthy
+stavu vypíše poslední výsledky healthchecku a krátký výřez relevantního logu;
+secrets netiskne.
 
 ## 4. Stav a úplný smoke test
 
@@ -130,7 +132,7 @@ opakovaný `up -d` je bezpečný.
 
 ## 6. Více izolovaných testovacích instancí
 
-Každá instance musí mít vlastní `COMPOSE_PROJECT_NAME`, trojici portů a `.env`.
+Každá instance musí mít vlastní `COMPOSE_PROJECT_NAME`, trojici host portů a `.env`.
 Compose sítě i volumes jsou projektově pojmenované; instance proto nesdílejí
 PostgreSQL, Redis, Paperless data, API token ani exporty. Ollama cache lze při
 řízeném integračním testu připojit jako explicitní externí volume, jinak je rovněž
@@ -140,6 +142,33 @@ izolovaná.
 ENV_FILE=/secure/test-b.env ./scripts/bootstrap-test.sh --check
 ENV_FILE=/secure/test-b.env ./scripts/bootstrap-test.sh
 ```
+
+Příklad druhé instance na sdíleném hostu:
+
+```dotenv
+COMPOSE_PROJECT_NAME=paperless-invoice-test2
+APP_HOST_PORT=18080
+PAPERLESS_HOST_PORT=18000
+KEYCLOAK_HOST_PORT=18081
+APP_BASE_URL=http://test-server.example:18080
+PAPERLESS_PUBLIC_URL=http://test-server.example:18000
+KEYCLOAK_PUBLIC_URL=http://test-server.example:18081
+```
+
+Host port je lokální published port Dockeru. Public URL je adresa používaná
+prohlížečem, OIDC issuerem a callbacky. Při přímém přístupu obvykle obsahuje
+stejný port; za externím reverse proxy nebo NAT se může lišit a validace pouze
+upozorní. Provisioning používá interně `http://keycloak:8080`; Paperless,
+backend i worker používají Compose DNS a nejsou závislé na host bindu ani Nginx.
+
+Cílený read-only test výsledného Compose modelu s nestandardními porty:
+
+```bash
+./scripts/test-deployment-config.sh
+```
+
+Test spustí skutečný `docker compose config --format json` a ověří project name,
+trojici bindů 28080/28000/28081 a skutečnost, že jiné služby porty nepublikují.
 
 Pouze pro vědomé sdílení již staženého modelu nastavte v chráněném env souboru
 `OLLAMA_CACHE_VOLUME` na přesný název existujícího modelového volume a spusťte:
@@ -153,8 +182,7 @@ Override nesdílí žádnou databázi, Paperless storage, token ani export. Olla
 cache není autoritou aplikačních dat. Bez tohoto explicitního override má každá
 instance vlastní modelové volume.
 
-Veřejné URL musí používat porty stejné instance. Bootstrap nesmí být spuštěn s
-`APP_ENV=production`.
+Bootstrap nesmí být spuštěn s `APP_ENV=production`.
 
 ## 7. Zálohy, migrace a obnova
 

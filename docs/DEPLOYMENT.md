@@ -4,6 +4,9 @@ Autoritativní postup pro čisté kompletní testovací nasazení je v
 [DEPLOYMENT_TEST.md](DEPLOYMENT_TEST.md). Nový server se připravuje jediným
 idempotentním příkazem `./scripts/bootstrap-test.sh`; skript provede preflight,
 build, start, provisioning, migrace a základní runtime smoke bez mazání dat.
+Používá přednostně `docker compose` ve všech kompatibilních verzích >= 2; v5 je
+platná. Na sdíleném hostu oddělte instanci pomocí `COMPOSE_PROJECT_NAME` a
+`APP_HOST_PORT`, `PAPERLESS_HOST_PORT`, `KEYCLOAK_HOST_PORT`.
 
 ## Bezpečný upgrade existujícího testovacího stacku
 

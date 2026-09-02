@@ -19,6 +19,8 @@ python3 "$BOOTSTRAP_ROOT/scripts/bootstrap_support.py" validate-env "$BOOTSTRAP_
 compose config --quiet
 
 log_info "Git HEAD: $(git rev-parse --short=12 HEAD)"
+log_info "Compose project: $(env_get COMPOSE_PROJECT_NAME)"
+log_info "Host ports: Approval=$(env_get APP_HOST_PORT), Paperless=$(env_get PAPERLESS_HOST_PORT), Keycloak=$(env_get KEYCLOAK_HOST_PORT)"
 compose ps -a
 
 failures=0

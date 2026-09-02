@@ -23,26 +23,36 @@ env_get() {
 }
 
 detect_compose() {
-  local legacy_version plugin_version
+  local legacy_version plugin_version selected
   legacy_version=""
   plugin_version=""
-  if command -v docker-compose >/dev/null 2>&1; then
-    legacy_version="$(docker-compose version --short 2>/dev/null || true)"
-  fi
   plugin_version="$(docker compose version --short 2>/dev/null || true)"
-  if [[ "$legacy_version" =~ ^v?2\. ]]; then
-    COMPOSE_CMD=(docker-compose)
-    log_ok "Docker Compose $legacy_version (docker-compose)"
-  elif [[ "$plugin_version" =~ ^v?2\. ]]; then
+  if [[ -z "$plugin_version" ]]; then
+    plugin_version="$(docker compose version 2>/dev/null || true)"
+  fi
+  if command -v docker-compose >/dev/null 2>&1; then
+    legacy_version="$(docker-compose version --short 2>/dev/null || docker-compose version 2>/dev/null || true)"
+  fi
+  if ! selected="$(python3 "$BOOTSTRAP_ROOT/scripts/bootstrap_support.py" select-compose "$plugin_version" "$legacy_version")"; then
+    die "Install the Docker Compose plugin (preferred) or a standalone Compose version >= 2."
+  fi
+  if [[ "$selected" == "docker compose" ]]; then
     COMPOSE_CMD=(docker compose)
-    log_ok "Docker Compose $plugin_version (docker compose)"
+    log_ok "Docker Compose: docker compose $plugin_version"
+  elif [[ "$selected" == "docker-compose" ]]; then
+    COMPOSE_CMD=(docker-compose)
+    log_ok "Docker Compose: docker-compose $legacy_version (standalone fallback)"
   else
-    die "Docker Compose v2 is required. Install the Docker Compose plugin or v2 standalone binary."
+    die "Internal Compose detection error: $selected"
   fi
 }
 
 compose() {
-  ENV_FILE="$BOOTSTRAP_ENV_FILE" "${COMPOSE_CMD[@]}" --env-file "$BOOTSTRAP_ENV_FILE" "$@"
+  APP_HOST_PORT="$(env_get APP_HOST_PORT)" \
+  PAPERLESS_HOST_PORT="$(env_get PAPERLESS_HOST_PORT)" \
+  KEYCLOAK_HOST_PORT="$(env_get KEYCLOAK_HOST_PORT)" \
+  ENV_FILE="$BOOTSTRAP_ENV_FILE" \
+    "${COMPOSE_CMD[@]}" --env-file "$BOOTSTRAP_ENV_FILE" "$@"
 }
 
 required_files_check() {
@@ -84,25 +94,30 @@ resource_check() {
 port_owned_by_project() {
   local port="$1" project="$2"
   docker ps \
+    --filter "publish=$port" \
     --filter "label=com.docker.compose.project=$project" \
     --filter "label=com.docker.compose.service=reverse-proxy" \
-    --format '{{.Ports}}' 2>/dev/null \
-    | grep -Eq "(^|, |:)$port->|0\.0\.0\.0:$port->|\[::\]:$port->"
+    --format '{{.ID}}' 2>/dev/null \
+    | grep -q .
 }
 
 port_check() {
-  local project port key
+  local project port key foreign
   project="$(env_get COMPOSE_PROJECT_NAME)"
-  for key in APPROVAL_HTTP_PORT PAPERLESS_HTTP_PORT KEYCLOAK_HTTP_PORT; do
+  for key in APP_HOST_PORT PAPERLESS_HOST_PORT KEYCLOAK_HOST_PORT; do
     port="$(env_get "$key")"
+    foreign="$(docker ps --filter "publish=$port" --format '{{.ID}} {{.Label "com.docker.compose.project"}}' 2>/dev/null | awk -v project="$project" '$2 != project { print }')"
+    if [[ -n "$foreign" ]]; then
+      die "Host port $port is already in use. Set $key to another free port in .env."
+    fi
     if ss -ltnH "sport = :$port" 2>/dev/null | grep -q .; then
       if port_owned_by_project "$port" "$project"; then
-        log_ok "Port $port is owned by this Compose project"
+        log_ok "$key $port is already owned by this Compose project"
       else
-        die "Port $port ($key) is already in use by another process or Compose project. Choose a free port in .env."
+        die "Host port $port is already in use. Set $key to another free port in .env."
       fi
     else
-      log_ok "Port $port is available"
+      log_ok "$key $port available"
     fi
   done
 }
@@ -140,6 +155,22 @@ short_logs() {
   (cd "$BOOTSTRAP_ROOT" && compose logs --tail=80 "$service") || true
 }
 
+health_history() {
+  local service="$1" container
+  container="$(container_id_for "$service")"
+  [[ -n "$container" ]] || return 0
+  log_warn "Last health checks for $service:"
+  docker inspect -f '{{range .State.Health.Log}}{{println .End "exit=" .ExitCode .Output}}{{end}}' "$container" 2>/dev/null | tail -n 10 || true
+}
+
+service_diagnostics() {
+  local service
+  for service in "$@"; do
+    health_history "$service"
+    short_logs "$service"
+  done
+}
+
 wait_for_service() {
   local service="$1" deadline container status health
   deadline=$((SECONDS + BOOTSTRAP_TIMEOUT_SECONDS))
@@ -153,12 +184,14 @@ wait_for_service() {
         return 0
       fi
       if [[ "$health" == "unhealthy" || "$status" == "dead" ]]; then
+        health_history "$service"
         short_logs "$service"
         die "$service failed health checks."
       fi
     fi
     sleep 3
   done
+  health_history "$service"
   short_logs "$service"
   die "Timed out waiting for $service after ${BOOTSTRAP_TIMEOUT_SECONDS}s."
 }
@@ -189,27 +222,42 @@ wait_for_job() {
 reconcile_stack() {
   local service
   log_info "Starting core stateful services"
-  compose up -d postgres redis keycloak paperless ollama
+  if ! compose up -d postgres redis keycloak paperless ollama; then
+    service_diagnostics postgres redis keycloak paperless ollama
+    return 1
+  fi
   for service in postgres redis keycloak paperless ollama; do
     wait_for_service "$service"
   done
 
   log_info "Recreating idempotent Keycloak and Ollama jobs on current project networks"
-  compose up -d --force-recreate --no-deps keycloak-provision ollama-pull
+  if ! compose up -d --force-recreate --no-deps keycloak-provision ollama-pull; then
+    service_diagnostics keycloak keycloak-provision ollama ollama-pull
+    return 1
+  fi
   for service in keycloak-provision ollama-pull; do
     wait_for_job "$service"
   done
 
   log_info "Recreating idempotent Paperless provisioning after Keycloak provisioning"
-  compose up -d --force-recreate --no-deps paperless-bootstrap
+  if ! compose up -d --force-recreate --no-deps paperless-bootstrap; then
+    service_diagnostics paperless paperless-bootstrap
+    return 1
+  fi
   wait_for_job paperless-bootstrap
 
   log_info "Starting Approval application services and reverse proxy"
-  compose up -d --no-deps backend reverse-proxy
+  if ! compose up -d --no-deps backend reverse-proxy; then
+    service_diagnostics backend reverse-proxy
+    return 1
+  fi
   for service in backend reverse-proxy; do
     wait_for_service "$service"
   done
-  compose up -d --no-deps worker frontend
+  if ! compose up -d --no-deps worker frontend; then
+    service_diagnostics worker frontend
+    return 1
+  fi
   for service in worker frontend; do
     wait_for_service "$service"
   done

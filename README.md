@@ -19,9 +19,12 @@ databáze a Paperless token neposílá do prohlížeče. Audit i AI běhy jsou a
 
 ## První testovací nasazení na Linuxu
 
-Požadavky: moderní Linux, Git, Docker Engine, Docker Compose v2, Python 3,
+Požadavky: moderní Linux, Git, Docker Engine, Docker Compose >= 2, Python 3,
 nejméně 4 CPU, 8 GiB RAM a 15 GiB volného místa. Pro Qwen3 doporučujeme 12 GiB
 RAM a 30 GiB volného místa. Uživatel musí mít běžný přístup k Docker daemonu.
+Preferovaný příkaz je plugin `docker compose`; podporované jsou i novější
+kompatibilní major verze včetně v5. Standalone `docker-compose` >= 2 je pouze
+fallback a vedlejší instalace `docker-compose` 1.x se ignoruje.
 
 ```bash
 git clone <URL_TO_THIS_REPOSITORY> paperless-invoice-approval
@@ -35,6 +38,23 @@ Generátor vytvoří necommitovaný `.env` s nezávislými náhodnými testovac�
 secrets a nic citlivého nevypíše. Před startem lze upravit veřejné hostname,
 publikované porty a volitelné POHODA hodnoty. První start stáhne image a přibližně
 několik GB modelových dat, proto může trvat výrazně déle než další spuštění.
+
+Na sdíleném Docker hostu nastavte unikátní project name a volné host porty;
+interní porty a service DNS se nemění:
+
+```dotenv
+COMPOSE_PROJECT_NAME=paperless-invoice-test2
+APP_HOST_PORT=18080
+PAPERLESS_HOST_PORT=18000
+KEYCLOAK_HOST_PORT=18081
+APP_BASE_URL=http://test-server.example:18080
+PAPERLESS_PUBLIC_URL=http://test-server.example:18000
+KEYCLOAK_PUBLIC_URL=http://test-server.example:18081
+```
+
+`*_HOST_PORT` řídí lokální Docker bind. Veřejná URL řídí odkazy v prohlížeči,
+OIDC issuer a callbacky; při externím proxy/NAT se proto smí lišit a preflight
+vypíše pouze upozornění. `--check` ověří porty před vytvořením Docker objektů.
 
 Po dokončení otevřete URL uvedené bootstrapem:
 

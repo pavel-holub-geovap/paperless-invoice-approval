@@ -49,9 +49,9 @@ def valid_environment() -> dict[str, str]:
             "PAPERLESS_TAG_APPROVED_COPY": "Approval - schválená kopie",
             "OLLAMA_MODEL": "qwen3:8b",
             "POHODA_TARGET_ICO": "",
-            "APPROVAL_HTTP_PORT": "18080",
-            "PAPERLESS_HTTP_PORT": "18000",
-            "KEYCLOAK_HTTP_PORT": "18081",
+            "APP_HOST_PORT": "18080",
+            "PAPERLESS_HOST_PORT": "18000",
+            "KEYCLOAK_HOST_PORT": "18081",
         }
     )
     return values
@@ -103,7 +103,11 @@ def test_environment_validation_covers_required_values_and_public_ports() -> Non
     errors, _ = bootstrap.validate_environment(values)
     assert any("placeholder" in error for error in errors)
     assert any("must differ" in error for error in errors)
-    assert any("KEYCLOAK_HTTP_PORT" in error for error in errors)
+    assert not any("KEYCLOAK_HOST_PORT" in error for error in errors)
+    assert any(
+        "KEYCLOAK_HOST_PORT" in warning
+        for warning in bootstrap.validate_environment(values)[1]
+    )
 
 
 def test_environment_validation_accepts_documented_defaults_for_legacy_env() -> None:
@@ -118,11 +122,36 @@ def test_environment_validation_accepts_documented_defaults_for_legacy_env() -> 
     assert warnings == ["POHODA_TARGET_ICO is empty; generated POHODA XML export is disabled"]
 
 
-def test_compose_detection_prefers_legacy_v2_binary_then_plugin() -> None:
-    assert bootstrap.select_compose_command(True, True) == ("docker-compose",)
-    assert bootstrap.select_compose_command(False, True) == ("docker", "compose")
-    with pytest.raises(ValueError):
-        bootstrap.select_compose_command(False, False)
+@pytest.mark.parametrize("version", ["v2.35.1", "Docker Compose version v5.1.3"])
+def test_compose_detection_accepts_plugin_major_two_or_newer(version: str) -> None:
+    assert bootstrap.select_compose_command(version, "") == ("docker", "compose")
+
+
+def test_compose_detection_prefers_v5_plugin_over_v1_standalone() -> None:
+    assert bootstrap.select_compose_command("v5.1.3", "1.29.2") == (
+        "docker",
+        "compose",
+    )
+
+
+def test_compose_detection_falls_back_to_standalone_v2() -> None:
+    assert bootstrap.select_compose_command("", "Docker Compose version v2.40.0") == (
+        "docker-compose",
+    )
+
+
+def test_compose_detection_rejects_standalone_v1_only() -> None:
+    with pytest.raises(ValueError, match=r">= 2"):
+        bootstrap.select_compose_command("", "docker-compose version 1.29.2")
+
+
+def test_legacy_port_names_are_mapped_with_warnings() -> None:
+    values = valid_environment()
+    for current, legacy in bootstrap.LEGACY_PORT_ALIASES.items():
+        values[legacy] = values.pop(current)
+    errors, warnings = bootstrap.validate_environment(values)
+    assert errors == []
+    assert sum("deprecated" in warning for warning in warnings) == 3
 
 
 def test_model_and_alembic_readiness_detection() -> None:
@@ -145,3 +174,55 @@ def test_generate_env_refuses_overwrite_and_keeps_secrets_out_of_output(
     assert generated["DATABASE_URL"].startswith("postgresql+psycopg://approval:")
     with pytest.raises(FileExistsError):
         bootstrap.generate_env(template, destination, "bootstrap.example.test")
+
+
+def test_generate_env_can_create_an_isolated_shared_host_configuration(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / ".env"
+    bootstrap.generate_env(
+        ROOT / ".env.example",
+        destination,
+        "shared.example.test",
+        project_name="paperless-invoice-test2",
+        app_host_port=28080,
+        paperless_host_port=28000,
+        keycloak_host_port=28081,
+    )
+    generated = bootstrap.parse_env(destination)
+    assert generated["COMPOSE_PROJECT_NAME"] == "paperless-invoice-test2"
+    assert generated["APP_HOST_PORT"] == "28080"
+    assert generated["PAPERLESS_PUBLIC_URL"].endswith(":28000")
+    assert generated["KEYCLOAK_PUBLIC_URL"].endswith(":28081")
+
+
+def test_rendered_compose_model_port_validation() -> None:
+    model = {
+        "name": "paperless-invoice-test2",
+        "services": {
+            "backend": {},
+            "reverse-proxy": {
+                "ports": [
+                    {"target": 80, "published": "28080"},
+                    {"target": 8000, "published": "28000"},
+                    {"target": 8081, "published": "28081"},
+                ]
+            },
+        },
+    }
+    bootstrap.validate_compose_model_ports(
+        model,
+        project_name="paperless-invoice-test2",
+        app_host_port=28080,
+        paperless_host_port=28000,
+        keycloak_host_port=28081,
+    )
+    model["services"]["reverse-proxy"]["ports"][2]["published"] = "8081"
+    with pytest.raises(ValueError, match="Rendered host ports"):
+        bootstrap.validate_compose_model_ports(
+            model,
+            project_name="paperless-invoice-test2",
+            app_host_port=28080,
+            paperless_host_port=28000,
+            keycloak_host_port=28081,
+        )

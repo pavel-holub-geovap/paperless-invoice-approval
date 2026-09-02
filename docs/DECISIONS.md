@@ -1,5 +1,14 @@
 # Architektonická rozhodnutí
 
+## 2026-09-02 – Compose detekce a host porty na sdíleném Docker hostu
+
+Deployment preferuje CLI plugin `docker compose` a akceptuje každou kompatibilní
+major verzi >= 2; standalone `docker-compose` >= 2 zůstává pouze fallback.
+Publikované porty řídí explicitní `APP_HOST_PORT`, `PAPERLESS_HOST_PORT` a
+`KEYCLOAK_HOST_PORT`, zatímco interní komunikace používá stabilní service DNS a
+container porty. Public URL jsou samostatná OIDC/browser konfigurace a jejich
+odlišný port je varování, protože může být legitimní za externím proxy nebo NAT.
+
 ## ADR-001: PostgreSQL databázová fronta
 
 Pro sekvenční AI inference a nízký objem testovacího systému používáme `processing_jobs` s row lockingem namísto Redis/Celery. Snižuje to paměť i počet komponent a zachovává transakční idempotenci.
