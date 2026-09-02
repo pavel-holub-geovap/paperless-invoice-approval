@@ -7,6 +7,7 @@ set +x
 BOOTSTRAP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOOTSTRAP_ENV_FILE="${ENV_FILE:-$BOOTSTRAP_ROOT/.env}"
 BOOTSTRAP_TIMEOUT_SECONDS="${BOOTSTRAP_TIMEOUT_SECONDS:-1800}"
+BOOTSTRAP_UNHEALTHY_GRACE_SECONDS="${BOOTSTRAP_UNHEALTHY_GRACE_SECONDS:-60}"
 COMPOSE_CMD=()
 
 log_info() { printf '[INFO] %s\n' "$*"; }
@@ -172,8 +173,9 @@ service_diagnostics() {
 }
 
 wait_for_service() {
-  local service="$1" deadline container status health
+  local service="$1" deadline container status health unhealthy_since
   deadline=$((SECONDS + BOOTSTRAP_TIMEOUT_SECONDS))
+  unhealthy_since=0
   while (( SECONDS < deadline )); do
     container="$(container_id_for "$service")"
     if [[ -n "$container" ]]; then
@@ -183,10 +185,22 @@ wait_for_service() {
         log_ok "$service healthy"
         return 0
       fi
-      if [[ "$health" == "unhealthy" || "$status" == "dead" ]]; then
+      if [[ "$status" == "dead" ]]; then
         health_history "$service"
         short_logs "$service"
         die "$service failed health checks."
+      fi
+      if [[ "$health" == "unhealthy" ]]; then
+        if (( unhealthy_since == 0 )); then
+          unhealthy_since=$SECONDS
+          log_warn "$service is temporarily unhealthy; waiting up to ${BOOTSTRAP_UNHEALTHY_GRACE_SECONDS}s for recovery"
+        elif (( SECONDS - unhealthy_since >= BOOTSTRAP_UNHEALTHY_GRACE_SECONDS )); then
+          health_history "$service"
+          short_logs "$service"
+          die "$service remained unhealthy for ${BOOTSTRAP_UNHEALTHY_GRACE_SECONDS}s."
+        fi
+      else
+        unhealthy_since=0
       fi
     fi
     sleep 3
