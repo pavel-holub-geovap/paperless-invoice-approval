@@ -1,5 +1,35 @@
 # Aktuální stav
 
+## Shared Docker host bootstrap (2026-09-02)
+
+- Compose detekce nyní preferuje `docker compose`, akceptuje každou major verzi
+  >= 2 (cíleně otestována v2 i v5.1.3) a standalone `docker-compose` >= 2 používá
+  jen jako fallback. Samostatná v1.29.2 je odmítnuta a její paralelní instalace
+  vedle funkčního v5 pluginu nemění volbu.
+- Host bindy jsou explicitní `APP_HOST_PORT`, `PAPERLESS_HOST_PORT` a
+  `KEYCLOAK_HOST_PORT`. Public URL zůstávají samostatné kvůli OIDC/proxy/NAT;
+  rozdíl portů je varování. Legacy `*_HTTP_PORT` bootstrap mapuje s deprecation
+  warningem. Skutečný `docker compose config --format json` prošel s porty
+  28080/28000/28081 bez jiných published portů.
+- Preflight proti běžícímu hlavnímu stacku odmítl cizí bind 8081 ještě před
+  vytvořením Docker objektů a doporučil změnu `KEYCLOAK_HOST_PORT`.
+- Izolovaný projekt `paperless-invoice-shared-20260902` naběhl vedle hlavního
+  stacku na 18080/18000/18081: 9/9 služeb healthy, 3/3 joby `exited/0`, Alembic
+  `0010`, Qwen dostupný, Approval/backend/worker/Keycloak metadata HTTP 200 a
+  OIDC login 302 na Keycloak 18081 s callbackem na Approval 18080. Vlastní data
+  měla project-scoped volumes; sdílená byla pouze explicitní Ollama cache.
+- Keycloak provisioning používá přímo `http://keycloak:8080`. Paperless
+  healthcheck používá lokální `/api/`, nesleduje veřejný redirect a má realistický
+  startup budget. Bootstrap toleruje 60 sekund přechodného unhealthy stavu a při
+  trvalém selhání vypíše health historii i omezený log.
+- Po testu byla druhá instance pouze zastavena; 12 kontejnerů, osm vlastních
+  volumes, env a data zůstaly zachovány. Hlavní projekt zůstal 9/9 healthy,
+  3/3 joby `exited/0`, `status.sh` PASS a veřejný Approval HTTP 200. Žádný cizí
+  Docker objekt, volume, databáze ani dokument nebyl odstraněn.
+- Cílené lokální testy: bootstrap support 19/19, Ruff PASS, statická Compose
+  validace PASS. Úplná business regrese nebyla spuštěna, protože se aplikační
+  business kód nezměnil.
+
 ## Čistý idempotentní testovací bootstrap (2026-09-01)
 
 - Nový Linux host lze připravit přes `generate-test-env.sh`, read-only
