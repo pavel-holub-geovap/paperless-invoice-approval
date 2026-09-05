@@ -7,6 +7,8 @@
 - Uploader vidí vlastní dokument už před assignmentem, smí opravit data a rozdělit jej pouze do povolených sekcí. Vzniká normální vlastní assignment/decision.
 - Self-approval není finální gate. Předání a kontrola queue-managera jsou uloženy na konkrétní revizi; správcovská změna po předání vytvoří novou revizi a zachová předchozí rozhodnutí jako invalidovanou historii.
 - Schvalovatelská navigace obsahuje „Ke schválení“, „Moje historie“ a „Moje nahrané“ s upload boxem. Manager grid rozlišuje approver-upload a stav kontroly.
+- Živý smoke na `ubuntudocker` 2026-09-05 prošel přes veřejné OIDC relace `queue-manager` a `approver1`: approver nahrál syntetické PDF jako Paperless dokument `55`, OCR má 911 znaků, nepovolená sekce skončila HTTP 409 a povolená sekce vytvořila vlastní assignment. Self-approval dokument neuzavřel, předání správci prošlo a správcovská změna typu vytvořila revizi 2 se zachovaným invalidovaným rozhodnutím revize 1. Překlasifikovaná zálohová faktura má POHODA metodu `NONE`.
+- Na integrační VM je Alembic `0011 (head)`, všech 9 dlouhodobých služeb je healthy a všechny 3 provisioning joby skončily `exited/0`.
 
 ## Shared Docker host bootstrap (2026-09-02)
 
