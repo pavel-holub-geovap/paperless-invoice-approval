@@ -28,7 +28,7 @@ export default function App() {
       .then((current) => {
         setApiUser(current);
         setUser(current);
-        if (!current.roles.includes("QUEUE_MANAGER") && route.page === "dashboard") {
+        if (!current.roles.includes("QUEUE_MANAGER") && route.page === "dashboard" && !route.invoiceId) {
           navigate("/approvals", true);
         }
       })
@@ -50,7 +50,7 @@ export default function App() {
       <nav>
         {user.roles.includes("QUEUE_MANAGER") && <>
           <a className={route.page === "dashboard" ? "active" : ""} href="/" onClick={nav("/")}>Fronta</a>
-          <a className={route.page === "centres" ? "active" : ""} href="/cost-centers" onClick={nav("/cost-centers")}>Střediska</a>
+          <a className={route.page === "centres" ? "active" : ""} href="/cost-centers" onClick={nav("/cost-centers")}>Sekce</a>
           <a className={route.page === "exports" ? "active" : ""} href="/exports" onClick={nav("/exports")}>Exporty</a>
         </>}
         {user.roles.includes("APPROVER") && <a className={route.page === "approvals" ? "active" : ""} href="/approvals" onClick={nav("/approvals")}>Moje schválení</a>}
@@ -59,7 +59,7 @@ export default function App() {
     </header>
     <main className="app-shell">
       {route.page === "dashboard" && <Dashboard user={user} invoiceId={route.invoiceId} onNavigate={navigate}/>}
-      {route.page === "approvals" && <Approvals history={route.history} historyInvoiceId={route.historyInvoiceId} onNavigate={navigate}/>}
+      {route.page === "approvals" && <Approvals user={user} history={route.history} uploaded={route.uploaded} historyInvoiceId={route.historyInvoiceId} onNavigate={navigate}/>}
       {route.page === "centres" && <CostCenters/>}
       {route.page === "exports" && <Exports/>}
     </main>

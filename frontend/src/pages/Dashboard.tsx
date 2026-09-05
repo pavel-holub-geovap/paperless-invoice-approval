@@ -56,7 +56,7 @@ export function Dashboard({ user, invoiceId, onNavigate }: { user: User; invoice
     return () => window.clearInterval(timer);
   }, [invoiceId, open]);
 
-  if (invoiceId && selected?.id === invoiceId) return <InvoiceDetail invoice={selected} user={user} onBack={() => onNavigate("/")} onRefresh={() => void open(invoiceId)} />;
+  if (invoiceId && selected?.id === invoiceId) return <InvoiceDetail invoice={selected} user={user} onBack={() => onNavigate(isManager ? "/" : "/approvals/uploaded")} onRefresh={() => void open(invoiceId)} />;
   const workflowFilters = [
     ["QUEUE_REVIEW", "Ke kontrole"], ["RETURNED", "Vrácené"], ["READY_FOR_APPROVAL", "Ke schválení"],
     ["AWAITING_APPROVAL", "Čeká na schválení"], ["APPROVED", "Schválené"], ["REJECTED", "Zamítnuté"],

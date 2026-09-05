@@ -53,7 +53,7 @@ Historický list je jedna faktura na řádek a používá dávkové načtení as
 
 ### Approval upload orchestrace
 
-Upload z browseru končí výhradně na `POST /api/uploads`; pouze `QUEUE_MANAGER` s platným CSRF smí endpoint použít. Backend streamově ověří limit a PDF signaturu, spočítá SHA-256, sanitizuje display filename a do `document_uploads` uloží metadata, actor, correlation a idempotency key, nikoli PDF bytes. Následně jedním multipart požadavkem volá oficiální Paperless `/api/documents/post_document/` s ID konfigurovaného inbox tagu.
+Upload z browseru končí výhradně na `POST /api/uploads`; `QUEUE_MANAGER` i `APPROVER` s platným CSRF používají stejný endpoint a bezpečnostní pipeline. Backend streamově ověří limit a PDF signaturu, spočítá SHA-256, sanitizuje display filename a do `document_uploads` uloží metadata, stabilní subject, roli/origin, correlation a idempotency key, nikoli PDF bytes. Následně jedním multipart požadavkem volá oficiální Paperless `/api/documents/post_document/` s ID konfigurovaného inbox tagu.
 
 Paperless vrátí task UUID dříve než document ID. Worker proto sleduje `/api/tasks/?task_id=...`; po získání `related_document_ids` idempotentně vytvoří jeden Invoice, stáhne snapshot přes REST a standardní cesta spustí OCR-dependent AI job. Tracking API odvozuje uživatelské stavy Paperless/OCR/AI/workflow a React je polluje po 3 s. Connect failure před odesláním dovoluje retry stejného souboru se stejným idempotency key; timeout, přerušená odpověď a 5xx jsou `SUBMISSION_UNKNOWN`, protože automatické opakování by mohlo vytvořit druhý Paperless dokument.
 
@@ -67,7 +67,13 @@ Backend, databáze, API a POHODA XML používají ISO datum. React má jedinou p
 
 Český domácí účet prochází jedinou normalizační službou. Kombinovaný vstup `[prefix-]account/bank_code` se rozloží bez hádání číslic; původní text zůstane v `bank_account_raw`. Dodavatelská adresa se strukturuje primárně modelem a konzervativně normalizuje pouze z dodavatelského adresního bloku, nikdy z celého OCR. Volitelný modulo-11 checksum i matematické VAT reconciliation kontroly včetně řádku jsou review WARNING; pouze neplatný/neúplný VAT formát zůstává blocking. `ROUNDING` je deterministicky odvozen výhradně z explicitního řádkového štítku v evidence, nikdy ze souhrnné částky, velikosti rozdílu nebo samotné klasifikace LLM. Deklarované částky se výpočtem nepřepisují.
 
-`QUEUE_MANAGER` vidí celou frontu a smí provádět správcovské změny. `APPROVER` vidí endpoint „Moje úkoly“ a detail/PDF pouze faktur s aktivním assignmentem. Role pocházejí z Keycloak tokenu a backend je kontroluje nezávisle na viditelnosti prvků ve frontendu.
+`QUEUE_MANAGER` vidí celou frontu a smí provádět správcovské změny. `APPROVER` vidí svoje aktuální i historické assignmenty a také dokumenty, které sám nahrál, a to už před vznikem assignmentu. Cizí approver bez uploader/assignment vztahu metadata ani PDF nevidí. Role pocházejí z Keycloak tokenu a backend je kontroluje nezávisle na viditelnosti prvků ve frontendu.
+
+### Sekce, self-approval a kontrola revize
+
+Business „Sekce“ používá stávající `CostCenter`; nevzniká druhý překrývající se číselník. `ApproverSectionPermission` je auditovatelná M:N vazba stabilního Keycloak subjectu na sekci. Approver smí vlastní allocations vytvořit pouze pro aktivní povolené sekce a pro každý takový řádek dostane standardní assignment. Každé nové rozhodnutí znovu ověřuje aktuální permission.
+
+Self-approval je běžný append-only `ApprovalDecision`, ale před queue review nemění dokument na `APPROVED` ani nevytváří schválené PDF. `submitted_to_queue_*` a `queue_manager_reviewed_*` jsou uloženy na `InvoiceRevision`; fork revize tedy review automaticky zneplatní. Správcovská změna klasifikace, režimu, sekcí nebo approverů po předání vytvoří novou revizi, historická rozhodnutí pouze invaliduje a nemaže.
 
 ## Revize a approvals
 

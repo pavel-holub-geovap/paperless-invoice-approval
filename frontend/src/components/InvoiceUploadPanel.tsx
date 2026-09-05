@@ -60,14 +60,14 @@ export const InvoiceUploadPanel = forwardRef<InvoiceUploadPanelHandle, Props>(fu
   const [items, setItems] = useState<LocalUpload[]>([]);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const isManager = user.roles.includes("QUEUE_MANAGER");
+  const canUpload = user.roles.some((role) => role === "QUEUE_MANAGER" || role === "APPROVER");
 
   useImperativeHandle(ref, () => ({ openFilePicker: () => inputRef.current?.click() }), []);
 
   useEffect(() => {
-    if (!isManager) return;
+    if (!canUpload) return;
     void api<UploadConfig>("/uploads/config").then(setConfig).catch(() => undefined);
-  }, [isManager]);
+  }, [canUpload]);
 
   useEffect(() => {
     const preventDocumentOpen = (event: DragEvent) => event.preventDefault();
@@ -149,7 +149,7 @@ export const InvoiceUploadPanel = forwardRef<InvoiceUploadPanelHandle, Props>(fu
   }, [config.max_file_size, send, user.username]);
 
   useEffect(() => {
-    if (!isManager) return;
+    if (!canUpload) return;
     const pending = items.filter((row) => row.id
       && !pollingFinished.has(row.status)
       && row.status !== "SELECTED"
@@ -163,9 +163,9 @@ export const InvoiceUploadPanel = forwardRef<InvoiceUploadPanelHandle, Props>(fu
       });
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [applyServerState, isManager, items]);
+  }, [applyServerState, canUpload, items]);
 
-  if (!isManager) return null;
+  if (!canUpload) return null;
   return <div className="invoice-upload-area">
     <input
       ref={inputRef}

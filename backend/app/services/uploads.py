@@ -21,6 +21,7 @@ from app.models import (
     DocumentUpload,
     DocumentUploadStatus,
     Invoice,
+    UploadOrigin,
     utcnow,
 )
 from app.request_context import get_correlation_id
@@ -76,6 +77,9 @@ def prepare_upload(
         idempotency_key=idempotency_key,
         actor_subject=user.subject,
         actor_username=user.username,
+        actor_role=(
+            "QUEUE_MANAGER" if "QUEUE_MANAGER" in user.roles else "APPROVER"
+        ),
         filename=filename,
         file_size=file_size,
         mime_type=mime_type,
@@ -96,6 +100,7 @@ def prepare_upload(
             "mime_type": mime_type,
             "sha256": sha256,
             "correlation_id": upload.correlation_id,
+            "actor_role": upload.actor_role,
         },
     )
     return upload, True
@@ -197,6 +202,7 @@ def link_upload_to_document(
     invoice.source_pdf_sha256 = upload.sha256
     invoice.uploaded_by_subject = upload.actor_subject
     invoice.uploaded_by_username = upload.actor_username
+    invoice.upload_origin = UploadOrigin(upload.actor_role)
     first_link = upload.paperless_document_id is None
     upload.paperless_document_id = document_id
     upload.invoice_id = invoice.id
@@ -216,6 +222,7 @@ def link_upload_to_document(
                 "paperless_task_id": upload.paperless_task_id,
                 "paperless_document_id": document_id,
                 "correlation_id": upload.correlation_id,
+                "actor_role": upload.actor_role,
             },
         )
     return invoice
@@ -350,6 +357,7 @@ def serialize_upload(db: Session, upload: DocumentUpload) -> dict[str, Any]:
         "ai_status": ai_status,
         "workflow_status": workflow_status,
         "uploaded_by": upload.actor_username,
+        "upload_origin": upload.actor_role,
         "source_created_at": invoice.paperless_created_at if invoice else None,
         "approval_created_at": invoice.created_at if invoice else None,
         "error_code": upload.error_code,

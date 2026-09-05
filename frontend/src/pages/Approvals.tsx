@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { InvoiceTable } from "../components/InvoiceTable";
+import { InvoiceUploadPanel, type InvoiceUploadPanelHandle } from "../components/InvoiceUploadPanel";
 import { StatusBadge } from "../components/StatusBadge";
 import { api, money } from "../lib/api";
 import { formatDateCs, formatDateTimeCs } from "../lib/dates";
@@ -7,12 +9,16 @@ import type {
   ApproverHistoryAssignment,
   ApproverHistoryDetail,
   ApproverHistoryResponse,
+  InvoiceListItem,
+  User,
 } from "../types";
 
 type Props = {
   history?: boolean;
+  uploaded?: boolean;
   historyInvoiceId?: string;
   onNavigate?: (path: string) => void;
+  user?: User;
 };
 
 const decisionLabels: Record<string, string> = {
@@ -123,7 +129,9 @@ function HistoryDetail({ detail, onBack }: { detail: ApproverHistoryDetail; onBa
   </section>;
 }
 
-export function Approvals({ history = false, historyInvoiceId, onNavigate }: Props) {
+const fallbackUser: User = { subject: "approver", username: "approver", roles: ["APPROVER"], csrf_token: "" };
+
+export function Approvals({ history = false, uploaded = false, historyInvoiceId, onNavigate, user = fallbackUser }: Props) {
   const navigate = onNavigate || navigateFallback;
   const [tasks, setTasks] = useState<ApprovalTask[]>([]);
   const [comments, setComments] = useState<Record<string, string>>({});
@@ -137,13 +145,24 @@ export function Approvals({ history = false, historyInvoiceId, onNavigate }: Pro
   const [page, setPage] = useState(1);
   const [historyResult, setHistoryResult] = useState<ApproverHistoryResponse>({ items: [], page: 1, page_size: 25, total: 0 });
   const [detail, setDetail] = useState<ApproverHistoryDetail | null>(null);
+  const [uploadedRows, setUploadedRows] = useState<InvoiceListItem[]>([]);
+  const uploadPanelRef = useRef<InvoiceUploadPanelHandle>(null);
 
   const loadTasks = () => api<ApprovalTask[]>("/approvals/mine").then(setTasks).catch((e) => setError(e.message));
+  const loadUploaded = useCallback(() => api<InvoiceListItem[]>("/invoices?scope=uploaded&view=all")
+    .then((rows) => { setUploadedRows(rows); setError(""); return rows; })
+    .catch((e) => { setError(e.message); return []; }), []);
   useEffect(() => {
     void loadTasks();
     const timer = window.setInterval(() => void loadTasks(), 5000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (!uploaded) return;
+    void loadUploaded();
+    const timer = window.setInterval(() => void loadUploaded(), 5000);
+    return () => window.clearInterval(timer);
+  }, [loadUploaded, uploaded]);
 
   useEffect(() => {
     if (!historyInvoiceId) { setDetail(null); return; }
@@ -190,14 +209,19 @@ export function Approvals({ history = false, historyInvoiceId, onNavigate }: Pro
 
   return <section>
     <div className="approver-tabs" role="tablist">
-      <button className={!history ? "active" : ""} role="tab" aria-selected={!history} onClick={() => navigate("/approvals")}>Ke schválení ({current.length})</button>
+      <button className={!history && !uploaded ? "active" : ""} role="tab" aria-selected={!history && !uploaded} onClick={() => navigate("/approvals")}>Ke schválení ({current.length})</button>
       <button className={history ? "active" : ""} role="tab" aria-selected={history} onClick={() => navigate("/approvals/history")}>Moje historie</button>
+      <button className={uploaded ? "active" : ""} role="tab" aria-selected={uploaded} onClick={() => navigate("/approvals/uploaded")}>Moje nahrané ({uploadedRows.length})</button>
     </div>
     {message && <div className="alert success">{message}</div>}
     {error && <div className="alert danger">{error}</div>}
-    {!history ? <>
+    {uploaded ? <>
+      <div className="section-heading queue-heading"><div><p className="eyebrow">Moje doklady</p><h1>Nahrané doklady</h1><p className="muted">Nahrajte PDF, počkejte na OCR a AI a potom doplňte sekce a vlastní schválení.</p></div><button className="button primary" onClick={()=>uploadPanelRef.current?.openFilePicker()}>+ Nahrát doklad</button></div>
+      <InvoiceUploadPanel ref={uploadPanelRef} user={user} onQueueChanged={async () => { await loadUploaded(); return true; }}/>
+      <InvoiceTable rows={uploadedRows} onOpen={(id)=>navigate(`/invoices/${encodeURIComponent(id)}`)}/>
+    </> : !history ? <>
       <div className="section-heading"><div><p className="eyebrow">Moje práce</p><h1>Ke schválení</h1><p className="muted">Každý úkol patří konkrétní revizi, rozúčtování, středisku a částce. Seznam se automaticky obnovuje.</p></div></div>
-      {!current.length ? <div className="empty">Momentálně nemáte žádný aktivní úkol ke schválení.</div> : <div className="task-grid">{current.map((task) => <article className="card approval-card" key={task.id}><div className="card-title"><div><h2>{task.invoice_number || "Faktura"}</h2><p>{task.supplier_name} · revize {task.revision}</p></div><StatusBadge value={task.assignment_status}/></div><div className="amount-block"><span>Faktura celkem<strong>{money(task.invoice_total, task.currency)}</strong></span><span>Schvaluji za {task.cost_center}<strong>{money(task.allocation_amount, task.currency)}</strong>{task.allocation_percentage != null && <small>{task.allocation_percentage} %</small>}</span></div>{task.allocation_note && <p className="muted">Poznámka: {task.allocation_note}</p>}<dl className="metadata-grid"><div><dt>Datum vystavení</dt><dd>{formatDateCs(String(task.invoice_data.issue_date || ""))}</dd></div><div><dt>Splatnost</dt><dd>{formatDateCs(String(task.invoice_data.due_date || ""))}</dd></div><div><dt>Variabilní symbol</dt><dd>{String(task.invoice_data.variable_symbol || "—")}</dd></div><div><dt>Platební údaj</dt><dd>{String(task.invoice_data.iban || task.invoice_data.bank_account || "—")}</dd></div></dl><a className="button secondary" href={`/api/invoices/${task.invoice_id}/pdf`} target="_blank" rel="noreferrer">Zobrazit originální PDF</a><textarea disabled={Boolean(pending)} placeholder="Komentář je povinný pro vrácení a zamítnutí" value={comments[task.id] || ""} onChange={(e) => setComments({ ...comments, [task.id]: e.target.value })}/><div className="decision-buttons"><button className="button primary" disabled={Boolean(pending)} onClick={() => void decide(task, "APPROVE")}>{pending === `${task.id}-APPROVE` ? "Schvaluji…" : "Schválit"}</button><button className="button warning" disabled={Boolean(pending)} onClick={() => void decide(task, "RETURN")}>{pending === `${task.id}-RETURN` ? "Vracím…" : "Vrátit"}</button><button className="button danger" disabled={Boolean(pending)} onClick={() => void decide(task, "REJECT")}>{pending === `${task.id}-REJECT` ? "Zamítám…" : "Zamítnout"}</button></div></article>)}</div>}
+      {!current.length ? <div className="empty">Momentálně nemáte žádný aktivní úkol ke schválení.</div> : <div className="task-grid">{current.map((task) => <article className="card approval-card" key={task.id}><div className="card-title"><div><h2>{task.invoice_number || "Faktura"}</h2><p>{task.supplier_name} · revize {task.revision}</p></div><StatusBadge value={task.assignment_status}/></div>{task.pre_review&&<div className="alert info">Vlastní sekci můžete schválit před předáním. Finální schválení čeká na kontrolu queue-managera.</div>}<div className="amount-block"><span>Faktura celkem<strong>{money(task.invoice_total, task.currency)}</strong></span><span>Schvaluji za {task.cost_center}<strong>{money(task.allocation_amount, task.currency)}</strong>{task.allocation_percentage != null && <small>{task.allocation_percentage} %</small>}</span></div>{task.allocation_note && <p className="muted">Poznámka: {task.allocation_note}</p>}<dl className="metadata-grid"><div><dt>Datum vystavení</dt><dd>{formatDateCs(String(task.invoice_data.issue_date || ""))}</dd></div><div><dt>Splatnost</dt><dd>{formatDateCs(String(task.invoice_data.due_date || ""))}</dd></div><div><dt>Variabilní symbol</dt><dd>{String(task.invoice_data.variable_symbol || "—")}</dd></div><div><dt>Platební údaj</dt><dd>{String(task.invoice_data.iban || task.invoice_data.bank_account || "—")}</dd></div></dl><a className="button secondary" href={`/api/invoices/${task.invoice_id}/pdf`} target="_blank" rel="noreferrer">Zobrazit originální PDF</a>{!task.pre_review&&<textarea disabled={Boolean(pending)} placeholder="Komentář je povinný pro vrácení a zamítnutí" value={comments[task.id] || ""} onChange={(e) => setComments({ ...comments, [task.id]: e.target.value })}/>}<div className="decision-buttons"><button className="button primary" disabled={Boolean(pending)} onClick={() => void decide(task, "APPROVE")}>{pending === `${task.id}-APPROVE` ? "Schvaluji…" : task.pre_review?"Schválit vlastní sekci":"Schválit"}</button>{!task.pre_review&&<><button className="button warning" disabled={Boolean(pending)} onClick={() => void decide(task, "RETURN")}>{pending === `${task.id}-RETURN` ? "Vracím…" : "Vrátit"}</button><button className="button danger" disabled={Boolean(pending)} onClick={() => void decide(task, "REJECT")}>{pending === `${task.id}-REJECT` ? "Zamítám…" : "Zamítnout"}</button></>}</div></article>)}</div>}
     </> : <>
       <div className="section-heading"><div><p className="eyebrow">Moje historie</p><h1>Historie faktur</h1><p className="muted">Faktury, ke kterým jste měl v libovolné revizi schvalovací vztah.</p></div></div>
       <div className="history-search"><label>Hledat ve fakturách a jejich obsahu<input aria-label="Hledat ve fakturách a jejich obsahu" placeholder="Dodavatel, číslo faktury nebo text z OCR…" value={query} onChange={(e) => resetPage(() => setQuery(e.target.value))}/></label></div>

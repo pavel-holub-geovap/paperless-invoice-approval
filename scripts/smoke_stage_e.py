@@ -424,7 +424,7 @@ def main() -> None:
             clients["approver2"], base_url, users["approver2"], task1["id"], "APPROVE", expected=403
         ).status_code
         manager_list_http = clients["approver1"].get(f"{base_url}/api/invoices").status_code
-        require(manager_list_http == 403, "Approver can access manager invoice list")
+        require(manager_list_http == 200, "Approver cannot access its scoped invoice list")
 
         final_audit = audit(manager, base_url, invoice_id)
         audit_types = {event["event_type"] for event in final_audit}

@@ -42,7 +42,11 @@ ALLOWED_TRANSITIONS: dict[InvoiceStatus, set[InvoiceStatus]] = {
     InvoiceStatus.AI_PROCESSING: {InvoiceStatus.VALIDATION, InvoiceStatus.NEEDS_REVIEW},
     InvoiceStatus.VALIDATION: {InvoiceStatus.QUEUE_REVIEW, InvoiceStatus.NEEDS_REVIEW},
     InvoiceStatus.QUEUE_REVIEW: {InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.READY_FOR_APPROVAL},
-    InvoiceStatus.NEEDS_REVIEW: {InvoiceStatus.VALIDATION, InvoiceStatus.READY_FOR_APPROVAL},
+    InvoiceStatus.NEEDS_REVIEW: {
+        InvoiceStatus.VALIDATION,
+        InvoiceStatus.QUEUE_REVIEW,
+        InvoiceStatus.READY_FOR_APPROVAL,
+    },
     InvoiceStatus.READY_FOR_APPROVAL: {InvoiceStatus.AWAITING_APPROVAL},
     InvoiceStatus.AWAITING_APPROVAL: {
         InvoiceStatus.RETURNED,
@@ -274,6 +278,8 @@ def fork_revision(
         number=invoice.current_revision_number + 1,
         data=data if data is not None else dict(current.data),
         created_by=actor,
+        submitted_to_queue_at=(datetime.now(UTC) if current.submitted_to_queue_at else None),
+        submitted_to_queue_by=current.submitted_to_queue_by,
     )
     db.add(new_revision)
     db.flush()
@@ -530,7 +536,63 @@ def ready_for_approval(db: Session, invoice: Invoice) -> tuple[bool, list[str]]:
             errors.append(
                 f"Středisko {allocation.cost_center_id} obsahuje neaktivního nebo neoprávněného schvalovatele."
             )
+        from app.services.section_permissions import has_section_permission
+
+        if any(
+            not has_section_permission(db, subject, allocation.cost_center_id)
+            for subject in subjects
+        ):
+            errors.append(
+                f"Sekce {allocation.cost_center_id} obsahuje schvalovatele bez aktuálního oprávnění."
+            )
     return not errors, errors
+
+
+def submit_to_queue_review(db: Session, invoice: Invoice, actor: str) -> None:
+    revision = invoice.current_revision
+    if revision is None:
+        raise WorkflowError("Invoice has no revision")
+    if invoice.uploaded_by_subject != actor:
+        raise WorkflowError("Only the uploader may submit this invoice for queue review")
+    if revision.submitted_to_queue_at is not None:
+        return
+    from app.services.disposition import ensure_actionable
+    from app.services.validation import run_validations
+
+    ensure_actionable(invoice, "be submitted for queue review")
+    run_validations(db, invoice, actor)
+    db.flush()
+    total, allocated, _ = allocation_totals(db, invoice)
+    allocations = db.scalar(
+        select(Allocation.id)
+        .where(
+            Allocation.revision_id == revision.id,
+            Allocation.active.is_(True),
+        )
+        .limit(1)
+    )
+    if not allocations or abs(allocated - total) > ALLOCATION_TOLERANCE:
+        raise WorkflowError("Rozúčtování musí před předáním odpovídat částce dokladu")
+    if db.scalar(
+        select(ValidationResult.id)
+        .where(
+            ValidationResult.revision_id == revision.id,
+            ValidationResult.severity == ValidationSeverity.BLOCKING_ERROR,
+        )
+        .limit(1)
+    ):
+        raise WorkflowError("Doklad má blokující validační chyby")
+    revision.submitted_to_queue_at = datetime.now(UTC)
+    revision.submitted_to_queue_by = actor
+    if invoice.status != InvoiceStatus.QUEUE_REVIEW:
+        transition(db, invoice, InvoiceStatus.QUEUE_REVIEW, actor)
+    record_event(
+        db,
+        "SUBMITTED_TO_QUEUE_MANAGER",
+        actor=actor,
+        invoice=invoice,
+        metadata={"revision_id": revision.id},
+    )
 
 
 def submit_for_approval(db: Session, invoice: Invoice, actor: str) -> None:
@@ -552,6 +614,17 @@ def submit_for_approval(db: Session, invoice: Invoice, actor: str) -> None:
         raise WorkflowError(f"Invoice cannot be submitted from {invoice.status.value}")
     if invoice.status != InvoiceStatus.READY_FOR_APPROVAL:
         transition(db, invoice, InvoiceStatus.READY_FOR_APPROVAL, actor)
+    revision = invoice.current_revision
+    assert revision is not None
+    revision.queue_manager_reviewed_at = datetime.now(UTC)
+    revision.queue_manager_reviewed_by = actor
+    record_event(
+        db,
+        "QUEUE_MANAGER_REVISION_REVIEWED",
+        actor=actor,
+        invoice=invoice,
+        metadata={"revision_id": revision.id},
+    )
     transition(db, invoice, InvoiceStatus.AWAITING_APPROVAL, actor)
     record_event(
         db,
@@ -559,6 +632,25 @@ def submit_for_approval(db: Session, invoice: Invoice, actor: str) -> None:
         actor=actor,
         invoice=invoice,
         new_state=InvoiceStatus.AWAITING_APPROVAL.value,
+    )
+    if all_required_approved(db, invoice):
+        _finalize_approved(db, invoice, actor)
+
+
+def _finalize_approved(db: Session, invoice: Invoice, actor: str) -> None:
+    revision = invoice.current_revision
+    if revision is None or revision.queue_manager_reviewed_at is None:
+        return
+    transition(db, invoice, InvoiceStatus.APPROVED, actor)
+    from app.config import get_settings
+    from app.services.jobs import enqueue_job
+
+    enqueue_job(
+        db,
+        "CREATE_APPROVED_PDF",
+        f"approved-pdf:{invoice.id}:{revision.id}:{get_settings().approved_pdf_stamp_version}",
+        invoice_id=invoice.id,
+        payload={"revision_id": revision.id},
     )
 
 
@@ -594,13 +686,24 @@ def decide(
         if existing.action == action and existing.actor_subject == actor:
             return existing
         raise WorkflowError("This assignment already has a valid decision")
-    if invoice.status != InvoiceStatus.AWAITING_APPROVAL:
-        raise WorkflowError("Invoice is not awaiting approval")
     revision = invoice.current_revision
     if revision is None or assignment.revision_id != revision.id or not assignment.active:
         raise WorkflowError("Approval assignment does not belong to the current revision")
     if assignment.status != ApprovalAssignmentStatus.PENDING:
         raise WorkflowError("Approval assignment is no longer pending")
+    from app.services.section_permissions import has_section_permission
+
+    if not has_section_permission(db, actor, assignment.allocation.cost_center_id):
+        raise WorkflowError("Schvalovatel již nemá oprávnění pro tuto sekci")
+    pre_review = (
+        invoice.uploaded_by_subject == actor
+        and revision.queue_manager_reviewed_at is None
+        and invoice.status in {InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.QUEUE_REVIEW}
+    )
+    if invoice.status != InvoiceStatus.AWAITING_APPROVAL and not pre_review:
+        raise WorkflowError("Invoice is not awaiting approval")
+    if pre_review and action != ApprovalAction.APPROVE:
+        raise WorkflowError("Před kontrolou queue-managera lze vlastní sekci pouze schválit")
     if action in {ApprovalAction.RETURN, ApprovalAction.REJECT} and not (comment and comment.strip()):
         raise WorkflowError("RETURN and REJECT require a comment")
 
@@ -634,24 +737,20 @@ def decide(
         metadata={"assignment_id": assignment.id, "allocation_id": assignment.allocation_id},
     )
 
-    if action == ApprovalAction.RETURN:
+    if pre_review:
+        record_event(
+            db,
+            "UPLOADER_SECTION_SELF_APPROVED",
+            actor=actor,
+            invoice=invoice,
+            metadata={"assignment_id": assignment.id, "revision_id": revision.id},
+        )
+    elif action == ApprovalAction.RETURN:
         transition(db, invoice, InvoiceStatus.RETURNED, actor, comment)
     elif action == ApprovalAction.REJECT:
         transition(db, invoice, InvoiceStatus.REJECTED, actor, comment)
     elif all_required_approved(db, invoice):
-        transition(db, invoice, InvoiceStatus.APPROVED, actor)
-        from app.config import get_settings
-        from app.services.jobs import enqueue_job
-
-        revision = invoice.current_revision
-        assert revision is not None
-        enqueue_job(
-            db,
-            "CREATE_APPROVED_PDF",
-            f"approved-pdf:{invoice.id}:{revision.id}:{get_settings().approved_pdf_stamp_version}",
-            invoice_id=invoice.id,
-            payload={"revision_id": revision.id},
-        )
+        _finalize_approved(db, invoice, actor)
     return decision
 
 

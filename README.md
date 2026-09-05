@@ -16,6 +16,9 @@ nebo deterministické POHODA XML. Import do POHODY zůstává ruční.
 
 Approval nikdy nečte databázi Paperless přímo. Originální PDF neduplikuje do své
 databáze a Paperless token neposílá do prohlížeče. Audit i AI běhy jsou append-only.
+Schvalovatel může stejnou zabezpečenou cestou nahrát vlastní PDF, připravit jeho
+sekce a schválit povolené části; finální postup vždy vyžaduje kontrolu konkrétní
+revize správcem fronty.
 
 ## První testovací nasazení na Linuxu
 

@@ -76,17 +76,23 @@ async def test_queue_manager_upload_pdf_is_accepted(
 
 
 @pytest.mark.asyncio
-async def test_approver_upload_is_forbidden(db: Session) -> None:
-    with pytest.raises(HTTPException) as caught:
-        await upload_routes.upload_invoice(
-            document=file(),
-            idempotency_key="upload-test-forbidden",
-            db=db,
-            user=approver(),
-            settings=Settings(upload_max_bytes=1024),
-        )
-    assert caught.value.status_code == 403
-    assert db.scalar(select(func.count()).select_from(DocumentUpload)) == 0
+async def test_approver_upload_uses_the_same_pipeline_with_provenance(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def accepted(db: Session, upload: DocumentUpload, _: bytes, __: Settings) -> None:
+        mark_submission_accepted(db, upload, "task-approver")
+
+    monkeypatch.setattr(upload_routes, "submit_upload", accepted)
+    result = await upload_routes.upload_invoice(
+        document=file(),
+        idempotency_key="upload-test-approver",
+        db=db,
+        user=approver(),
+        settings=Settings(upload_max_bytes=1024),
+    )
+    assert result["status"] == "PAPERLESS_PROCESSING"
+    assert result["upload_origin"] == "APPROVER"
+    assert db.scalar(select(DocumentUpload.actor_role)) == "APPROVER"
 
 
 @pytest.mark.asyncio

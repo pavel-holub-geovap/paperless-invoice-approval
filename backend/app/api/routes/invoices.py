@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import get_current_user, require_csrf
@@ -71,6 +71,7 @@ from app.services.workflow import (
     create_invoice,
     reopen,
     submit_for_approval,
+    submit_to_queue_review,
     update_invoice_data,
 )
 
@@ -84,6 +85,8 @@ def _manager(user: CurrentUser) -> None:
 
 def _viewer(db: Session, invoice: Invoice, user: CurrentUser) -> None:
     if "QUEUE_MANAGER" in user.roles:
+        return
+    if "APPROVER" in user.roles and invoice.uploaded_by_subject == user.subject:
         return
     if "APPROVER" in user.roles and db.scalar(
         select(ApprovalAssignment.id)
@@ -102,11 +105,36 @@ def _viewer(db: Session, invoice: Invoice, user: CurrentUser) -> None:
 def _pdf_viewer(db: Session, invoice: Invoice, user: CurrentUser) -> None:
     if "QUEUE_MANAGER" in user.roles:
         return
+    if "APPROVER" in user.roles and invoice.uploaded_by_subject == user.subject:
+        return
     if "APPROVER" in user.roles and user_can_access_invoice_history(
         db, user.subject, invoice.id
     ):
         return
     raise HTTPException(status_code=403, detail="Invoice PDF is not available to this user")
+
+
+def _preparer(invoice: Invoice, user: CurrentUser) -> bool:
+    revision = invoice.current_revision
+    if (
+        "APPROVER" not in user.roles
+        or invoice.uploaded_by_subject != user.subject
+        or revision is None
+        or revision.submitted_to_queue_at is not None
+        or invoice.status
+        not in {
+            InvoiceStatus.NEW,
+            InvoiceStatus.AI_PROCESSING,
+            InvoiceStatus.VALIDATION,
+            InvoiceStatus.NEEDS_REVIEW,
+            InvoiceStatus.QUEUE_REVIEW,
+        }
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Invoice can no longer be prepared by its uploader",
+        )
+    return True
 
 
 def _invoice_or_404(db: Session, invoice_id: str, lock: bool = False) -> Invoice:
@@ -228,6 +256,8 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             "sync_error": invoice.sync_error,
             "source_pdf_sha256": invoice.source_pdf_sha256,
             "uploaded_by": invoice.uploaded_by_username,
+            "uploaded_by_subject": invoice.uploaded_by_subject,
+            "upload_origin": invoice.upload_origin,
         },
         "status": invoice.status,
         "classification": {
@@ -282,6 +312,12 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
             "history": [serialize_ai(row) for row in ai_history],
         },
         "current_revision_number": invoice.current_revision_number,
+        "queue_review": {
+            "submitted_at": revision.submitted_to_queue_at,
+            "submitted_by": revision.submitted_to_queue_by,
+            "reviewed_at": revision.queue_manager_reviewed_at,
+            "reviewed_by": revision.queue_manager_reviewed_by,
+        },
         "original_review_confirmed": invoice.original_review_confirmed,
         "original_reviewed_at": invoice.original_reviewed_at,
         "original_reviewed_by": invoice.original_reviewed_by,
@@ -386,10 +422,12 @@ def list_invoices(
     cost_center: str | None = None,
     view: Literal["active", "ignored", "missing", "all"] = "active",
     sort: Literal["source_desc", "source_asc"] = "source_desc",
+    scope: Literal["all", "uploaded"] = "all",
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[InvoiceListItem]:
-    _manager(user)
+    if not ({"QUEUE_MANAGER", "APPROVER"} & set(user.roles)):
+        raise HTTPException(status_code=403, detail="Invoice access role required")
     source_order = (
         Invoice.paperless_created_at.asc().nullslast()
         if sort == "source_asc"
@@ -400,6 +438,21 @@ def list_invoices(
         .options(selectinload(Invoice.revisions))
         .order_by(source_order, Invoice.updated_at.desc())
     )
+    if "QUEUE_MANAGER" not in user.roles:
+        query = query.where(
+            or_(
+                Invoice.uploaded_by_subject == user.subject,
+                select(ApprovalAssignment.id)
+                .where(
+                    ApprovalAssignment.invoice_id == Invoice.id,
+                    ApprovalAssignment.approver_subject == user.subject,
+                    ApprovalAssignment.active.is_(True),
+                )
+                .exists(),
+            )
+        )
+    if scope == "uploaded":
+        query = query.where(Invoice.uploaded_by_subject == user.subject)
     if status_filter:
         query = query.where(Invoice.status == status_filter)
     if view == "active":
@@ -466,6 +519,8 @@ def list_invoices(
                 paperless_created_at=invoice.paperless_created_at,
                 approval_created_at=invoice.created_at,
                 uploaded_by=invoice.uploaded_by_username,
+                upload_origin=invoice.upload_origin,
+                queue_manager_reviewed=revision.queue_manager_reviewed_at is not None,
                 source_pdf_sha256=invoice.source_pdf_sha256,
                 sync_status=invoice.sync_status,
                 ai_status=invoice.ai_status,
@@ -601,8 +656,9 @@ def set_classification(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_csrf),
 ) -> dict[str, Any]:
-    _manager(user)
     invoice = _invoice_or_404(db, invoice_id, lock=True)
+    if "QUEUE_MANAGER" not in user.roles:
+        _preparer(invoice, user)
     _require_current_revision(invoice, payload.expected_revision)
     try:
         classify_document(
@@ -750,8 +806,9 @@ def patch_invoice(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_csrf),
 ) -> dict[str, Any]:
-    _manager(user)
     invoice = _invoice_or_404(db, invoice_id, lock=True)
+    if "QUEUE_MANAGER" not in user.roles:
+        _preparer(invoice, user)
     _require_current_revision(invoice, payload.expected_revision)
     try:
         update_invoice_data(db, invoice, payload.changes, user.subject, payload.comment)
@@ -770,8 +827,9 @@ def confirm_invoice_original(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_csrf),
 ) -> dict[str, Any]:
-    _manager(user)
     invoice = _invoice_or_404(db, invoice_id, lock=True)
+    if "QUEUE_MANAGER" not in user.roles:
+        _preparer(invoice, user)
     confirm_original(db, invoice, user.subject)
     db.commit()
     return serialize_invoice(db, _invoice_or_404(db, invoice_id))
@@ -865,11 +923,19 @@ def set_allocations(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_csrf),
 ) -> dict[str, Any]:
-    _manager(user)
     invoice = _invoice_or_404(db, invoice_id, lock=True)
+    uploader_preparing = False
+    if "QUEUE_MANAGER" not in user.roles:
+        uploader_preparing = _preparer(invoice, user)
     _require_current_revision(invoice, payload.expected_revision)
     try:
-        replace_allocations(db, invoice, payload.allocations, user.subject)
+        replace_allocations(
+            db,
+            invoice,
+            payload.allocations,
+            user.subject,
+            self_assign_subject=user.subject if uploader_preparing else None,
+        )
         db.commit()
     except WorkflowError as exc:
         db.rollback()
@@ -916,6 +982,23 @@ def submit(
     invoice = _invoice_or_404(db, invoice_id, lock=True)
     try:
         submit_for_approval(db, invoice, user.subject)
+        db.commit()
+    except WorkflowError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return serialize_invoice(db, _invoice_or_404(db, invoice_id))
+
+
+@router.post("/{invoice_id}/submit-for-review")
+def submit_for_queue_review(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_csrf),
+) -> dict[str, Any]:
+    invoice = _invoice_or_404(db, invoice_id, lock=True)
+    _preparer(invoice, user)
+    try:
+        submit_to_queue_review(db, invoice, user.subject)
         db.commit()
     except WorkflowError as exc:
         db.rollback()

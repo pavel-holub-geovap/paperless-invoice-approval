@@ -13,6 +13,7 @@ from app.models import (
     ApprovalAssignment,
     ApprovalDecision,
     ApprovedPdfStatus,
+    ApproverSectionPermission,
     CostCenter,
     DocumentType,
     ExtractionSource,
@@ -75,6 +76,13 @@ def prepared_invoice(db: Session, approvers: tuple[str, ...] = ("approver-1",)):
     assignments = []
     for subject in approvers:
         db.add(UserIdentity(subject=subject, username=subject, roles=["APPROVER"], active=True))
+        db.add(
+            ApproverSectionPermission(
+                approver_subject=subject,
+                cost_center_id=centre.id,
+                granted_by="manager",
+            )
+        )
         assignment = ApprovalAssignment(
             invoice_id=invoice.id,
             revision_id=invoice.current_revision.id,
@@ -227,6 +235,13 @@ def test_three_cost_centres_are_approved_in_parallel(db: Session) -> None:
                 username=f"approver-{index}",
                 roles=["APPROVER"],
                 active=True,
+            )
+        )
+        db.add(
+            ApproverSectionPermission(
+                approver_subject=f"approver-{index}",
+                cost_center_id=centre.id,
+                granted_by="manager",
             )
         )
         db.add(assignment)

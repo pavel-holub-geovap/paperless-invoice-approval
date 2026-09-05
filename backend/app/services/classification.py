@@ -71,7 +71,14 @@ def classify_document(
         InvoiceStatus.QUEUE_REVIEW,
         InvoiceStatus.NEEDS_REVIEW,
     }
-    if changed and progressed:
+    revision_was_submitted = bool(
+        invoice.current_revision
+        and (
+            invoice.current_revision.submitted_to_queue_at is not None
+            or invoice.current_revision.queue_manager_reviewed_at is not None
+        )
+    )
+    if changed and (progressed or revision_was_submitted):
         fork_revision(db, invoice, actor, "Změna typu dokladu nebo režimu zpracování")
     invoice.document_type = document_type
     invoice.processing_mode = processing_mode

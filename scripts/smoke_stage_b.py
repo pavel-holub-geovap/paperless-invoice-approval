@@ -85,8 +85,18 @@ def main() -> None:
         approver_user = response_json(approver.get(f"{base_url}/api/auth/me"), "approver1 /me")
         require("APPROVER" in approver_user["roles"], "approver1 role is missing")
         tasks = response_json(approver.get(f"{base_url}/api/approvals/mine"), "approver1 tasks")
-        invoice_list_status = approver.get(f"{base_url}/api/invoices").status_code
-        require(invoice_list_status == 403, "approver1 unexpectedly sees the manager invoice list")
+        approver_invoice_list = response_json(
+            approver.get(f"{base_url}/api/invoices"), "approver1 scoped invoice list"
+        )
+        invoice_list_status = 200
+        require(
+            all(
+                row.get("uploaded_by") == approver_user["username"]
+                or row.get("approvals_required", 0) > 0
+                for row in approver_invoice_list
+            ),
+            "approver1 scoped list contains an unrelated invoice",
+        )
     finally:
         approver.close()
 

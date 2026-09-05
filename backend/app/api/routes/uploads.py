@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import ROLE_QUEUE_MANAGER, require_csrf_roles, require_roles
+from app.auth import ROLE_APPROVER, ROLE_QUEUE_MANAGER, require_csrf_roles, require_roles
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.models import DocumentUpload
@@ -18,11 +18,6 @@ from app.services.uploads import prepare_upload, safe_filename, serialize_upload
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 _IDEMPOTENCY = re.compile(r"^[A-Za-z0-9._:-]{8,100}$")
-
-
-def _manager(user: CurrentUser) -> None:
-    if ROLE_QUEUE_MANAGER not in user.roles:
-        raise HTTPException(status_code=403, detail="QUEUE_MANAGER role required")
 
 
 def _failure_detail(code: str, message: str, retryable: bool = False) -> dict[str, Any]:
@@ -58,7 +53,7 @@ def _audit_rejected(
 @router.get("/config")
 def upload_config(
     settings: Settings = Depends(get_settings),
-    _: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER)),
+    _: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
 ) -> dict[str, Any]:
     return {
         "max_file_size": settings.upload_max_bytes,
@@ -72,7 +67,7 @@ def upload_config(
 def list_uploads(
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER)),
+    user: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
 ) -> list[dict[str, Any]]:
     rows = db.scalars(
         select(DocumentUpload)
@@ -87,7 +82,7 @@ def list_uploads(
 def get_upload(
     upload_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER)),
+    user: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
 ) -> dict[str, Any]:
     upload = db.get(DocumentUpload, upload_id)
     if upload is None:
@@ -102,10 +97,9 @@ async def upload_invoice(
     document: Annotated[UploadFile, File()],
     idempotency_key: Annotated[str, Form()],
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_csrf_roles(ROLE_QUEUE_MANAGER)),
+    user: CurrentUser = Depends(require_csrf_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    _manager(user)
     original_filename = document.filename or ""
     filename = safe_filename(document.filename)
     mime_type = (document.content_type or "application/octet-stream").lower()

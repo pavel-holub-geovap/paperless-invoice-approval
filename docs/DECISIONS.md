@@ -126,3 +126,11 @@ Izolace není založena pouze na query parametru. Paperless klient po serverové
 ISDOC 6.0.2 se neinterpretuje podle interních názvů polí ani podle producenta. Repozitář obsahuje oficiální invoice/core XSD s kontrolními součty; runtime nepoužívá síť. Po bezpečném parsování a detekci namespace/verze následuje XSD, verzi specifický mapper, normalizace a semantic required-field kontrola.
 
 Mapper používá výhradně explicitní namespace-aware strukturální cesty. `Invoice/ID` je číslo dokladu, supplier `PartyIdentification/ID` je IČO a `InvoiceLine/ID` je řádkový identifikátor. Tato volba zabraňuje významovým kolizím globálních XPath a současně není vázaná na iDoklad. Ruční reprocessing je auditovaný job; validní ISDOC nahrazující aktuální OCR data vytváří novou standardní revizi a nemaže historický AI běh.
+
+## ADR-025: Sekce znovu používá CostCenter a queue review patří revizi
+
+Současný `CostCenter` už představuje organizační jednotku použitou allocations a approval assignmenty. Business termín „Sekce“ proto znovu používá tento model; přejmenování tabulek by bylo rizikové a druhý číselník by vytvářel nejednoznačnost. Approval allocations nadále nejsou automatickým účetním rozpisem POHODA XML.
+
+Oprávnění schvalovat sekci je samostatná aktivovatelná M:N vazba `ApproverSectionPermission` se stabilním Keycloak subjectem, grant/revoke údaji a append-only auditem. Odebrání oprávnění nemaže minulá rozhodnutí, ale blokuje nové rozhodnutí i v případě staršího assignmentu.
+
+Approver-upload ukládá explicitní origin a uploader subject. Self-approval zůstává standardním rozhodnutím, avšak finální gate je `queue_manager_reviewed_at` na konkrétní `InvoiceRevision`. Nová revize začíná bez submit/review značek; dřívější rozhodnutí zůstává historické a invalidované standardním revision mechanismem.

@@ -27,6 +27,7 @@ from app.services.approver_history import (
     list_approver_history,
     user_can_access_invoice_history,
 )
+from app.services.section_permissions import has_section_permission
 from app.services.workflow import WorkflowError, decide
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -111,11 +112,17 @@ def my_approvals(
     for assignment in assignments:
         invoice = db.get(Invoice, assignment.invoice_id)
         revision = invoice.current_revision
+        pre_review = (
+            invoice.uploaded_by_subject == user.subject
+            and invoice.status in {InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.QUEUE_REVIEW}
+            and revision.queue_manager_reviewed_at is None
+        )
         if (
-            invoice.status != InvoiceStatus.AWAITING_APPROVAL
+            (invoice.status != InvoiceStatus.AWAITING_APPROVAL and not pre_review)
             or invoice.disposition != InvoiceDisposition.ACTIVE
             or invoice.source_status != SourceDocumentStatus.AVAILABLE
             or assignment.revision_id != revision.id
+            or not has_section_permission(db, user.subject, assignment.allocation.cost_center_id)
         ):
             continue
         valid_decision = next((row for row in reversed(assignment.decisions) if row.valid), None)
@@ -138,6 +145,7 @@ def my_approvals(
                 "decision": valid_decision.action if valid_decision else None,
                 "comment": valid_decision.comment if valid_decision else None,
                 "current": True,
+                "pre_review": pre_review,
             }
         )
     return result

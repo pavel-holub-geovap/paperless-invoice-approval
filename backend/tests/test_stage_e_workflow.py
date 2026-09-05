@@ -15,6 +15,7 @@ from app.models import (
     ApprovalAssignment,
     ApprovalAssignmentStatus,
     ApprovalDecision,
+    ApproverSectionPermission,
     AuditEvent,
     CostCenter,
     DocumentType,
@@ -88,6 +89,16 @@ def base_invoice(db, paperless_id: int = 8001):
     db.add_all(centres)
     for subject in ("approver-1", "approver-2", "approver-3"):
         db.add(UserIdentity(subject=subject, username=subject, roles=["APPROVER"], active=True))
+    db.flush()
+    for subject in ("approver-1", "approver-2", "approver-3"):
+        for centre in centres:
+            db.add(
+                ApproverSectionPermission(
+                    approver_subject=subject,
+                    cost_center_id=centre.id,
+                    granted_by="manager",
+                )
+            )
     db.flush()
     return invoice, centres
 

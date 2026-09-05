@@ -16,6 +16,7 @@ from app.models import (
     Allocation,
     ApprovalAction,
     ApprovalAssignment,
+    ApproverSectionPermission,
     CostCenter,
     DocumentType,
     ExportArtifact,
@@ -124,6 +125,14 @@ def approved_invoice(
     )
     if db.get(UserIdentity, "approver-1") is None:
         db.add(UserIdentity(subject="approver-1", username="approver-1", roles=["APPROVER"]))
+    db.flush()
+    db.add(
+        ApproverSectionPermission(
+            approver_subject="approver-1",
+            cost_center_id=centre.id,
+            granted_by="manager",
+        )
+    )
     db.add(assignment)
     db.flush()
     run_validations(db, invoice)

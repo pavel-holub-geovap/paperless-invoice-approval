@@ -5,9 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import ROLE_QUEUE_MANAGER, require_csrf, require_roles
+from app.auth import ROLE_APPROVER, ROLE_QUEUE_MANAGER, require_csrf, require_roles
 from app.db import get_db
-from app.models import CostCenter
+from app.models import ApproverSectionPermission, CostCenter
 from app.schemas import CostCenterIn, CostCenterOut, CurrentUser
 from app.services.cost_centers import create_cost_center as create_row
 from app.services.cost_centers import update_cost_center as update_row
@@ -19,9 +19,18 @@ router = APIRouter(prefix="/cost-centers", tags=["cost-centers"])
 def list_cost_centers(
     include_inactive: bool = False,
     db: Session = Depends(get_db),
-    _: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER)),
+    user: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
 ) -> list[CostCenter]:
     query = select(CostCenter).order_by(CostCenter.code)
+    if ROLE_QUEUE_MANAGER not in user.roles:
+        query = query.join(
+            ApproverSectionPermission,
+            ApproverSectionPermission.cost_center_id == CostCenter.id,
+        ).where(
+            ApproverSectionPermission.approver_subject == user.subject,
+            ApproverSectionPermission.active.is_(True),
+        )
+        include_inactive = False
     if not include_inactive:
         query = query.where(CostCenter.active.is_(True))
     return list(db.scalars(query).all())

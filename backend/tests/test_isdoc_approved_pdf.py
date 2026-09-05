@@ -16,6 +16,7 @@ from app.config import Settings
 from app.models import (
     Allocation,
     ApprovalAssignment,
+    ApproverSectionPermission,
     AuditEvent,
     CostCenter,
     DocumentType,
@@ -465,6 +466,13 @@ def test_record_only_document_cannot_receive_approval_assignments(db: Session) -
         )
     )
     db.flush()
+    db.add(
+        ApproverSectionPermission(
+            approver_subject="record-only-approver",
+            cost_center_id=centre.id,
+            granted_by="manager",
+        )
+    )
     replace_approvers(db, invoice, allocation, ["record-only-approver"], "manager")
     assert db.scalar(
         select(ApprovalAssignment).where(ApprovalAssignment.allocation_id == allocation.id)

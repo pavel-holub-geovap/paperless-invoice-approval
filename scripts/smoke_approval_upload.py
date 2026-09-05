@@ -120,14 +120,18 @@ def main() -> None:
         manager_user = response_json(manager.get(f"{base_url}/api/auth/me"), "manager /me")
         approver_user = response_json(approver.get(f"{base_url}/api/auth/me"), "approver /me")
 
-        forbidden = submit(
+        approver_upload = submit(
             approver,
             base_url,
             approver_user,
-            f"codex-upload-forbidden-{run_id}.pdf",
-            synthetic_pdf(fixture, f"forbidden-{run_id}"),
+            f"codex-approver-upload-{run_id}.pdf",
+            synthetic_pdf(fixture, f"approver-{run_id}"),
         )
-        require(forbidden.status_code == 403, "Approver upload did not return HTTP 403")
+        require(approver_upload.status_code == 202, "Approver upload was not accepted")
+        require(
+            approver_upload.json().get("upload_origin") == "APPROVER",
+            "Approver upload provenance is missing",
+        )
 
         before_rows = response_json(
             manager.get(f"{base_url}/api/invoices", params={"view": "all"}),
@@ -240,7 +244,7 @@ def main() -> None:
                 "detail_available": True,
                 "audit": audit_evidence(single["id"], single["invoice_id"]),
             },
-            "authorization": {"approver_upload_http": forbidden.status_code},
+            "authorization": {"approver_upload_http": approver_upload.status_code},
             "multi": {
                 "accepted": len(multi_done),
                 "invalid_http": invalid_response.status_code,

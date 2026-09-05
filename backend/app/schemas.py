@@ -366,6 +366,8 @@ class InvoiceListItem(BaseModel):
     paperless_created_at: datetime | None
     approval_created_at: datetime
     uploaded_by: str | None
+    upload_origin: str
+    queue_manager_reviewed: bool = False
     source_pdf_sha256: str | None
     sync_status: PaperlessSyncStatus
     ai_status: AIExtractionStatus
@@ -397,6 +399,12 @@ class CostCenterOut(CostCenterIn):
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class SectionPermissionSet(BaseModel):
+    approver_subject: str = Field(min_length=1, max_length=255)
+    cost_center_id: str = Field(min_length=1, max_length=36)
+    active: bool
 
 
 class ExportCreate(BaseModel):

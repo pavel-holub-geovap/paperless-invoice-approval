@@ -6,6 +6,23 @@ import { CostCenters } from "./CostCenters";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Stage E pages", () => {
+  it("shows uploader self-approval as pre-review without reject actions", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [{
+        id: "self-assignment", invoice_id: "own-invoice", invoice_status: "NEEDS_REVIEW",
+        revision: 1, invoice_number: "OWN-1", invoice_total: "100.00", currency: "CZK",
+        cost_center: "SEC-A", allocation_amount: "100.00", invoice_data: {},
+        assignment_status: "PENDING", current: true, pre_review: true,
+      }],
+    }));
+    render(<Approvals />);
+    expect(await screen.findByRole("button", { name: "Schválit vlastní sekci" })).toBeVisible();
+    expect(screen.getByText(/Finální schválení čeká na kontrolu queue-managera/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Zamítnout" })).not.toBeInTheDocument();
+  });
+
   it("shows an approver task bound to allocation and revision", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
@@ -36,7 +53,7 @@ describe("Stage E pages", () => {
     }));
     render(<CostCenters />);
     expect(await screen.findByText("Vývoj")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Přidat středisko" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Přidat sekci" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Deaktivovat" })).toBeVisible();
   });
 

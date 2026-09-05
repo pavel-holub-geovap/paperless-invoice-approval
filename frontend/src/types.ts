@@ -21,6 +21,8 @@ export type InvoiceListItem = {
   paperless_created_at?: string;
   approval_created_at?: string;
   uploaded_by?: string;
+  upload_origin?: "PAPERLESS_SYNC" | "QUEUE_MANAGER" | "APPROVER";
+  queue_manager_reviewed?: boolean;
   source_pdf_sha256?: string;
   sync_status: "PENDING" | "SYNCED" | "ERROR";
   ai_status: AIStatus;
@@ -183,6 +185,12 @@ export type Invoice = {
     history: AIExtraction[];
   };
   current_revision_number: number;
+  queue_review?: {
+    submitted_at?: string;
+    submitted_by?: string;
+    reviewed_at?: string;
+    reviewed_by?: string;
+  };
   paperless: {
     title: string;
     created_at?: string;
@@ -197,6 +205,8 @@ export type Invoice = {
     sync_error?: string;
     source_pdf_sha256?: string;
     uploaded_by?: string;
+    uploaded_by_subject?: string;
+    upload_origin?: "PAPERLESS_SYNC" | "QUEUE_MANAGER" | "APPROVER";
   };
   original_review_confirmed: boolean;
   original_reviewed_at?: string;
@@ -262,6 +272,19 @@ export type ApprovalTask = {
   decision?: string;
   comment?: string;
   current: boolean;
+  pre_review?: boolean;
+};
+
+export type SectionPermission = {
+  id: string;
+  approver_subject: string;
+  approver_username: string;
+  cost_center: Pick<CostCenter, "id" | "code" | "name" | "active">;
+  active: boolean;
+  granted_by: string;
+  granted_at: string;
+  revoked_by?: string;
+  revoked_at?: string;
 };
 
 export type ApproverHistoryAssignment = {
@@ -368,6 +391,7 @@ export type UploadTracking = {
   ai_status?: AIStatus;
   workflow_status?: string;
   uploaded_by: string;
+  upload_origin?: "QUEUE_MANAGER" | "APPROVER";
   source_created_at?: string;
   approval_created_at?: string;
   error_code?: string;

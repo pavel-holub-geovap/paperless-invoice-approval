@@ -96,7 +96,7 @@ describe("Stage B pages", () => {
     );
     expect(screen.getByText(/Zdrojový dokument v Paperless chybí/)).toBeVisible();
     expect(screen.queryByTitle("Originální faktura")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Předat ke schválení" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Schválit kontrolu a předat" })).toBeDisabled();
   });
 
   it("preserves unsaved form data when polling returns a newer revision", async () => {

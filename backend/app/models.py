@@ -93,6 +93,12 @@ class DocumentUploadStatus(enum.StrEnum):
     SUBMISSION_UNKNOWN = "SUBMISSION_UNKNOWN"
 
 
+class UploadOrigin(enum.StrEnum):
+    PAPERLESS_SYNC = "PAPERLESS_SYNC"
+    QUEUE_MANAGER = "QUEUE_MANAGER"
+    APPROVER = "APPROVER"
+
+
 class InvoiceDisposition(enum.StrEnum):
     ACTIVE = "ACTIVE"
     IGNORED_DUPLICATE = "IGNORED_DUPLICATE"
@@ -213,6 +219,12 @@ class Invoice(Base):
     source_pdf_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
     uploaded_by_subject: Mapped[str | None] = mapped_column(String(255), index=True)
     uploaded_by_username: Mapped[str | None] = mapped_column(String(255))
+    upload_origin: Mapped[UploadOrigin] = mapped_column(
+        Enum(UploadOrigin, native_enum=False),
+        default=UploadOrigin.PAPERLESS_SYNC,
+        nullable=False,
+        index=True,
+    )
     document_type: Mapped[DocumentType] = mapped_column(
         Enum(DocumentType, native_enum=False),
         default=DocumentType.UNCLASSIFIED,
@@ -335,6 +347,10 @@ class InvoiceRevision(Base):
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_by: Mapped[str] = mapped_column(String(255), default="system")
+    submitted_to_queue_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_to_queue_by: Mapped[str | None] = mapped_column(String(255))
+    queue_manager_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    queue_manager_reviewed_by: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     invoice: Mapped[Invoice] = relationship(back_populates="revisions")
@@ -509,6 +525,33 @@ class CostCenter(Base):
     )
 
 
+class ApproverSectionPermission(Base):
+    __tablename__ = "approver_section_permissions"
+    __table_args__ = (
+        UniqueConstraint("approver_subject", "cost_center_id", name="uq_approver_section"),
+        Index("ix_approver_section_active", "approver_subject", "active"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    approver_subject: Mapped[str] = mapped_column(
+        ForeignKey("user_identities.subject"), nullable=False, index=True
+    )
+    cost_center_id: Mapped[str] = mapped_column(
+        ForeignKey("cost_centers.id"), nullable=False, index=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    granted_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revoked_by: Mapped[str | None] = mapped_column(String(255))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    approver: Mapped[UserIdentity] = relationship()
+    cost_center: Mapped[CostCenter] = relationship()
+
+
 class Allocation(Base):
     __tablename__ = "allocations"
     __table_args__ = (
@@ -652,6 +695,7 @@ class DocumentUpload(Base):
     idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     actor_subject: Mapped[str] = mapped_column(String(255), index=True)
     actor_username: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_role: Mapped[str] = mapped_column(String(32), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)

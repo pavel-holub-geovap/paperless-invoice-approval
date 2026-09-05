@@ -58,13 +58,13 @@ afterEach(() => {
 });
 
 describe("invoice upload panel", () => {
-  it("renders the drop zone for a queue manager and nothing for an approver", () => {
+  it("renders the same secure drop zone for a queue manager and an approver", () => {
     mockBase();
     const view = render(<InvoiceUploadPanel user={manager} onQueueChanged={() => false} />);
     expect(screen.getByText("Přetáhněte fakturu sem nebo")).toBeVisible();
     expect(screen.getByRole("button", { name: "Vybrat soubor" })).toBeVisible();
     view.rerender(<InvoiceUploadPanel user={approver} onQueueChanged={() => false} />);
-    expect(screen.queryByText("Přetáhněte fakturu sem nebo")).not.toBeInTheDocument();
+    expect(screen.getByText("Přetáhněte fakturu sem nebo")).toBeInTheDocument();
   });
 
   it("does not load or render a permanent upload history grid", async () => {

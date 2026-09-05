@@ -1,5 +1,13 @@
 # Aktuální stav
 
+## Approver upload a revizní queue review
+
+- `APPROVER` používá stejný `/api/uploads` BFF jako queue manager; metadata nesou `actor_role` a faktura `upload_origin`, stabilní uploader subject i username.
+- Existující `CostCenter` je v českém UI „Sekce“. Explicitní `ApproverSectionPermission` podporuje M:N grant/revoke, audit a kontrolu aktuálního oprávnění při každém novém rozhodnutí.
+- Uploader vidí vlastní dokument už před assignmentem, smí opravit data a rozdělit jej pouze do povolených sekcí. Vzniká normální vlastní assignment/decision.
+- Self-approval není finální gate. Předání a kontrola queue-managera jsou uloženy na konkrétní revizi; správcovská změna po předání vytvoří novou revizi a zachová předchozí rozhodnutí jako invalidovanou historii.
+- Schvalovatelská navigace obsahuje „Ke schválení“, „Moje historie“ a „Moje nahrané“ s upload boxem. Manager grid rozlišuje approver-upload a stav kontroly.
+
 ## Shared Docker host bootstrap (2026-09-02)
 
 - Compose detekce nyní preferuje `docker compose`, akceptuje každou major verzi

@@ -1,5 +1,11 @@
 # Schvalovací workflow
 
+## Doklad nahraný schvalovatelem
+
+Schvalovatel nahraje PDF přes stejnou Paperless pipeline, po dokončení OCR/extrakce zkontroluje data a rozdělí částku do sekcí, pro které má aktivní oprávnění. Backend automaticky vytvoří jeho standardní assignmenty; každou sekci schvaluje samostatným `ApprovalDecision`.
+
+Ani úplné vlastní schválení nevytvoří finální stav nebo schválené PDF. Uploader explicitně předá aktuální revizi queue-managerovi. Queue manager ověří originál, klasifikaci, režim, sekce a approvery a review potvrdí při předání do standardního approval workflow. Každá významná změna po předání vytvoří novou revizi bez předchozí review značky; dřívější self-approval zůstává v historii jako invalidovaný.
+
 Workflow stav je nezávislý na `Invoice.disposition` a `source_status`. Ignorování ani Paperless 404 stav nepřepisují; ignored/MISSING pouze zablokují nové předání, rozhodnutí, export a potvrzení importu. Obnovení zdroje/dispozice pokračuje z dochovaného workflow podle jeho běžných preconditions.
 
 ## Doménová vazba

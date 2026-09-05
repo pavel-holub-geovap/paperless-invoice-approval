@@ -20,6 +20,7 @@ from app.models import (
 )
 from app.services.allocations import allocate_by_percentages
 from app.services.audit import record_event
+from app.services.section_permissions import has_section_permission
 from app.services.validation import run_validations
 from app.services.workflow import WorkflowError, fork_revision
 
@@ -47,11 +48,16 @@ def replace_allocations(
     invoice: Invoice,
     items: Sequence[Any],
     actor: str,
+    *,
+    self_assign_subject: str | None = None,
 ) -> None:
     revision = invoice.current_revision
     if revision is None:
         raise WorkflowError("Invoice has no revision")
-    if invoice.status in REVISION_SENSITIVE_STATES:
+    if invoice.status in REVISION_SENSITIVE_STATES or (
+        revision.submitted_to_queue_at is not None
+        or revision.queue_manager_reviewed_at is not None
+    ):
         revision = fork_revision(db, invoice, actor, "Změna rozúčtování")
     try:
         total = Decimal(str(revision.data.get("total_amount") or "0")).quantize(CENT)
@@ -88,6 +94,11 @@ def replace_allocations(
     }
     if set(centre_ids) != set(centres):
         raise WorkflowError("Unknown or inactive cost center")
+    if self_assign_subject and any(
+        not has_section_permission(db, self_assign_subject, center_id)
+        for center_id in centre_ids
+    ):
+        raise WorkflowError("Schvalovatel smí použít pouze povolené sekce")
 
     existing = db.scalars(
         select(Allocation).where(
@@ -156,6 +167,26 @@ def replace_allocations(
         )
         db.add(allocation)
         db.flush()
+        if self_assign_subject:
+            assignment = ApprovalAssignment(
+                invoice_id=invoice.id,
+                revision_id=revision.id,
+                allocation_id=allocation.id,
+                approver_subject=self_assign_subject,
+                assigned_by=actor,
+            )
+            db.add(assignment)
+            record_event(
+                db,
+                "APPROVER_ADDED",
+                actor=actor,
+                invoice=invoice,
+                new_value={
+                    "allocation_id": allocation.id,
+                    "approver": self_assign_subject,
+                    "source": "UPLOADER_SELF_ASSIGNMENT",
+                },
+            )
         value = {
             "id": allocation.id,
             "cost_center": centres[item.cost_center_id].code,
@@ -188,7 +219,14 @@ def replace_approvers(
         raise WorkflowError(
             "Schvalovatelé mohou být přiřazeni pouze dokladu v režimu FOR_APPROVAL"
         )
-    if invoice.status in REVISION_SENSITIVE_STATES:
+    revision = invoice.current_revision
+    if invoice.status in REVISION_SENSITIVE_STATES or (
+        revision is not None
+        and (
+            revision.submitted_to_queue_at is not None
+            or revision.queue_manager_reviewed_at is not None
+        )
+    ):
         old_cost_center_id = allocation.cost_center_id
         revision = fork_revision(db, invoice, actor, "Změna seznamu schvalovatelů")
         allocation = db.scalar(
@@ -216,6 +254,11 @@ def replace_approvers(
     ]
     if invalid:
         raise WorkflowError("Unknown, inactive, or unauthorized approver")
+    if any(
+        not has_section_permission(db, subject, allocation.cost_center_id)
+        for subject in unique_subjects
+    ):
+        raise WorkflowError("Schvalovatel nemá oprávnění pro zvolenou sekci")
 
     rows = db.scalars(
         select(ApprovalAssignment).where(ApprovalAssignment.allocation_id == allocation.id)

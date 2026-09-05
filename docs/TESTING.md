@@ -67,7 +67,13 @@ Skript načítá testovací credentials pouze z chráněného serverového `.env
 
 ## Approval upload test
 
-Backend regrese pokrývají manager PDF accepted, approver HTTP 403, nepodporovaný typ, oversize, Paperless unavailable, append-only audit, task→invoice tracking, SHA-256, sanitaci názvu a idempotentní retry bez druhého tracking záznamu. Frontend testuje viditelnost podle role, oba file pickery, drag enter/leave/drop, multi-file izolaci, invalidní soubor, okamžitý pending stav, úspěch, chybu, retry a polling do fronty bez F5. GUI regrese navíc ověřuje, že se nenačítá ani nevykresluje historický upload grid, obě hlavičkové akce sdílejí jeden container, refresh blokuje dvojklik a dočasný tracking zmizí až po potvrzení invoice v hlavní frontě.
+Backend regrese pokrývají manager i approver PDF accepted přes shodnou pipeline, explicitní origin, nepodporovaný typ, oversize, Paperless unavailable, append-only audit, task→invoice tracking, SHA-256, sanitaci názvu a idempotentní retry bez druhého tracking záznamu. Frontend testuje oba file pickery, drag enter/leave/drop, multi-file izolaci, invalidní soubor, okamžitý pending stav, úspěch, chybu, retry a polling do fronty bez F5.
+
+## Approver upload a sekce
+
+`test_approver_uploaded_workflow.py` pokrývá grant/revoke audity M:N permission, zákaz cizí sekce, automatický uploader assignment, self-approval bez finálního `APPROVED`, explicitní předání queue-managerovi, revision-specific review gate, invalidaci historie při manager změně, advance reclassification na POHODA `NONE` a kontrolu aktuální permission při každém novém rozhodnutí. Migrační test ověřuje čistý upgrade na `0011` včetně nových tabulek a sloupců.
+
+Live scénář spouští `scripts/smoke_approver_upload_sections.py`. Vytvoří dvě jednoznačně pojmenované testovací sekce a syntetický PDF dokument, povolí approver1 jen první sekci, ověří backendový zákaz druhé, self-approval, předání, manager reclassification/revizi, POHODA `NONE`, revision review a zachovanou invalidovanou historii. Vytvořená auditní data automaticky nemaže.
 
 ## Moje historie
 

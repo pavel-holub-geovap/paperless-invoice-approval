@@ -58,8 +58,17 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         approved_pdf_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(approved_pdf_artifacts)").fetchall()
         }
+        revision_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(invoice_revisions)").fetchall()
+        }
+        permission_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(approver_section_permissions)"
+            ).fetchall()
+        }
 
-    assert revision == ("0010",)
+    assert revision == ("0011",)
     assert {
         "paperless_title",
         "paperless_ocr_text",
@@ -85,6 +94,7 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         "has_embedded_isdoc",
         "isdoc_status",
         "pohoda_import_method",
+        "upload_origin",
     } <= invoice_columns
     assert {"isdoc_sha256", "mapped_data", "provenance", "attachment_metadata"} <= isdoc_columns
     assert {
@@ -117,6 +127,7 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
     assert {
         "idempotency_key",
         "actor_subject",
+        "actor_role",
         "filename",
         "file_size",
         "mime_type",
@@ -129,5 +140,20 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         "error_code",
         "retryable",
     } <= upload_columns
+    assert {
+        "submitted_to_queue_at",
+        "submitted_to_queue_by",
+        "queue_manager_reviewed_at",
+        "queue_manager_reviewed_by",
+    } <= revision_columns
+    assert {
+        "approver_subject",
+        "cost_center_id",
+        "active",
+        "granted_by",
+        "granted_at",
+        "revoked_by",
+        "revoked_at",
+    } <= permission_columns
     assert "ix_approval_assignment_approver_invoice" in assignment_indexes
     assert "ix_approval_decision_assignment_created" in decision_indexes
