@@ -37,23 +37,20 @@ def main() -> None:
     try:
         centers = []
         for suffix in ("A", "B"):
-            center = response_json(
-                mutate(
-                    manager,
-                    "POST",
-                    f"{base}/api/cost-centers",
-                    manager_user,
-                    {
-                        "code": f"SMK-{suffix}-{marker}",
-                        "name": f"Smoke sekce {suffix} {marker}",
-                        "pohoda_code": f"SMK-{suffix}-{marker}",
-                        "active": True,
-                    },
-                    expected=201,
-                ),
-                f"create section {suffix}",
+            center_response = mutate(
+                manager,
+                "POST",
+                f"{base}/api/cost-centers",
+                manager_user,
+                {
+                    "code": f"SMK-{suffix}-{marker}",
+                    "name": f"Smoke sekce {suffix} {marker}",
+                    "pohoda_code": f"SMK-{suffix}-{marker}",
+                    "active": True,
+                },
+                expected=201,
             )
-            centers.append(center)
+            centers.append(center_response.json())
         mutate(
             manager,
             "PUT",
