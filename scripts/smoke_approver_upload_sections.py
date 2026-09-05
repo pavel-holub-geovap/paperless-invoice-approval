@@ -68,7 +68,8 @@ def main() -> None:
 
         fixture = Path(
             os.environ.get(
-                "APPROVER_UPLOAD_SMOKE_PDF", "/fixtures/synthetic-invoice-cs-en.pdf"
+                "APPROVER_UPLOAD_SMOKE_PDF",
+                "/fixtures/synthetic/synthetic-invoice-cs-en.pdf",
             )
         ).read_bytes() + f"\n% approver section smoke {marker}\n".encode()
         upload_response = approver.post(
