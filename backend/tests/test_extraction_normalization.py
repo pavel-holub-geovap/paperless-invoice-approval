@@ -105,21 +105,26 @@ def test_rounding_candidate_with_summary_evidence_is_rejected(source_text: str) 
 
 
 @pytest.mark.parametrize(
-    "source_text",
+    ("source_text", "taxable_base", "vat_amount", "gross_amount"),
     [
-        "Zaokrouhlení +0,30 Kč",
-        "Zaokrouhlení -0,25 Kč",
-        "Haléřové vyrovnání: 0,30 Kč",
-        "Vyrovnání -0,25 Kč",
-        "Rounding 0.30",
+        ("Zaokrouhlení +0,30 Kč", "0.25", "0.05", "0.30"),
+        ("Zaokrouhlení -0,25 Kč", "-0.25", "0.00", "-0.25"),
+        ("Haléřové vyrovnání: 0,30 Kč", "0.25", "0.05", "0.30"),
+        ("Vyrovnání -0,25 Kč", "-0.25", "0.00", "-0.25"),
+        ("Rounding 0.30", "0.25", "0.05", "0.30"),
     ],
 )
-def test_explicit_rounding_evidence_is_accepted(source_text: str) -> None:
+def test_explicit_rounding_evidence_is_accepted(
+    source_text: str,
+    taxable_base: str,
+    vat_amount: str,
+    gross_amount: str,
+) -> None:
     raw = structured()
     raw["vat_lines"][0].update(
-        taxable_base="0.25",
-        vat_amount="0.05",
-        gross_amount="0.30",
+        taxable_base=taxable_base,
+        vat_amount=vat_amount,
+        gross_amount=gross_amount,
         adjustment_type="ROUNDING",
         source_text=source_text,
     )
@@ -128,6 +133,31 @@ def test_explicit_rounding_evidence_is_accepted(source_text: str) -> None:
 
     assert payload.vat_lines[0].adjustment_type == "ROUNDING"
     assert diagnostics["rejections"] == []
+
+
+def test_zero_rounding_evidence_rejects_invoice_summary_as_adjustment() -> None:
+    raw = structured()
+    source_text = (
+        "MEZISOUČET 179,00\n"
+        "Zaokrouhlení 0,00\n"
+        "Základ DPH 12% 159,82\n"
+        "DPH 12% 19,18\n"
+        "CELKEM 179,00"
+    )
+    raw["vat_lines"][0].update(
+        vat_rate="12",
+        taxable_base="159.82",
+        vat_amount="19.18",
+        gross_amount="179.00",
+        adjustment_type="ROUNDING",
+        source_text=source_text,
+    )
+
+    payload, diagnostics = normalize_raw_extraction(raw)
+
+    assert payload.vat_lines[0].adjustment_type is None
+    assert payload.vat_lines[0].gross_amount == Decimal("179.00")
+    assert diagnostics["rejections"][0]["code"] == ROUNDING_REJECTION_CODE
 
 
 def test_explicit_rounding_label_is_deterministically_classified() -> None:

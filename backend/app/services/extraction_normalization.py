@@ -283,6 +283,9 @@ def normalize_raw_extraction(
         adjustment = canonical_rounding_type(
             str(raw_adjustment) if raw_adjustment is not None else None,
             source,
+            taxable_base=normalized_row["taxable_base"],
+            vat_amount=normalized_row["vat_amount"],
+            gross_amount=normalized_row["gross_amount"],
         )
         rejected = bool(
             isinstance(raw_adjustment, str)

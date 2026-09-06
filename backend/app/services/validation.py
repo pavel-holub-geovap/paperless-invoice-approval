@@ -18,6 +18,7 @@ from app.models import (
 )
 from app.services.audit import record_event
 from app.services.bank_accounts import normalize_payment_data, valid_czech_account_checksum
+from app.services.rounding import canonical_rounding_type, explicit_rounding_amount
 
 ICO_RE = re.compile(r"^\d{8}$")
 DIC_RE = re.compile(r"^(CZ)?\d{8,10}$", re.IGNORECASE)
@@ -354,24 +355,33 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                         details={"row": index + 1, "difference": str(gross - base - vat)},
                     )
                 )
-            is_rounding = row.get("adjustment_type") == "ROUNDING"
+            is_rounding = canonical_rounding_type(
+                row.get("adjustment_type"),
+                row.get("source_text"),
+                taxable_base=base,
+                vat_amount=vat,
+                gross_amount=gross,
+            ) == "ROUNDING"
             if is_rounding:
+                rounding_amount = explicit_rounding_amount(row.get("source_text"))
+                if rounding_amount is None:
+                    rounding_amount = base + vat
                 rounding_rows.append(
                     {
                         "row": index + 1,
                         "base": str(base),
                         "vat": str(vat),
-                        "total": str(base + vat),
+                        "total": str(rounding_amount),
                     }
                 )
                 results.append(
                     _result(
                         "VAT_ROUNDING_ADJUSTMENT",
                         ValidationSeverity.WARNING,
-                        f"Faktura obsahuje položku zaokrouhlení {base + vat}.",
+                        f"Faktura obsahuje položku zaokrouhlení {rounding_amount}.",
                         "vat_lines",
                         expected="explicit invoice adjustment",
-                        actual=str(base + vat),
+                        actual=str(rounding_amount),
                         details=rounding_rows[-1],
                     )
                 )

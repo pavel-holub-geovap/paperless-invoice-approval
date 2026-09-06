@@ -142,6 +142,41 @@ def test_exact_pixel_amounts_have_no_rounding_warning() -> None:
     )
 
 
+def test_zero_rounding_summary_is_a_normal_vat_row() -> None:
+    data = valid_data()
+    data.update(
+        total_without_vat="159.82",
+        total_vat="19.18",
+        total_amount="179.00",
+        vat_lines=[
+            {
+                "vat_rate": "12",
+                "taxable_base": "159.82",
+                "vat_amount": "19.18",
+                "gross_amount": "179.00",
+                "adjustment_type": "ROUNDING",
+                "source_text": (
+                    "MEZISOUČET 179,00\n"
+                    "Zaokrouhlení 0,00\n"
+                    "Základ DPH 12% 159,82\n"
+                    "DPH 12% 19,18\n"
+                    "CELKEM 179,00"
+                ),
+            }
+        ],
+    )
+
+    codes = {row.code for row in validate_invoice_data(data)}
+
+    assert codes >= {
+        "VAT_ROW_OK",
+        "VAT_BASE_TOTAL_OK",
+        "VAT_TOTAL_OK",
+        "TOTAL_MATH_OK",
+    }
+    assert "VAT_ROUNDING_ADJUSTMENT" not in codes
+
+
 def test_manual_save_recalculates_current_revision_without_ai_rerun(db) -> None:
     invoice = create_invoice(db, 1099)
     stale_revision = update_invoice_data(
@@ -159,10 +194,18 @@ def test_manual_save_recalculates_current_revision_without_ai_rerun(db) -> None:
                 {
                     "vat_rate": "21",
                     "taxable_base": "4000.00",
-                    "vat_amount": "840.00",
-                    "gross_amount": "4840.00",
+                    "vat_amount": "800.00",
+                    "gross_amount": "4800.00",
+                    "adjustment_type": None,
+                    "source_text": "DPH 21 % 800,00",
+                },
+                {
+                    "vat_rate": "20",
+                    "taxable_base": "0.25",
+                    "vat_amount": "0.05",
+                    "gross_amount": "0.30",
                     "adjustment_type": "ROUNDING",
-                    "source_text": "Chybný AI kandidát bez vlivu na nový výpočet",
+                    "source_text": "Zaokrouhlení 0,30",
                 }
             ],
         },
@@ -233,3 +276,56 @@ def test_manual_save_recalculates_current_revision_without_ai_rerun(db) -> None:
     mismatch = next(row for row in invalid["validations"] if row["code"] == "VAT_TOTAL_MATH")
     assert mismatch["expected"] == "5203.00"
     assert mismatch["actual"] == "5204.00"
+
+
+def test_manual_save_revalidates_stale_zero_rounding_candidate(db) -> None:
+    invoice = create_invoice(db, 1100)
+    stale_revision = invoice.current_revision
+    assert stale_revision is not None
+    stale_revision.data = {
+        "supplier_name": "Pekařství a cukrářství Sázava, a.s.",
+        "invoice_number": "288St",
+        "issue_date": "2026-09-02",
+        "currency": "CZK",
+        "total_without_vat": "179.00",
+        "total_vat": "15.98",
+        "total_amount": "179.00",
+        "vat_lines": [
+            {
+                "vat_rate": "12",
+                "taxable_base": "159.82",
+                "vat_amount": "19.18",
+                "gross_amount": "179.00",
+                "adjustment_type": "ROUNDING",
+                "source_text": "Zaokrouhlení 0,00",
+            }
+        ],
+    }
+    db.flush()
+
+    response = patch_invoice(
+        invoice.id,
+        InvoicePatch(
+            expected_revision=stale_revision.number,
+            changes={
+                "total_without_vat": "159.82",
+                "total_vat": "19.18",
+                "total_amount": "179.00",
+            },
+        ),
+        db,
+        CurrentUser(subject="manager", username="manager", roles=["QUEUE_MANAGER"]),
+    )
+
+    assert response["current_revision_number"] == stale_revision.number + 1
+    assert response["data"]["vat_lines"][0]["adjustment_type"] is None
+    assert {row["code"] for row in response["validations"]} >= {
+        "VAT_ROW_OK",
+        "VAT_BASE_TOTAL_OK",
+        "VAT_TOTAL_OK",
+        "TOTAL_MATH_OK",
+    }
+    assert not any(
+        row["code"] == "VAT_ROUNDING_ADJUSTMENT"
+        for row in response["validations"]
+    )

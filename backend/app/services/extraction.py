@@ -30,7 +30,7 @@ from app.services.bank_accounts import normalize_payment_data
 from app.services.invoice_amounts import reconcile_printed_invoice_amounts
 from app.services.invoice_dates import reconcile_extraction_dates
 from app.services.jobs import enqueue_job
-from app.services.rounding import canonical_rounding_type
+from app.services.rounding import canonical_rounding_type, normalize_invoice_rounding
 from app.services.supplier_addresses import normalize_supplier_address
 from app.services.validation import run_validations, validate_invoice_data
 from app.services.workflow import update_invoice_data
@@ -57,7 +57,11 @@ def extraction_to_invoice_data(
     for row in payload.vat_lines:
         normalized_row = row.model_dump(mode="json")
         normalized_row["adjustment_type"] = canonical_rounding_type(
-            row.adjustment_type, row.source_text
+            row.adjustment_type,
+            row.source_text,
+            taxable_base=row.taxable_base,
+            vat_amount=row.vat_amount,
+            gross_amount=row.gross_amount,
         )
         if row.taxable_base is not None and row.gross_amount is not None:
             derived_vat = row.gross_amount - row.taxable_base
@@ -96,7 +100,8 @@ def extraction_to_invoice_data(
             "description": scalar("description"),
         }
     )
-    return normalize_payment_data(reconcile_printed_invoice_amounts(data, ocr_text))
+    reconciled = reconcile_printed_invoice_amounts(data, ocr_text)
+    return normalize_payment_data(normalize_invoice_rounding(reconciled))
 
 
 def _stored_extraction_payload(extraction: AIExtraction) -> InvoiceExtractionV1:

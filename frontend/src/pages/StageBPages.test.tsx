@@ -370,7 +370,7 @@ describe("Stage B pages", () => {
               { vat_rate: "21", taxable_base: "0.29", vat_amount: "0.06", adjustment_type: "ROUNDING" },
             ],
           },
-          validations: [{ code: "VAT_ROUNDING_ADJUSTMENT", severity: "WARNING", field_name: "vat_lines", message: "Faktura obsahuje položku zaokrouhlení 0.35.", expected: "explicit invoice adjustment", actual: "0.35", details: { difference: "0.35" } }],
+          validations: [{ code: "VAT_ROUNDING_ADJUSTMENT", severity: "WARNING", field_name: "vat_lines", message: "Faktura obsahuje položku zaokrouhlení 0.35.", expected: "explicit invoice adjustment", actual: "0.35", details: { row: 2, difference: "0.35" } }],
         }}
         user={user}
         onBack={() => undefined}
@@ -412,6 +412,39 @@ describe("Stage B pages", () => {
 
     expect(screen.getByText("DPH řádek 1")).toBeVisible();
     expect(screen.queryByText("Zaokrouhlení")).not.toBeInTheDocument();
+    expect(screen.queryByText(/pravděpodobně způsoben položkou Zaokrouhlení/)).not.toBeInTheDocument();
+    await act(async () => undefined);
+  });
+
+  it("does not present a zero-rounding VAT summary as an adjustment", async () => {
+    mockEmptyApi();
+    render(
+      <InvoiceDetail
+        invoice={{
+          ...invoice,
+          data: {
+            currency: "CZK", total_without_vat: "159.82", total_vat: "19.18", total_amount: "179.00",
+            vat_lines: [{
+              vat_rate: "12", taxable_base: "159.82", vat_amount: "19.18", gross_amount: "179.00",
+              adjustment_type: "ROUNDING", source_text: "Zaokrouhlení 0,00",
+            }],
+          },
+          validations: [
+            { code: "VAT_ROW_OK", severity: "OK", field_name: "vat_lines", message: "DPH řádek 1 matematicky sedí." },
+            { code: "VAT_BASE_TOTAL_OK", severity: "OK", field_name: "total_without_vat", message: "Součet základů DPH odpovídá celkovému základu." },
+            { code: "VAT_TOTAL_OK", severity: "OK", field_name: "total_vat", message: "Součet DPH odpovídá celkovému DPH." },
+            { code: "TOTAL_MATH_OK", severity: "OK", field_name: "total_amount", message: "Základ a DPH odpovídají celkové částce." },
+          ],
+        }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("DPH řádek 1")).toBeVisible();
+    expect(screen.queryByText("Zaokrouhlení")).not.toBeInTheDocument();
+    expect(screen.queryByText(/VAT_ROUNDING_ADJUSTMENT/)).not.toBeInTheDocument();
     expect(screen.queryByText(/pravděpodobně způsoben položkou Zaokrouhlení/)).not.toBeInTheDocument();
     await act(async () => undefined);
   });

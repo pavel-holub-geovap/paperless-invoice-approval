@@ -4,7 +4,7 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from app.services.rounding import has_explicit_rounding_evidence
+from app.services.rounding import canonical_rounding_type
 
 MONEY = r"(?:\d{1,3}(?:[ .]\d{3})*|\d+),\d{2}"
 VAT_TABLE_ROW_RE = re.compile(
@@ -39,15 +39,18 @@ def reconcile_printed_invoice_amounts(data: dict[str, Any], ocr_text: str | None
         base = _decimal(match.group("base"))
         gross = _decimal(match.group("gross"))
         vat = gross - base
-        label = match.group("label").strip(" ,.;")
         rows.append(
             {
                 "vat_rate": str(Decimal(match.group("rate"))),
                 "taxable_base": str(base),
                 "vat_amount": str(vat),
                 "gross_amount": str(gross),
-                "adjustment_type": (
-                    "ROUNDING" if has_explicit_rounding_evidence(label) else None
+                "adjustment_type": canonical_rounding_type(
+                    None,
+                    line,
+                    taxable_base=base,
+                    vat_amount=vat,
+                    gross_amount=gross,
                 ),
                 "source_text": line,
                 "normalization": "printed_ocr_vat_table",

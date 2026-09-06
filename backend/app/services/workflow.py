@@ -29,6 +29,7 @@ from app.models import (
 )
 from app.services.audit import record_event
 from app.services.bank_accounts import normalize_payment_data
+from app.services.rounding import normalize_invoice_rounding
 
 
 class WorkflowError(ValueError):
@@ -205,7 +206,7 @@ def update_invoice_data(
     unknown = set(changes) - set(current.data) - allowed
     if unknown:
         raise WorkflowError(f"Unknown invoice fields: {', '.join(sorted(unknown))}")
-    merged = {**current.data, **changes}
+    merged = normalize_invoice_rounding({**current.data, **changes})
     if set(changes) & {
         "bank_account",
         "bank_account_raw",

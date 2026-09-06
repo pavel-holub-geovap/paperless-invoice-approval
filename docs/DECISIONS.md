@@ -142,3 +142,9 @@ Ruční změna fakturačních údajů vrací autoritativní serverový snapshot.
 Frontend po úspěšném save použije přímo vrácený snapshot a zneplatní starší rozpracovaný polling request. Nečeká na následný GET, který by mohl dokončit v opačném pořadí a dočasně vrátit staré validační zprávy. Automatický polling nadále nepřepisuje dirty formulář.
 
 Uživatelské názvy backendových stavů se překládají v jedné prezentační vrstvě. DB enumy, API hodnoty a auditní kódy zůstávají stabilní a neznámý kód se v běžném UI nezobrazí jako raw enum.
+
+## ADR-027: Rounding vyžaduje shodu částky na stejném řádku
+
+Samotný štítek `Zaokrouhlení` není dostatečný důkaz. Deterministická hranice přijme nenulový `ROUNDING` pouze tehdy, když poslední peněžní částka na témže explicitním řádku souhlasí s hrubou částkou kandidáta, případně se součtem základu a DPH, pokud hrubá částka chybí. Nulová hodnota je významově bez adjustmentu a nevytváří warning. CELKEM, mezisoučet ani souhrnný DPH řádek proto nemohou dodat částku k jinému štítku.
+
+Stejná kanonizace se používá při raw normalizaci, převodu extraction, parsování vytištěné DPH tabulky, validaci a každém ručním uložení. Historická AI odpověď se nemění, ale neplatný odvozený příznak se před vytvořením nové current revize odstraní. Frontend označuje řádek jako zaokrouhlení pouze podle aktuálního výsledku backendové validace, ne podle neověřeného historického pole.
