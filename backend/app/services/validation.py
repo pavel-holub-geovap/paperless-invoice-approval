@@ -578,11 +578,17 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
 
 
 def run_validations(
-    db: Session, invoice: Invoice, actor: str = "system"
+    db: Session,
+    invoice: Invoice,
+    actor: str = "system",
+    *,
+    revision: InvoiceRevision | None = None,
 ) -> list[ValidationResult]:
-    revision = invoice.current_revision
+    revision = revision or invoice.current_revision
     if revision is None:
         raise ValueError("Invoice has no current revision")
+    if revision.invoice_id != invoice.id or revision.number != invoice.current_revision_number:
+        raise ValueError("Validation revision must be the current invoice revision")
     db.execute(delete(ValidationResult).where(ValidationResult.revision_id == revision.id))
     results = validate_invoice_data(revision.data)
     if invoice.source_status == SourceDocumentStatus.MISSING:

@@ -1,5 +1,11 @@
 # Aktuální stav
 
+## Ruční opravy, validace a české stavové labely
+
+- Ruční PATCH fakturačních údajů přepočítává celý deterministický validační set výslovně nad revizí vrácenou z `update_invoice_data`; změna, flush, validace a response jsou atomické. Předchozí revize a její historické validace zůstávají zachované a Qwen se znovu nespouští.
+- Detail po save okamžitě použije autoritativní response a zneplatní starší polling request. Dirty formulář zůstává chráněný, ale úspěšně uložený formulář už nezobrazuje stale validation snapshot.
+- Ve „Fakturačních údajích“ je víceřádková „Poznámka“ posledním polem přes celou šířku a tlačítko „Uložit změny“ je až pod ní. Workflow, klasifikace, extrakce, ISDOC, POHODA, approval, upload a validační stavy používají společné české display labely; interní enumy se nezměnily.
+
 ## Approver upload a revizní queue review
 
 - `APPROVER` používá stejný `/api/uploads` BFF jako queue manager; metadata nesou `actor_role` a faktura `upload_origin`, stabilní uploader subject i username.

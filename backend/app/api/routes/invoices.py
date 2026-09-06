@@ -811,9 +811,12 @@ def patch_invoice(
         _preparer(invoice, user)
     _require_current_revision(invoice, payload.expected_revision)
     try:
-        update_invoice_data(db, invoice, payload.changes, user.subject, payload.comment)
+        revision = update_invoice_data(
+            db, invoice, payload.changes, user.subject, payload.comment
+        )
         set_extraction_source(db, invoice, ExtractionSource.MANUAL)
-        run_validations(db, invoice, user.subject)
+        db.flush()
+        run_validations(db, invoice, user.subject, revision=revision)
         db.commit()
     except WorkflowError as exc:
         db.rollback()

@@ -1,3 +1,5 @@
+import { displayLabel } from "../lib/labels";
+
 const tone: Record<string, string> = {
   BLOCKING_ERROR: "danger",
   REJECTED: "danger",
@@ -14,5 +16,6 @@ const tone: Record<string, string> = {
 };
 
 export function StatusBadge({ value }: { value: string }) {
-  return <span className={`badge badge-${tone[value] ?? "neutral"}`}>{value.replaceAll("_", " ")}</span>;
+  const baseValue = value.replace(/^\d+\s+/, "");
+  return <span className={`badge badge-${tone[baseValue] ?? "neutral"}`}>{displayLabel(value)}</span>;
 }

@@ -134,3 +134,11 @@ Současný `CostCenter` už představuje organizační jednotku použitou alloca
 Oprávnění schvalovat sekci je samostatná aktivovatelná M:N vazba `ApproverSectionPermission` se stabilním Keycloak subjectem, grant/revoke údaji a append-only auditem. Odebrání oprávnění nemaže minulá rozhodnutí, ale blokuje nové rozhodnutí i v případě staršího assignmentu.
 
 Approver-upload ukládá explicitní origin a uploader subject. Self-approval zůstává standardním rozhodnutím, avšak finální gate je `queue_manager_reviewed_at` na konkrétní `InvoiceRevision`. Nová revize začíná bez submit/review značek; dřívější rozhodnutí zůstává historické a invalidované standardním revision mechanismem.
+
+## ADR-026: Ruční save atomicky přepočítává validace aktuální revize
+
+Ruční změna fakturačních údajů vrací autoritativní serverový snapshot. Backend po vytvoření nebo úpravě `InvoiceRevision` změny flushne a celý deterministický validační set přepočítá výslovně nad touto current revizí ve stejné transakci. Historické validace předchozí revize se nemažou a ruční save nespouští OCR, ISDOC ani Qwen.
+
+Frontend po úspěšném save použije přímo vrácený snapshot a zneplatní starší rozpracovaný polling request. Nečeká na následný GET, který by mohl dokončit v opačném pořadí a dočasně vrátit staré validační zprávy. Automatický polling nadále nepřepisuje dirty formulář.
+
+Uživatelské názvy backendových stavů se překládají v jedné prezentační vrstvě. DB enumy, API hodnoty a auditní kódy zůstávají stabilní a neznámý kód se v běžném UI nezobrazí jako raw enum.

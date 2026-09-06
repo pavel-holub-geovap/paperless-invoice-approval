@@ -1,6 +1,10 @@
 from decimal import Decimal
 
-from app.models import ValidationSeverity
+from sqlalchemy import func, select
+
+from app.api.routes.invoices import patch_invoice
+from app.models import AIExtraction, ValidationResult, ValidationSeverity
+from app.schemas import CurrentUser, InvoicePatch
 from app.services.validation import (
     run_validations,
     valid_czech_ico,
@@ -136,3 +140,96 @@ def test_exact_pixel_amounts_have_no_rounding_warning() -> None:
     assert Decimal("756.00") + Decimal("210.00") - Decimal("63.00") == Decimal(
         "903.00"
     )
+
+
+def test_manual_save_recalculates_current_revision_without_ai_rerun(db) -> None:
+    invoice = create_invoice(db, 1099)
+    stale_revision = update_invoice_data(
+        db,
+        invoice,
+        {
+            "supplier_name": "Pixel Design s.r.o.",
+            "invoice_number": "PIXEL-STALE-1",
+            "issue_date": "2026-08-01",
+            "currency": "CZK",
+            "total_without_vat": "4000.00",
+            "total_vat": "800.00",
+            "total_amount": "4800.00",
+            "vat_lines": [
+                {
+                    "vat_rate": "21",
+                    "taxable_base": "4000.00",
+                    "vat_amount": "840.00",
+                    "gross_amount": "4840.00",
+                    "adjustment_type": "ROUNDING",
+                    "source_text": "Chybný AI kandidát bez vlivu na nový výpočet",
+                }
+            ],
+        },
+        "ai",
+    )
+    run_validations(db, invoice, "ai", revision=stale_revision)
+    db.commit()
+    assert db.scalar(select(func.count(AIExtraction.id))) == 0
+    assert db.scalar(
+        select(ValidationResult.id).where(
+            ValidationResult.revision_id == stale_revision.id,
+            ValidationResult.code == "VAT_ROUNDING_ADJUSTMENT",
+        )
+    )
+
+    response = patch_invoice(
+        invoice.id,
+        InvoicePatch(
+            expected_revision=stale_revision.number,
+            changes={
+                "total_without_vat": "4300.00",
+                "total_vat": "903.00",
+                "total_amount": "5203.00",
+                "vat_lines": [
+                    {
+                        "vat_rate": "21",
+                        "taxable_base": "4300.00",
+                        "vat_amount": "903.00",
+                        "gross_amount": "5203.00",
+                        "adjustment_type": None,
+                        "source_text": "Ručně ověřený řádek DPH 21 %",
+                    }
+                ],
+            },
+        ),
+        db,
+        CurrentUser(subject="manager", username="manager", roles=["QUEUE_MANAGER"]),
+    )
+
+    assert response["current_revision_number"] == stale_revision.number + 1
+    assert response["classification"]["extraction_source"] == "MANUAL"
+    current_codes = {row["code"] for row in response["validations"]}
+    assert current_codes >= {
+        "VAT_ROW_OK",
+        "VAT_BASE_TOTAL_OK",
+        "VAT_TOTAL_OK",
+        "TOTAL_MATH_OK",
+    }
+    assert "VAT_ROUNDING_ADJUSTMENT" not in current_codes
+    assert "VAT_TOTAL_MATH" not in current_codes
+    assert db.scalar(select(func.count(AIExtraction.id))) == 0
+    assert db.scalar(
+        select(ValidationResult.id).where(
+            ValidationResult.revision_id == stale_revision.id,
+            ValidationResult.code == "VAT_ROUNDING_ADJUSTMENT",
+        )
+    )
+
+    invalid = patch_invoice(
+        invoice.id,
+        InvoicePatch(
+            expected_revision=response["current_revision_number"],
+            changes={"total_amount": "5204.00"},
+        ),
+        db,
+        CurrentUser(subject="manager", username="manager", roles=["QUEUE_MANAGER"]),
+    )
+    mismatch = next(row for row in invalid["validations"] if row["code"] == "VAT_TOTAL_MATH")
+    assert mismatch["expected"] == "5203.00"
+    assert mismatch["actual"] == "5204.00"

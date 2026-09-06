@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api";
+import { displayLabel } from "../lib/labels";
 import type { UploadConfig, UploadTracking, User } from "../types";
 
 type LocalUpload = UploadTracking & { localId: string; file?: File };
@@ -201,7 +202,7 @@ export const InvoiceUploadPanel = forwardRef<InvoiceUploadPanelHandle, Props>(fu
         const detail = item.error_message || errorFallbacks[item.error_code || ""];
         return <div className={`upload-feedback-item${failed ? " upload-feedback-error" : ""}`} key={item.localId}>
           <span className="upload-state-icon" aria-hidden="true">{item.status === "READY_FOR_REVIEW" ? "✓" : failed ? "✕" : "●"}</span>
-          <span><strong>{item.filename}</strong><small>{statusLabels[item.status] || item.status}{detail ? ` · Důvod: ${detail}` : ""}</small></span>
+          <span><strong>{item.filename}</strong><small>{statusLabels[item.status] || displayLabel(item.status)}{detail ? ` · Důvod: ${detail}` : ""}</small></span>
           {item.exact_duplicate_invoice_id && <small className="duplicate-warning">Stejný PDF obsah již existuje.</small>}
           {item.retryable && item.file && <button className="button secondary compact" onClick={() => void send(item)}>Zkusit znovu</button>}
           {failed && <button className="icon-button upload-dismiss" aria-label={`Zavřít stav uploadu ${item.filename}`} onClick={() => remove(item.localId)}>×</button>}

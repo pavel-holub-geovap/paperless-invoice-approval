@@ -34,7 +34,7 @@ export function Exports() {
   };
 
   return <section>
-    <div className="section-heading"><div><p className="eyebrow">POHODA</p><h1>Exportní dávky</h1><p className="muted">Do dávky lze zařadit pouze XSD-validní aktuální revize ve stavu READY_FOR_EXPORT.</p></div></div>
+    <div className="section-heading"><div><p className="eyebrow">POHODA</p><h1>Exportní dávky</h1><p className="muted">Do dávky lze zařadit pouze XSD-validní aktuální revize připravené k exportu.</p></div></div>
     {error && <div className="alert danger">{error}</div>}
     <div className="card"><h2>Faktury připravené k exportu</h2>
       {ready.map((invoice) => <label className="check-row" key={invoice.id}><input type="checkbox" checked={selected.includes(invoice.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, invoice.id] : selected.filter((id) => id !== invoice.id))}/><span>{invoice.invoice_number} — {invoice.supplier_name}</span></label>)}

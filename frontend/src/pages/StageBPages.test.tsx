@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Approvals } from "./Approvals";
 import { InvoiceDetail } from "./InvoiceDetail";
@@ -54,6 +55,69 @@ function mockEmptyApi() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Stage B pages", () => {
+  it("places the full-width multiline note last and the save action below it", () => {
+    mockEmptyApi();
+    render(
+      <InvoiceDetail
+        invoice={{ ...invoice, data: { description: "Velmi dlouhá poznámka ".repeat(30) } }}
+        user={user}
+        onBack={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    const note = screen.getByRole("textbox", { name: "Poznámka" });
+    const save = screen.getByRole("button", { name: "Uložit změny" });
+    expect(note.tagName).toBe("TEXTAREA");
+    expect(note).toHaveAttribute("rows", "3");
+    expect(note.closest("label")).toHaveClass("form-note");
+    expect(save.closest(".form-actions")).not.toBeNull();
+    expect(note.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("replaces stale validations immediately from the manual-save response", async () => {
+    const before = {
+      ...invoice,
+      data: { total_without_vat: "4000.00", total_vat: "800.00", total_amount: "4800.00" },
+      validations: [{
+        code: "VAT_TOTAL_MATH",
+        severity: "WARNING" as const,
+        field_name: "total_amount",
+        message: "Stará kontrola používá původní AI částky.",
+      }],
+    };
+    const after = {
+      ...before,
+      current_revision_number: 2,
+      data: { total_without_vat: "4300.00", total_vat: "903.00", total_amount: "5203.00" },
+      validations: [{
+        code: "TOTAL_MATH_OK",
+        severity: "OK" as const,
+        field_name: "total_amount",
+        message: "Základ a DPH odpovídají celkové částce.",
+      }],
+    };
+    vi.stubGlobal("fetch", vi.fn((_: RequestInfo | URL, init?: RequestInit) => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: async () => init?.method === "PATCH" ? after : [],
+    })));
+
+    function SaveHarness() {
+      const [current, setCurrent] = useState(before);
+      return <InvoiceDetail invoice={current} user={user} onBack={() => undefined} onRefresh={(updated) => { if (updated) setCurrent(updated); }} />;
+    }
+
+    render(<SaveHarness />);
+    expect(screen.getAllByText("Stará kontrola používá původní AI částky.")).not.toHaveLength(0);
+    fireEvent.change(screen.getByRole("textbox", { name: /^Celkem/ }), { target: { value: "5203.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Uložit změny" }));
+
+    expect(await screen.findAllByText("Základ a DPH odpovídají celkové částce.")).not.toHaveLength(0);
+    await waitFor(() => expect(screen.queryAllByText("Stará kontrola používá původní AI částky.")).toHaveLength(0));
+    expect(screen.getByText(/Paperless #1 · revize 2/)).toBeVisible();
+  });
+
   it("renders Paperless metadata, OCR, and both original PDF surfaces", () => {
     mockEmptyApi();
 

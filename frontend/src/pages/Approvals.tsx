@@ -4,6 +4,7 @@ import { InvoiceUploadPanel, type InvoiceUploadPanelHandle } from "../components
 import { StatusBadge } from "../components/StatusBadge";
 import { api, money } from "../lib/api";
 import { formatDateCs, formatDateTimeCs } from "../lib/dates";
+import { decisionLabel, workflowStatusLabel } from "../lib/labels";
 import type {
   ApprovalTask,
   ApproverHistoryAssignment,
@@ -21,30 +22,10 @@ type Props = {
   user?: User;
 };
 
-const decisionLabels: Record<string, string> = {
-  APPROVE: "Schváleno",
-  RETURN: "Vráceno",
-  REJECT: "Odmítnuto",
-};
-
 const decisionPhrases: Record<string, string> = {
   APPROVE: "Schválil jste",
   RETURN: "Vrátil jste ke kontrole",
-  REJECT: "Odmítl jste",
-};
-
-const workflowLabels: Record<string, string> = {
-  NEW: "Nová",
-  VALIDATION: "Validace",
-  QUEUE_REVIEW: "Ke kontrole",
-  READY_FOR_APPROVAL: "Připravená ke schválení",
-  AWAITING_APPROVAL: "Čeká na schválení",
-  RETURNED: "Vrácená",
-  REJECTED: "Odmítnutá",
-  APPROVED: "Schválená",
-  READY_FOR_EXPORT: "Připravená k exportu",
-  EXPORT_CREATED: "Export vytvořen",
-  IMPORTED_TO_POHODA: "Importovaná do POHODY",
+  REJECT: "Zamítl jste",
 };
 
 function navigateFallback(path: string) {
@@ -52,8 +33,8 @@ function navigateFallback(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-function decisionLabel(row: ApproverHistoryAssignment): string {
-  if (row.decision) return decisionLabels[row.decision] || row.decision;
+function historyDecisionLabel(row: ApproverHistoryAssignment): string {
+  if (row.decision) return decisionLabel(row.decision);
   return row.invalidated ? "Zneplatněno" : "Bez rozhodnutí";
 }
 
@@ -85,20 +66,20 @@ function HistoryDetail({ detail, onBack }: { detail: ApproverHistoryDetail; onBa
       <div className="work-panel">
         {latest && <div className="card history-decision-card">
           <p className="eyebrow">Moje historické rozhodnutí</p>
-          <h2>{latest.decision ? decisionPhrases[latest.decision] : decisionLabel(latest)}</h2>
+          <h2>{latest.decision ? decisionPhrases[latest.decision] : historyDecisionLabel(latest)}</h2>
           <p>{formatDateTimeCs(latest.decision_at || latest.assigned_at)}</p>
           <dl className="metadata-grid">
             <div><dt>Středisko</dt><dd>{latest.cost_center.code} – {latest.cost_center.name}</dd></div>
             <div><dt>Částka</dt><dd>{money(latest.amount, detail.currency)}</dd></div>
             <div><dt>Revize</dt><dd>{latest.revision ?? "—"}</dd></div>
-            <div><dt>Rozhodnutí</dt><dd>{decisionLabel(latest)}</dd></div>
+            <div><dt>Rozhodnutí</dt><dd>{historyDecisionLabel(latest)}</dd></div>
           </dl>
           {latest.comment && <div className="history-comment"><strong>Důvod / komentář</strong><p>{latest.comment}</p></div>}
           {latest.invalidated && <div className="alert warning">⚠ Toto rozhodnutí bylo později zneplatněno změnou faktury a již není platným schválením.</div>}
         </div>}
         <div className="card">
           <p className="eyebrow">Aktuální stav faktury</p>
-          <h2>{workflowLabels[detail.current_status] || detail.current_status}</h2>
+          <h2>{workflowStatusLabel(detail.current_status)}</h2>
           <p>Aktuální revize: {detail.current_revision}</p>
           {latest?.invalidated && <p className="muted">Vaše původní rozhodnutí patří k revizi {latest.revision}.</p>}
         </div>
@@ -117,7 +98,7 @@ function HistoryDetail({ detail, onBack }: { detail: ApproverHistoryDetail; onBa
           <div className="card-title"><div><h2>Moje schvalovací historie této faktury</h2><p>Lidsky čitelné záznamy všech vašich assignmentů a revizí.</p></div></div>
           <ol className="personal-history-list">
             {detail.history.map((row) => <li key={row.assignment_id}>
-              <div><strong>{decisionLabel(row)}</strong><span>{formatDateTimeCs(row.decision_at || row.assigned_at)}</span></div>
+              <div><strong>{historyDecisionLabel(row)}</strong><span>{formatDateTimeCs(row.decision_at || row.assigned_at)}</span></div>
               <p>Středisko {row.cost_center.code} – {row.cost_center.name} · {money(row.amount, detail.currency)} · revize {row.revision}</p>
               {row.comment && <p>„{row.comment}“</p>}
               {row.invalidated && <small>⚠ Později zneplatněno změnou faktury.</small>}
@@ -226,12 +207,12 @@ export function Approvals({ history = false, uploaded = false, historyInvoiceId,
       <div className="section-heading"><div><p className="eyebrow">Moje historie</p><h1>Historie faktur</h1><p className="muted">Faktury, ke kterým jste měl v libovolné revizi schvalovací vztah.</p></div></div>
       <div className="history-search"><label>Hledat ve fakturách a jejich obsahu<input aria-label="Hledat ve fakturách a jejich obsahu" placeholder="Dodavatel, číslo faktury nebo text z OCR…" value={query} onChange={(e) => resetPage(() => setQuery(e.target.value))}/></label></div>
       <div className="filters history-filters">
-        <label>Rozhodnutí<select aria-label="Rozhodnutí" value={decision} onChange={(e) => resetPage(() => setDecision(e.target.value))}><option value="">Všechna</option><option value="APPROVE">Schváleno</option><option value="RETURN">Vráceno</option><option value="REJECT">Odmítnuto</option><option value="NONE">Bez rozhodnutí</option></select></label>
+        <label>Rozhodnutí<select aria-label="Rozhodnutí" value={decision} onChange={(e) => resetPage(() => setDecision(e.target.value))}><option value="">Všechna</option><option value="APPROVE">Schváleno</option><option value="RETURN">Vráceno</option><option value="REJECT">Zamítnuto</option><option value="NONE">Bez rozhodnutí</option></select></label>
         <label>Období<select aria-label="Období" value={period} onChange={(e) => resetPage(() => setPeriod(e.target.value))}><option value="ALL">Všechna</option><option value="90">Posledních 90 dní</option><option value="365">Poslední rok</option></select></label>
         <label>Středisko<select aria-label="Středisko" value={costCenter} onChange={(e) => resetPage(() => setCostCenter(e.target.value))}><option value="">Všechna</option>{historyResult.filters?.cost_centers.map((center) => <option key={center.code} value={center.code}>{center.code} – {center.name}</option>)}</select></label>
       </div>
       {pending === "history" && <p className="muted">Vyhledávám…</p>}
-      {!historyResult.items.length && pending !== "history" ? <div className="empty">V historii nebyly nalezeny žádné faktury.</div> : <div className="table-wrap"><table><thead><tr><th>Dokument</th><th>Dodavatel</th><th>Středisko</th><th>Moje částka</th><th>Moje rozhodnutí</th><th>Rozhodnuto</th><th>Aktuální stav</th></tr></thead><tbody>{historyResult.items.map((row) => <tr key={row.invoice_id} onClick={() => navigate(`/approvals/history/${row.invoice_id}`)}><td><strong>{row.invoice_number || `Paperless #${row.paperless_document_id}`}</strong><small>revize {row.current_revision}{row.assignment_count > 1 ? ` · ${row.assignment_count} historické kroky` : ""}</small>{row.ocr_snippet && <small className="search-snippet">Nalezeno v textu dokumentu: „{row.ocr_snippet}“</small>}</td><td>{row.supplier_name || "—"}</td><td>{row.latest_assignment.cost_center.code}<small>{row.latest_assignment.cost_center.name}</small></td><td>{money(row.latest_assignment.amount, row.currency)}</td><td>{decisionLabel(row.latest_assignment)}{row.latest_assignment.invalidated && <small>⚠ Později zneplatněno změnou faktury</small>}</td><td>{formatDateTimeCs(row.latest_assignment.decision_at || row.latest_assignment.assigned_at)}</td><td>{workflowLabels[row.current_status] || row.current_status}{!row.pdf_available && <small>Originál není dostupný</small>}</td></tr>)}</tbody></table></div>}
+      {!historyResult.items.length && pending !== "history" ? <div className="empty">V historii nebyly nalezeny žádné faktury.</div> : <div className="table-wrap"><table><thead><tr><th>Dokument</th><th>Dodavatel</th><th>Středisko</th><th>Moje částka</th><th>Moje rozhodnutí</th><th>Rozhodnuto</th><th>Aktuální stav</th></tr></thead><tbody>{historyResult.items.map((row) => <tr key={row.invoice_id} onClick={() => navigate(`/approvals/history/${row.invoice_id}`)}><td><strong>{row.invoice_number || `Paperless #${row.paperless_document_id}`}</strong><small>revize {row.current_revision}{row.assignment_count > 1 ? ` · ${row.assignment_count} historické kroky` : ""}</small>{row.ocr_snippet && <small className="search-snippet">Nalezeno v textu dokumentu: „{row.ocr_snippet}“</small>}</td><td>{row.supplier_name || "—"}</td><td>{row.latest_assignment.cost_center.code}<small>{row.latest_assignment.cost_center.name}</small></td><td>{money(row.latest_assignment.amount, row.currency)}</td><td>{historyDecisionLabel(row.latest_assignment)}{row.latest_assignment.invalidated && <small>⚠ Později zneplatněno změnou faktury</small>}</td><td>{formatDateTimeCs(row.latest_assignment.decision_at || row.latest_assignment.assigned_at)}</td><td>{workflowStatusLabel(row.current_status)}{!row.pdf_available && <small>Originál není dostupný</small>}</td></tr>)}</tbody></table></div>}
       <div className="history-pagination"><button className="button secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>Předchozí</button><span>Strana {page} z {pages} · {historyResult.total} faktur</span><button className="button secondary" disabled={page >= pages} onClick={() => setPage(page + 1)}>Další</button></div>
     </>}
   </section>;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { InvoiceTable } from "../components/InvoiceTable";
 import { InvoiceUploadPanel, type InvoiceUploadPanelHandle } from "../components/InvoiceUploadPanel";
 import { api } from "../lib/api";
+import { workflowStatusLabel } from "../lib/labels";
 import type { Invoice, InvoiceListItem, User } from "../types";
 import { InvoiceDetail } from "./InvoiceDetail";
 
@@ -16,6 +17,7 @@ export function Dashboard({ user, invoiceId, onNavigate }: { user: User; invoice
   const [refreshing, setRefreshing] = useState(false);
   const uploadPanelRef = useRef<InvoiceUploadPanelHandle>(null);
   const refreshInFlight = useRef(false);
+  const detailRequest = useRef(0);
   const isManager = user.roles.includes("QUEUE_MANAGER");
   const load = useCallback(async () => {
     try {
@@ -39,7 +41,16 @@ export function Dashboard({ user, invoiceId, onNavigate }: { user: User; invoice
     return Boolean(invoiceId && nextRows.some((row) => row.id === invoiceId));
   }, [load]);
   const open = useCallback(async (id: string) => {
-    try { setSelected(await api(`/invoices/${id}`)); setError(""); } catch (e) { setError((e as Error).message); }
+    const request = ++detailRequest.current;
+    try {
+      const next = await api<Invoice>(`/invoices/${id}`);
+      if (request === detailRequest.current) {
+        setSelected(next);
+        setError("");
+      }
+    } catch (e) {
+      if (request === detailRequest.current) setError((e as Error).message);
+    }
   }, []);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -56,7 +67,13 @@ export function Dashboard({ user, invoiceId, onNavigate }: { user: User; invoice
     return () => window.clearInterval(timer);
   }, [invoiceId, open]);
 
-  if (invoiceId && selected?.id === invoiceId) return <InvoiceDetail invoice={selected} user={user} onBack={() => onNavigate(isManager ? "/" : "/approvals/uploaded")} onRefresh={() => void open(invoiceId)} />;
+  if (invoiceId && selected?.id === invoiceId) return <InvoiceDetail invoice={selected} user={user} onBack={() => onNavigate(isManager ? "/" : "/approvals/uploaded")} onRefresh={(updated) => {
+    if (updated) {
+      detailRequest.current += 1;
+      setSelected(updated);
+      setError("");
+    } else void open(invoiceId);
+  }} />;
   const workflowFilters = [
     ["QUEUE_REVIEW", "Ke kontrole"], ["RETURNED", "Vrácené"], ["READY_FOR_APPROVAL", "Ke schválení"],
     ["AWAITING_APPROVAL", "Čeká na schválení"], ["APPROVED", "Schválené"], ["REJECTED", "Zamítnuté"],
@@ -72,7 +89,7 @@ export function Dashboard({ user, invoiceId, onNavigate }: { user: User; invoice
     <InvoiceUploadPanel ref={uploadPanelRef} user={user} onQueueChanged={refreshAfterUpload} />
     <div className="filters">
       <label>Pohled<select aria-label="Pohled fronty" value={view} onChange={(e) => setView(e.target.value as typeof view)}><option value="active">Aktivní</option><option value="ignored">Ignorované</option><option value="missing">Chybějící zdroj</option><option value="all">Všechny</option></select></label>
-      <label>Workflow<select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Všechny</option>{["NEW","VALIDATION","QUEUE_REVIEW","READY_FOR_APPROVAL","AWAITING_APPROVAL","RETURNED","REJECTED","APPROVED","READY_FOR_EXPORT","EXPORT_CREATED","IMPORTED_TO_POHODA"].map((s)=><option key={s}>{s}</option>)}</select></label>
+      <label>Workflow<select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Všechny</option>{["NEW","VALIDATION","QUEUE_REVIEW","READY_FOR_APPROVAL","AWAITING_APPROVAL","RETURNED","REJECTED","APPROVED","READY_FOR_EXPORT","EXPORT_CREATED","IMPORTED_TO_POHODA"].map((s)=><option key={s} value={s}>{workflowStatusLabel(s)}</option>)}</select></label>
       <label>Dodavatel<input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Hledat…" /></label>
       <label>Řazení<select aria-label="Řazení podle vložení" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}><option value="source_desc">Nejnovější vložené</option><option value="source_asc">Nejstarší vložené</option></select></label>
     </div>

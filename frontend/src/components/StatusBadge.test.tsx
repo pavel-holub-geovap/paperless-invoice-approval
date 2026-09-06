@@ -5,7 +5,7 @@ import { StatusBadge } from "./StatusBadge";
 describe("StatusBadge", () => {
   it("renders a readable state", () => {
     render(<StatusBadge value="AWAITING_APPROVAL" />);
-    expect(screen.getByText("AWAITING APPROVAL")).toBeInTheDocument();
+    expect(screen.getByText("Čeká na schválení")).toBeInTheDocument();
+    expect(screen.queryByText("AWAITING_APPROVAL")).not.toBeInTheDocument();
   });
 });
-
