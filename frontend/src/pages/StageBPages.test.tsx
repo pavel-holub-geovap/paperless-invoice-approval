@@ -104,7 +104,7 @@ describe("Stage B pages", () => {
     })));
 
     function SaveHarness() {
-      const [current, setCurrent] = useState(before);
+      const [current, setCurrent] = useState<Invoice>(before);
       return <InvoiceDetail invoice={current} user={user} onBack={() => undefined} onRefresh={(updated) => { if (updated) setCurrent(updated); }} />;
     }
 
