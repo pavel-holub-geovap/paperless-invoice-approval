@@ -38,8 +38,12 @@ def redirect_hosts(*responses: httpx.Response) -> list[str]:
 
 
 def login(
-    base_url: str, username: str, password: str
-) -> tuple[httpx.Client, list[str]]:
+    base_url: str,
+    username: str,
+    password: str,
+    *,
+    include_redirect_hosts: bool = False,
+) -> httpx.Client | tuple[httpx.Client, list[str]]:
     client = httpx.Client(follow_redirects=True, timeout=30, trust_env=False)
     login_page = client.get(f"{base_url}/api/auth/login")
     require(login_page.status_code == 200, f"OIDC login page failed for {username}")
@@ -61,7 +65,7 @@ def login(
         urlsplit(str(callback.url)).hostname == urlsplit(base_url).hostname,
         f"OIDC callback did not return to the Approval host for {username}",
     )
-    return client, hosts
+    return (client, hosts) if include_redirect_hosts else client
 
 
 def response_json(response: httpx.Response, context: str) -> Any:
@@ -77,6 +81,7 @@ def main() -> None:
         base_url,
         "queue-manager",
         os.environ["TEST_QUEUE_MANAGER_PASSWORD"],
+        include_redirect_hosts=True,
     )
     try:
         manager_user = response_json(manager.get(f"{base_url}/api/auth/me"), "queue-manager /me")
@@ -102,6 +107,7 @@ def main() -> None:
         base_url,
         "approver1",
         os.environ["TEST_APPROVER_1_PASSWORD"],
+        include_redirect_hosts=True,
     )
     try:
         approver_user = response_json(approver.get(f"{base_url}/api/auth/me"), "approver1 /me")
