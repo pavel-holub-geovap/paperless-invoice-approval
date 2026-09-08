@@ -80,8 +80,13 @@ def keycloak_availability(settings: Settings) -> None:
     )
     with httpx.Client(timeout=20) as client:
         metadata = request_json(client, url, "Keycloak OIDC metadata")
-    require(metadata.get("authorization_endpoint"), "OIDC authorization endpoint is missing")
-    require(metadata.get("token_endpoint"), "OIDC token endpoint is missing")
+    expected_issuer = settings.oidc_issuer_public
+    require(metadata.get("issuer") == expected_issuer, "OIDC issuer does not use the public URL")
+    for endpoint in ("authorization_endpoint", "token_endpoint"):
+        require(
+            str(metadata.get(endpoint, "")).startswith(f"{expected_issuer}/"),
+            f"OIDC {endpoint} does not use the public URL",
+        )
     print("[OK] Keycloak OIDC metadata")
 
 
@@ -108,11 +113,21 @@ def keycloak_provisioning(settings: Settings) -> None:
                 client.get(f"/admin/realms/{realm}/roles/{role}").status_code == 200,
                 f"Keycloak role {role} is missing",
             )
-        client_ids = (
-            settings.keycloak_client_id,
-            os.environ.get("PAPERLESS_OIDC_CLIENT_ID", "paperless"),
-        )
-        for client_id in client_ids:
+        app_base_url = settings.app_base_url.rstrip("/")
+        paperless_public_url = os.environ["PAPERLESS_PUBLIC_URL"].rstrip("/")
+        client_expectations = {
+            settings.keycloak_client_id: {
+                "redirectUris": [f"{app_base_url}/api/auth/callback"],
+                "webOrigins": [app_base_url],
+            },
+            os.environ.get("PAPERLESS_OIDC_CLIENT_ID", "paperless"): {
+                "redirectUris": [
+                    f"{paperless_public_url}/accounts/oidc/keycloak/login/callback/"
+                ],
+                "webOrigins": [paperless_public_url],
+            },
+        }
+        for client_id, expected in client_expectations.items():
             rows = request_json(
                 client,
                 f"/admin/realms/{realm}/clients",
@@ -120,6 +135,14 @@ def keycloak_provisioning(settings: Settings) -> None:
                 params={"clientId": client_id},
             )
             require(len(rows) == 1, f"Keycloak client {client_id!r} is missing or duplicated")
+            require(
+                rows[0].get("redirectUris") == expected["redirectUris"],
+                f"Keycloak client {client_id!r} has unexpected redirect URIs",
+            )
+            require(
+                rows[0].get("webOrigins") == expected["webOrigins"],
+                f"Keycloak client {client_id!r} has unexpected web origins",
+            )
         for username in ("queue-manager", "approver1", "approver2", "approver3"):
             rows = request_json(
                 client,
