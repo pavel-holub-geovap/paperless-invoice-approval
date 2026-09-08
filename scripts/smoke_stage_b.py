@@ -113,6 +113,13 @@ def main() -> None:
         approver_user = response_json(approver.get(f"{base_url}/api/auth/me"), "approver1 /me")
         require("APPROVER" in approver_user["roles"], "approver1 role is missing")
         tasks = response_json(approver.get(f"{base_url}/api/approvals/mine"), "approver1 tasks")
+        history = response_json(
+            approver.get(
+                f"{base_url}/api/approvals/history",
+                params={"page": 1, "page_size": 20},
+            ),
+            "approver1 history",
+        )
         approver_invoice_list = response_json(
             approver.get(f"{base_url}/api/invoices"), "approver1 scoped invoice list"
         )
@@ -140,6 +147,7 @@ def main() -> None:
                 "callback_host": urlsplit(base_url).hostname,
                 "approver1_roles": approver_user["roles"],
                 "approver1_tasks": len(tasks),
+                "approver1_history_total": history["total"],
                 "approver_invoice_list_http": invoice_list_status,
                 "paperless_document_id": document_id,
                 "invoice_id": invoice["id"],
