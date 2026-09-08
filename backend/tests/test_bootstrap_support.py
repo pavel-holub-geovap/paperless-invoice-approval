@@ -196,6 +196,23 @@ def test_generate_env_can_create_an_isolated_shared_host_configuration(
     assert generated["KEYCLOAK_PUBLIC_URL"].endswith(":28081")
 
 
+def test_generate_env_keeps_public_lan_urls_separate_from_internal_service_dns(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / ".env"
+    bootstrap.generate_env(ROOT / ".env.example", destination, "10.101.3.85")
+    generated = bootstrap.parse_env(destination)
+
+    assert generated["APP_BASE_URL"] == "http://10.101.3.85"
+    assert generated["PAPERLESS_PUBLIC_URL"] == "http://10.101.3.85:8000"
+    assert generated["KEYCLOAK_PUBLIC_URL"] == "http://10.101.3.85:8081"
+    assert generated["KEYCLOAK_BASE_URL"] == "http://keycloak:8080"
+    assert generated["PAPERLESS_BASE_URL"] == "http://paperless:8000"
+    assert generated["OLLAMA_BASE_URL"] == "http://ollama:11434"
+    active_urls = "\n".join(generated[key] for key in bootstrap.URL_VARIABLES)
+    assert "172.30.172.167" not in active_urls
+
+
 def test_rendered_compose_model_port_validation() -> None:
     model = {
         "name": "paperless-invoice-test2",

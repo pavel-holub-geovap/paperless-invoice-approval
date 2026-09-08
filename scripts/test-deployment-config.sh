@@ -21,12 +21,18 @@ trap 'rm -rf -- "$TEST_DIRECTORY"' EXIT
 
 BOOTSTRAP_ENV_FILE="$TEST_DIRECTORY/.env"
 python3 "$SCRIPT_DIR/bootstrap_support.py" generate-env \
-  "$BOOTSTRAP_ROOT/.env.example" "$BOOTSTRAP_ENV_FILE" "shared.example.test" \
+  "$BOOTSTRAP_ROOT/.env.example" "$BOOTSTRAP_ENV_FILE" "10.101.3.85" \
   --project-name "$TEST_PROJECT" \
   --app-host-port "$APP_TEST_PORT" \
   --paperless-host-port "$PAPERLESS_TEST_PORT" \
   --keycloak-host-port "$KEYCLOAK_TEST_PORT"
 python3 "$SCRIPT_DIR/bootstrap_support.py" validate-env "$BOOTSTRAP_ENV_FILE"
+[[ "$(env_get APP_BASE_URL)" == "http://10.101.3.85:${APP_TEST_PORT}" ]] || die "Approval public URL was not generated from the requested host"
+[[ "$(env_get PAPERLESS_PUBLIC_URL)" == "http://10.101.3.85:${PAPERLESS_TEST_PORT}" ]] || die "Paperless public URL was not generated from the requested host"
+[[ "$(env_get KEYCLOAK_PUBLIC_URL)" == "http://10.101.3.85:${KEYCLOAK_TEST_PORT}" ]] || die "Keycloak public URL was not generated from the requested host"
+[[ "$(env_get KEYCLOAK_BASE_URL)" == "http://keycloak:8080" ]] || die "Keycloak internal URL must keep Compose DNS"
+[[ "$(env_get PAPERLESS_BASE_URL)" == "http://paperless:8000" ]] || die "Paperless internal URL must keep Compose DNS"
+[[ "$(env_get OLLAMA_BASE_URL)" == "http://ollama:11434" ]] || die "Ollama internal URL must keep Compose DNS"
 
 MODEL="$TEST_DIRECTORY/compose.json"
 (cd "$BOOTSTRAP_ROOT" && compose config --format json > "$MODEL")

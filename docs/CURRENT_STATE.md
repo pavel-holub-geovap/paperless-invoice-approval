@@ -92,10 +92,10 @@
 - Stav je `VALID`, zdroj `ISDOC`, provenance čísla dokladu je `/Invoice/ID`. Vznikla invoice revision 2 a immutable ISDOC extraction `bbbce28f-9c2f-436f-9267-1f86055758e0`; historický jediný AI běh zůstal zachován, nový Qwen běh nevznikl. Validace neobsahuje `VAT_ROUNDING_ADJUSTMENT`.
 - Po skutečném approval vznikl artifact `fc57891e-c708-4f5c-b94a-e084958594ca` a Paperless derived dokument `51`. Originál má SHA-256 `655560654f11a127b50b5afd3c41ea40cc3edf87c9f55f0a30262050f03abcb8`; embedded ISDOC v originálu i approved PDF má shodně `0eedab709f99f22d76a994d3d2b7f2a7244150b432c2982d8b3c4c7245453748`. Importní metoda je `PDF_ISDOC` a generated POHODA XML je backendem odmítnuto HTTP 409.
 
-- Datum ověření: 2026-08-26
+- Datum ověření veřejné adresace: 2026-09-08
 - Branch: `main`
 - Git remote: `git@github-paperless-approval:pavel-holub-geovap/paperless-invoice-approval.git`
-- Approval aplikace: `http://172.30.172.167/`
+- Veřejné URL: Approval `http://10.101.3.85/`, Paperless `http://10.101.3.85:8000/`, Keycloak `http://10.101.3.85:8081/`.
 - Nasazeno: PostgreSQL, Redis, Keycloak, Paperless-ngx, Nginx, `approval-backend`, `approval-worker`, `approval-frontend`, Ollama a jednorázový `ollama-pull`. Všechny dlouhodobé služby jsou healthy; provision/bootstrap/pull kontejnery skončily kódem 0.
 - Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0009 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
 - OIDC: skutečný Authorization Code flow prošel pro `queue-manager`, `approver1`, `approver2` a `approver3`. Approver nemůže otevřít manažerský seznam (HTTP 403).

@@ -47,7 +47,7 @@ Finální `docker-compose.yml` byl odeslán pouze přes standardní vstup do `do
 | Approval frontend | lokální build | přes Nginx `80` |
 | Reverse proxy | `nginx:1.27-alpine` | `80`, `8000`, `8081` |
 
-Veřejné testovací URL jsou Approval `http://172.30.172.167/`, Paperless `http://172.30.172.167:8000/` a Keycloak `http://172.30.172.167:8081/`.
+Veřejné testovací URL jsou Approval `http://10.101.3.85/`, Paperless `http://10.101.3.85:8000/` a Keycloak `http://10.101.3.85:8081/`.
 
 Porty `80`, `8000` a `8081` byly při kontrole volné (žádný naslouchající socket).
 

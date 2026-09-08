@@ -9,6 +9,26 @@ import httpx
 from app.config import get_settings
 
 
+def oidc_client_urls(
+    app_base_url: str, paperless_public_url: str
+) -> dict[str, dict[str, list[str]]]:
+    """Build browser-facing OIDC client URLs from the public deployment config."""
+    app_url = app_base_url.rstrip("/")
+    paperless_url = paperless_public_url.rstrip("/")
+    return {
+        "approval": {
+            "redirect_uris": [f"{app_url}/api/auth/callback"],
+            "web_origins": [app_url],
+        },
+        "paperless": {
+            "redirect_uris": [
+                f"{paperless_url}/accounts/oidc/keycloak/login/callback/",
+            ],
+            "web_origins": [paperless_url],
+        },
+    }
+
+
 def required(name: str) -> str:
     value = os.getenv(name)
     if not value or value.startswith("change-me"):
@@ -155,6 +175,7 @@ def provision() -> None:
     paperless_client_id = required("PAPERLESS_OIDC_CLIENT_ID")
     paperless_client_secret = required("PAPERLESS_OIDC_CLIENT_SECRET")
     paperless_public_url = required("PAPERLESS_PUBLIC_URL").rstrip("/")
+    client_urls = oidc_client_urls(settings.app_base_url, paperless_public_url)
 
     with httpx.Client(base_url=settings.keycloak_base_url, timeout=20) as client:
         for attempt in range(30):
@@ -201,8 +222,7 @@ def provision() -> None:
             client_id=settings.keycloak_client_id,
             name="Paperless Invoice Approval",
             secret=approval_secret,
-            redirect_uris=[f"{settings.app_base_url}/api/auth/callback"],
-            web_origins=[settings.app_base_url],
+            **client_urls["approval"],
         )
         paperless_client = upsert_client(
             client,
@@ -210,10 +230,7 @@ def provision() -> None:
             client_id=paperless_client_id,
             name="Paperless-ngx",
             secret=paperless_client_secret,
-            redirect_uris=[
-                f"{paperless_public_url}/accounts/oidc/keycloak/login/callback/",
-            ],
-            web_origins=[paperless_public_url],
+            **client_urls["paperless"],
         )
         ensure_groups_client_scope(client, realm, paperless_client["id"])
 

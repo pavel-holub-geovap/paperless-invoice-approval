@@ -95,13 +95,32 @@ def main() -> None:
         raise ValueError("Paperless must use its own DB user")
     if services["keycloak"]["environment"]["KC_DB_USERNAME"] != "keycloak":
         raise ValueError("Keycloak must use its own DB user")
+    if services["keycloak"]["environment"]["KC_HOSTNAME"] != values["KEYCLOAK_PUBLIC_URL"]:
+        raise ValueError("Keycloak hostname must use KEYCLOAK_PUBLIC_URL")
     if services["keycloak-provision"]["environment"]["KEYCLOAK_BASE_URL"] != "http://keycloak:8080":
         raise ValueError("Keycloak provisioning must use private Compose DNS")
+    if paperless["environment"]["PAPERLESS_URL"] != values["PAPERLESS_PUBLIC_URL"]:
+        raise ValueError("Paperless browser URL must use PAPERLESS_PUBLIC_URL")
     paperless_health = " ".join(services["paperless"]["healthcheck"]["test"])
     if "127.0.0.1:8000/api/" not in paperless_health or "-L" in paperless_health:
         raise ValueError("Paperless healthcheck must remain local and public-URL independent")
     if services["backend"]["networks"] != ["app_net", "data_net"]:
         raise ValueError("Backend network isolation changed")
+    backend_environment = services["backend"]["environment"]
+    expected_backend_urls = {
+        "APP_BASE_URL": values["APP_BASE_URL"],
+        "KEYCLOAK_BASE_URL": "http://keycloak:8080",
+        "KEYCLOAK_PUBLIC_URL": values["KEYCLOAK_PUBLIC_URL"],
+        "PAPERLESS_BASE_URL": "http://paperless:8000",
+    }
+    for key, expected in expected_backend_urls.items():
+        if backend_environment.get(key) != expected:
+            raise ValueError(f"Backend {key} must be {expected!r}")
+    worker_environment = services["worker"]["environment"]
+    if worker_environment.get("PAPERLESS_BASE_URL") != "http://paperless:8000":
+        raise ValueError("Worker Paperless URL must use private Compose DNS")
+    if worker_environment.get("OLLAMA_BASE_URL") != "http://ollama:11434":
+        raise ValueError("Worker Ollama URL must use private Compose DNS")
     if services["ollama"].get("profiles"):
         raise ValueError("Ollama must be part of the default Stage D stack")
     if services["worker"].get("depends_on", {}).get("ollama", {}).get("condition") != "service_healthy":
