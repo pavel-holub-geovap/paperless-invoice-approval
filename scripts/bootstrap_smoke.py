@@ -74,18 +74,40 @@ def paperless_checks(settings: Settings) -> None:
 
 
 def keycloak_availability(settings: Settings) -> None:
-    url = (
+    internal_url = (
         f"{settings.keycloak_base_url}/realms/{settings.keycloak_realm}"
         "/.well-known/openid-configuration"
     )
+    public_url = (
+        f"{settings.keycloak_public_url}/realms/{settings.keycloak_realm}"
+        "/.well-known/openid-configuration"
+    )
     with httpx.Client(timeout=20) as client:
-        metadata = request_json(client, url, "Keycloak OIDC metadata")
+        internal_metadata = request_json(
+            client, internal_url, "internal Keycloak OIDC metadata"
+        )
+        public_metadata = request_json(
+            client, public_url, "public Keycloak OIDC metadata"
+        )
     expected_issuer = settings.oidc_issuer_public
-    require(metadata.get("issuer") == expected_issuer, "OIDC issuer does not use the public URL")
-    for endpoint in ("authorization_endpoint", "token_endpoint"):
+    require(
+        internal_metadata.get("issuer") == expected_issuer,
+        "OIDC issuer does not use the public URL",
+    )
+    require(
+        str(internal_metadata.get("authorization_endpoint", "")).startswith(
+            f"{expected_issuer}/"
+        ),
+        "OIDC authorization endpoint does not use the public URL",
+    )
+    require(
+        public_metadata.get("issuer") == expected_issuer,
+        "Public OIDC issuer does not use the public URL",
+    )
+    for endpoint in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
         require(
-            str(metadata.get(endpoint, "")).startswith(f"{expected_issuer}/"),
-            f"OIDC {endpoint} does not use the public URL",
+            str(public_metadata.get(endpoint, "")).startswith(f"{expected_issuer}/"),
+            f"Public OIDC {endpoint} does not use the public URL",
         )
     print("[OK] Keycloak OIDC metadata")
 
