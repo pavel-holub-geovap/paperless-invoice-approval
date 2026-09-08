@@ -7,6 +7,7 @@ import json
 import os
 from html.parser import HTMLParser
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -27,7 +28,18 @@ def require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def login(base_url: str, username: str, password: str) -> httpx.Client:
+def redirect_hosts(*responses: httpx.Response) -> list[str]:
+    urls = [
+        item.url
+        for response in responses
+        for item in [*response.history, response]
+    ]
+    return list(dict.fromkeys(urlsplit(str(url)).hostname or "" for url in urls))
+
+
+def login(
+    base_url: str, username: str, password: str
+) -> tuple[httpx.Client, list[str]]:
     client = httpx.Client(follow_redirects=True, timeout=30, trust_env=False)
     login_page = client.get(f"{base_url}/api/auth/login")
     require(login_page.status_code == 200, f"OIDC login page failed for {username}")
@@ -39,7 +51,17 @@ def login(base_url: str, username: str, password: str) -> httpx.Client:
         data={"username": username, "password": password, "credentialId": ""},
     )
     require(callback.status_code == 200, f"OIDC callback failed for {username}")
-    return client
+    hosts = redirect_hosts(login_page, callback)
+    forbidden_hosts = {"172.30.172.167", "localhost", "127.0.0.1"}
+    require(
+        not forbidden_hosts.intersection(hosts),
+        f"Forbidden OIDC redirect host for {username}",
+    )
+    require(
+        urlsplit(str(callback.url)).hostname == urlsplit(base_url).hostname,
+        f"OIDC callback did not return to the Approval host for {username}",
+    )
+    return client, hosts
 
 
 def response_json(response: httpx.Response, context: str) -> Any:
@@ -51,7 +73,7 @@ def main() -> None:
     base_url = os.environ["APP_BASE_URL"].rstrip("/")
     document_id = int(os.environ.get("SMOKE_PAPERLESS_DOCUMENT_ID", "1"))
 
-    manager = login(
+    manager, manager_redirect_hosts = login(
         base_url,
         "queue-manager",
         os.environ["TEST_QUEUE_MANAGER_PASSWORD"],
@@ -76,7 +98,7 @@ def main() -> None:
     finally:
         manager.close()
 
-    approver = login(
+    approver, approver_redirect_hosts = login(
         base_url,
         "approver1",
         os.environ["TEST_APPROVER_1_PASSWORD"],
@@ -105,8 +127,11 @@ def main() -> None:
             {
                 "app_url": base_url,
                 "queue_manager_login": "OK",
+                "queue_manager_redirect_hosts": manager_redirect_hosts,
                 "queue_manager_roles": manager_user["roles"],
                 "approver1_login": "OK",
+                "approver1_redirect_hosts": approver_redirect_hosts,
+                "callback_host": urlsplit(base_url).hostname,
                 "approver1_roles": approver_user["roles"],
                 "approver1_tasks": len(tasks),
                 "approver_invoice_list_http": invoice_list_status,
