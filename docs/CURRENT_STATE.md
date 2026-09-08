@@ -97,8 +97,8 @@
 - Git remote: `git@github-paperless-approval:pavel-holub-geovap/paperless-invoice-approval.git`
 - Veřejné URL: Approval `http://10.101.3.85/`, Paperless `http://10.101.3.85:8000/`, Keycloak `http://10.101.3.85:8081/`.
 - Nasazeno: PostgreSQL, Redis, Keycloak, Paperless-ngx, Nginx, `approval-backend`, `approval-worker`, `approval-frontend`, Ollama a jednorázový `ollama-pull`. Všechny dlouhodobé služby jsou healthy; provision/bootstrap/pull kontejnery skončily kódem 0.
-- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0009 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
-- OIDC: skutečný Authorization Code flow prošel pro `queue-manager`, `approver1`, `approver2` a `approver3`. Approver nemůže otevřít manažerský seznam (HTTP 403).
+- Databáze: Approval používá vlastní databázi a credentials. Alembic je na `0011 (head)`. Backend ani worker nemají Paperless DB credentials a komunikují s Paperless pouze přes REST API.
+- OIDC: po migraci veřejné adresace prošel skutečný Authorization Code flow pro `queue-manager` a `approver1` výhradně přes host `10.101.3.85`; callback je `http://10.101.3.85/api/auth/callback`. Aktivní redirect historie neobsahuje starou IP ani `localhost`. Dřívější smoke ověřil také `approver2` a `approver3`; approver nemůže otevřít manažerský seznam (HTTP 403).
 
 ## Opravná iterace po Etapě F
 
