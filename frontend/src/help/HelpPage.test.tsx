@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { parseRoute } from "../routing";
 import type { User } from "../types";
+import helpCss from "./help.css?raw";
 import { HelpPage, helpChapters } from "./HelpPage";
 
 function response(value: unknown) {
@@ -86,5 +87,10 @@ describe("integrated user help", () => {
     expect(screen.getByText(/Import do POHODY je vždy ruční/)).toBeVisible();
     expect(screen.getByText(/AI není autorita/)).toBeVisible();
     expect(screen.getByText(/Nejde automaticky o finální účetní středisko/)).toBeVisible();
+  });
+
+  it("contains wide tables locally without widening the mobile page", () => {
+    expect(helpCss).toMatch(/\.help-section\{[^}]*min-width:0/);
+    expect(helpCss).toMatch(/\.help-table-wrap\{[^}]*min-width:0;max-width:100%;overflow:auto/);
   });
 });
