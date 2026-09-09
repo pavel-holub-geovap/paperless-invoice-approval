@@ -1,5 +1,22 @@
 # Aktuální stav
 
+## Integrovaná uživatelská nápověda
+
+- Autentizovaní uživatelé s rolemi `QUEUE_MANAGER` i `APPROVER` mají v hlavní
+  navigaci položku „Nápověda“. History API route `/help` i přímé odkazy na
+  kapitoly jako `/help/#schvalovani`, `/help/#sekce` a `/help/#pohoda` vykresluje
+  React spolu se zbytkem aplikace; backend ani databázová migrace nejsou potřeba.
+- Česká příručka má 19 kapitol podle skutečných enumů, UI a workflow aktuálního
+  HEAD. Pokrývá role, oba způsoby uploadu, Paperless, ISDOC/OCR/AI, ruční opravy
+  a validace, sekce, self-approval s povinnou správcovskou kontrolou, rozhodnutí,
+  revize, historii, schválené PDF, POHODU, zálohové faktury a všech 14 workflow
+  stavů pod uživatelskými názvy.
+- Pět workflow diagramů je tvořeno pouze sémantickým HTML a lokálním CSS, má
+  viditelnou textovou alternativu, responzivní breakpointy a tisková pravidla.
+  Příručka nepoužívá CDN, externí web, screenshoty ani citlivá runtime data.
+- Struktura a kontrolní seznam pro další aktualizace jsou popsány v
+  `docs/USER_DOCUMENTATION.md`.
+
 ## Ruční opravy, validace a české stavové labely
 
 - Ruční PATCH fakturačních údajů přepočítává celý deterministický validační set výslovně nad revizí vrácenou z `update_invoice_data`; změna, flush, validace a response jsou atomické. Předchozí revize a její historické validace zůstávají zachované a Qwen se znovu nespouští.
@@ -107,16 +124,16 @@
 - Tři souhrnné kontroly `VAT_BASE_TOTAL_MISMATCH`, `VAT_TOTAL_MISMATCH` a `VAT_TOTAL_MATH` jsou WARNING a nesmějí samy blokovat workflow ani export. Řádková matematika, allocations, chybějící zdroj a ostatní skutečné chyby zůstávají blocking.
 - `disposition` je oddělená od workflow: `ACTIVE`, `IGNORED_DUPLICATE`, `IGNORED_OTHER`. Vyřazení/restore jsou auditované, ignorované faktury nelze schválit ani exportovat a Paperless zdroj se nemaže.
 - `source_status` je oddělený stav `AVAILABLE`/`MISSING`. Pouze přesné Paperless HTTP 404 označí zdroj jako chybějící; 5xx, timeout a síťová chyba jsou sync error. Missing audit je idempotentní a workflow/PDF/nový export jsou blokované.
-- Frontend používá History API routy `/`, `/invoices/:id`, `/approvals`, `/cost-centers` a `/exports`. Manažerské Fronta odkazy, přímý detail a `popstate` jsou testované; backend authorization zůstává autoritativní.
+- Frontend používá History API routy `/`, `/invoices/:id`, `/approvals` včetně historie a vlastních uploadů, `/cost-centers`, `/exports` a `/help`. Přímé detaily, návrat pomocí `popstate` a role-neutral nápověda jsou testované; backend authorization zůstává autoritativní.
 
 ## Nahrávání faktur z Approval aplikace
 
-- `QUEUE_MANAGER` může nahrát jeden nebo více PDF přes dashboard. Browser posílá každý soubor samostatně do Approval endpointu `POST /api/uploads`; Paperless token zůstává pouze na backendu. `APPROVER` endpoint použít nesmí.
+- `QUEUE_MANAGER` i `APPROVER` mohou nahrát jeden nebo více PDF přes svoje obrazovky. Browser posílá každý soubor samostatně do Approval endpointu `POST /api/uploads`; Paperless token zůstává pouze na backendu. Approver smí před předáním připravovat pouze svůj vlastní upload a pouze ve svých povolených sekcích.
 - Backend přijímá pouze PDF do konfigurovatelného limitu `UPLOAD_MAX_BYTES` (výchozí 8 MiB), kontroluje příponu, MIME i PDF signaturu, počítá SHA-256, sanitizuje název a ukládá pouze metadata. Originální PDF trvale neduplikuje.
 - Paperless upload používá oficiální `POST /api/documents/post_document/`. Worker sleduje Paperless task, OCR, vznik Approval invoice a existující AI pipeline. Opakování se stejným idempotency klíčem a hashem je bezpečné; nejednoznačný timeout po odeslání se automaticky neopakuje.
 - Skutečný smoke vytvořil `codex-approval-upload-6988633cde.pdf`: upload `01fd4ab9-122b-4356-99b0-88cc33751554`, Paperless task `0138235d-8a75-4c39-9a71-220a6683158e`, Paperless document `19` a Approval invoice `1246c15e-44c6-4596-8731-8bbf4315309d`. OCR má 911 znaků, AI skončila `AI_COMPLETED` na `qwen3:8b`, workflow `QUEUE_REVIEW` a UI status `READY_FOR_REVIEW`.
 - Audit `DOCUMENT_UPLOADED_TO_PAPERLESS` obsahuje `queue-manager`, subject, korelační ID, sanitizovaný název, velikost, MIME a Paperless document ID. Invoice nese `uploaded_by=queue-manager`, zdrojový i Approval timestamp a SHA-256 přijatých bytů `84ee2c5f6f96635cb5925cdb6abd1476833c9f59977c093a9ec2be60e7f229f7`.
-- Originální PDF dokumentu 19 se přes Approval proxy zobrazilo/stáhlo. Fronta se v otevřené session aktualizovala bez F5. Skutečný paralelní smoke navíc nezávisle přijal tři PDF jako Paperless dokumenty 20, 21 a 22; neplatný textový soubor vrátil HTTP 415 a pokus uživatele `approver1` HTTP 403.
+- Originální PDF dokumentu 19 se přes Approval proxy zobrazilo/stáhlo. Fronta se v otevřené session aktualizovala bez F5. Tehdejší paralelní smoke před rozšířením approver uploadu navíc přijal tři PDF jako Paperless dokumenty 20, 21 a 22 a neplatný textový soubor vrátil HTTP 415; současný approver upload je ověřen novějším smoke popsaným výše.
 - Dashboard nyní používá hlavní invoice tabulku jako jediný trvalý seznam. Historických deset uploadů se při otevření nenačítá; právě spuštěná dávka je pouze dočasná, úspěšná položka po potvrzení invoice v tabulce zmizí a chyba zůstane s retry/zavřením. `+ Nahrát fakturu` a `Obnovit` sdílejí na desktopu jeden action bar se stejnou výškou a baseline; refresh má disabled/loading stav.
 - Smoke po GUI úpravě vytvořil `codex-approval-upload-d7585a86c8.pdf`, Paperless document `25` a Approval invoice `c2937073-4b2e-44d7-a5c3-5d048d2e5ca2`; OCR má 911 znaků, AI skončila `AI_COMPLETED` a workflow `QUEUE_REVIEW`. Multi-upload vytvořil samostatné dokumenty 26–28 a neplatný soubor vrátil 415. Kontrolovaný výpadek vrátil u uploadu `a91b8d0d-70a2-45d3-9222-d5ea5b82ad3c` stav `FAILED_RETRYABLE/PAPERLESS_UNAVAILABLE`; retry stejným klíčem zachoval upload ID, nastavil `retry_count=1` a vytvořil Paperless document 29 a invoice `570cb439-35a9-4382-a975-8ea05a400ff8`.
 

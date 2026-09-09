@@ -2,7 +2,8 @@ export type AppRoute =
   | { page: "dashboard"; invoiceId?: string }
   | { page: "approvals"; historyInvoiceId?: string; history?: boolean; uploaded?: boolean }
   | { page: "centres" }
-  | { page: "exports" };
+  | { page: "exports" }
+  | { page: "help" };
 
 export function parseRoute(pathname: string): AppRoute {
   const invoice = pathname.match(/^\/invoices\/([^/]+)\/?$/);
@@ -14,5 +15,6 @@ export function parseRoute(pathname: string): AppRoute {
   if (pathname === "/approvals" || pathname === "/approvals/") return { page: "approvals" };
   if (pathname === "/cost-centers") return { page: "centres" };
   if (pathname === "/exports") return { page: "exports" };
+  if (pathname === "/help" || pathname === "/help/") return { page: "help" };
   return { page: "dashboard" };
 }

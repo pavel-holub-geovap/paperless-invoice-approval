@@ -4,6 +4,7 @@ import { Approvals } from "./pages/Approvals";
 import { CostCenters } from "./pages/CostCenters";
 import { Dashboard } from "./pages/Dashboard";
 import { Exports } from "./pages/Exports";
+import { HelpPage } from "./help/HelpPage";
 import { parseRoute, type AppRoute } from "./routing";
 import type { User } from "./types";
 
@@ -47,13 +48,14 @@ export default function App() {
   return <>
     <header>
       <a className="brand" href={home} onClick={nav(home)}><span>PI</span><strong>Schvalování faktur</strong></a>
-      <nav>
+      <nav aria-label="Hlavní navigace">
         {user.roles.includes("QUEUE_MANAGER") && <>
           <a className={route.page === "dashboard" ? "active" : ""} href="/" onClick={nav("/")}>Fronta</a>
           <a className={route.page === "centres" ? "active" : ""} href="/cost-centers" onClick={nav("/cost-centers")}>Sekce</a>
           <a className={route.page === "exports" ? "active" : ""} href="/exports" onClick={nav("/exports")}>Exporty</a>
         </>}
         {user.roles.includes("APPROVER") && <a className={route.page === "approvals" ? "active" : ""} href="/approvals" onClick={nav("/approvals")}>Moje schválení</a>}
+        <a className={route.page === "help" ? "active" : ""} href="/help" onClick={nav("/help")}><span className="help-nav-icon" aria-hidden="true">?</span>Nápověda</a>
       </nav>
       <div className="user"><span>{user.username}</span><button onClick={() => void api("/auth/logout", { method: "POST" }).then(() => location.reload())}>Odhlásit</button></div>
     </header>
@@ -62,6 +64,7 @@ export default function App() {
       {route.page === "approvals" && <Approvals user={user} history={route.history} uploaded={route.uploaded} historyInvoiceId={route.historyInvoiceId} onNavigate={navigate}/>}
       {route.page === "centres" && <CostCenters/>}
       {route.page === "exports" && <Exports/>}
+      {route.page === "help" && <HelpPage/>}
     </main>
   </>;
 }

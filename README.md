@@ -20,6 +20,12 @@ Schvalovatel může stejnou zabezpečenou cestou nahrát vlastní PDF, připravi
 sekce a schválit povolené části; finální postup vždy vyžaduje kontrolu konkrétní
 revize správcem fronty.
 
+Po přihlášení je oběma rolím v hlavní navigaci dostupná integrovaná česká
+`Nápověda` na route `/help`. Obsahuje uživatelský průvodce, responzivní workflow
+diagramy, přímé odkazy na kapitoly a tiskový styl bez externích závislostí.
+Pokyny pro údržbu obsahu jsou v
+[docs/USER_DOCUMENTATION.md](docs/USER_DOCUMENTATION.md).
+
 ## První testovací nasazení na Linuxu
 
 Požadavky: moderní Linux, Git, Docker Engine, Docker Compose >= 2, Python 3,
