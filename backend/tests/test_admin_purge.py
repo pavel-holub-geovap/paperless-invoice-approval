@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from pydantic import SecretStr, ValidationError
 from sqlalchemy import select
 
+from app.api.routes import admin as admin_routes
 from app.api.routes.admin import bulk_purge_admin_invoices, purge_admin_invoice
 from app.api.routes.cost_centers import create_cost_center
 from app.api.routes.section_permissions import update_section_permission
@@ -66,6 +67,9 @@ class FakePaperless:
         if document_id in self.failing:
             raise PaperlessError("Paperless unavailable")
         self.deleted.append(document_id)
+
+    async def close(self) -> None:
+        return None
 
 
 def user(*roles: str) -> CurrentUser:
@@ -425,6 +429,40 @@ async def test_purge_routes_reject_non_admin_before_external_side_effects(
             user(denied_role),
         )
     assert bulk.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_bulk_purge_reports_partial_failure_and_keeps_failed_invoice(
+    db, tmp_path: Path, monkeypatch
+) -> None:
+    first = create_invoice(db, 9301, "system")
+    second = create_invoice(db, 9302, "system")
+    db.commit()
+    paperless = FakePaperless(failing={9302})
+    monkeypatch.setattr(admin_routes, "PaperlessClient", lambda _: paperless)
+
+    result = await bulk_purge_admin_invoices(
+        AdminBulkPurgeRequest(
+            invoice_ids=[first.id, second.id],
+            confirmation="SMAZAT VYBRANÉ",
+            reason="Bulk partial failure regression",
+        ),
+        db,
+        Settings(export_archive_dir=tmp_path),
+        user(ROLE_ADMIN),
+    )
+
+    assert result["succeeded"] == 1
+    assert result["failed"] == 1
+    assert [row["status"] for row in result["results"]] == ["PURGED", "FAILED"]
+    assert db.get(Invoice, first.id) is None
+    assert db.get(Invoice, second.id) is not None
+    assert db.scalar(
+        select(AdminPurgeAudit).where(AdminPurgeAudit.original_invoice_id == first.id)
+    ) is not None
+    assert db.scalar(
+        select(AdminPurgeAudit).where(AdminPurgeAudit.original_invoice_id == second.id)
+    ) is None
 
 
 @pytest.mark.asyncio
