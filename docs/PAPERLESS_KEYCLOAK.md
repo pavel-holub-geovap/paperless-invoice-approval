@@ -11,7 +11,11 @@ Keycloak realm `paperless-invoice` je společný identity provider, ale každá 
 
 Provider ID je `keycloak`; trailing slash callbacku Paperless je záměrný. Issuer je `${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}`. Reverse proxy zachovává `Host`, `X-Forwarded-Host`, port a protokol.
 
-`keycloak-provision` idempotentně vytvoří realm, oba clients, realm roles a skupiny `QUEUE_MANAGER`/`APPROVER`, group claim mapper a čtyři testovací uživatele. Hesla i client secrets čte jen ze serverové `.env`.
+`keycloak-provision` idempotentně vytvoří realm, oba clients, realm roles a skupiny
+`ADMIN`/`QUEUE_MANAGER`/`APPROVER`, group claim mapper a pět testovacích uživatelů
+včetně samostatného `admin1`. Role jsou kombinovatelné a Approval je pouze čte z
+ověřených claims; přidělení a odebrání zůstává v Keycloaku. Hesla i client secrets
+čte provisioning jen ze serverové `.env`.
 
 ## Paperless OIDC
 
