@@ -212,6 +212,10 @@ class PaperlessClient:
             raise PaperlessError("Paperless did not return a PDF")
         return response.content
 
+    async def delete_document(self, document_id: int) -> None:
+        """Permanently delete one document through the supported Paperless REST API."""
+        await self._request("DELETE", f"/documents/{document_id}/")
+
     async def post_document(
         self,
         content: bytes,

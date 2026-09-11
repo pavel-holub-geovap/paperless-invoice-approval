@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from app.auth import ROLE_APPROVER, ROLE_QUEUE_MANAGER, require_roles, roles_from_claims
+from app.auth import ROLE_ADMIN, ROLE_APPROVER, ROLE_QUEUE_MANAGER, require_roles, roles_from_claims
 from app.schemas import CurrentUser
 
 
@@ -29,9 +29,10 @@ def test_approver_role_is_accepted() -> None:
 
 
 def test_roles_are_read_from_keycloak_group_claim() -> None:
-    claims = {"groups": ["/QUEUE_MANAGER", "APPROVER"]}
+    claims = {"groups": ["/QUEUE_MANAGER", "APPROVER", "/ADMIN"]}
 
     assert roles_from_claims(claims, "paperless-invoice-app") == [
+        ROLE_ADMIN,
         ROLE_APPROVER,
         ROLE_QUEUE_MANAGER,
     ]
@@ -48,3 +49,22 @@ def test_roles_are_combined_from_standard_keycloak_claims() -> None:
         ROLE_APPROVER,
         ROLE_QUEUE_MANAGER,
     ]
+
+
+def test_unknown_keycloak_roles_are_ignored_and_admin_is_independent() -> None:
+    claims = {
+        "realm_access": {"roles": ["offline_access", ROLE_ADMIN]},
+        "groups": ["/default-roles-paperless-invoice"],
+    }
+    assert roles_from_claims(claims, "paperless-invoice-app") == [ROLE_ADMIN]
+    with pytest.raises(HTTPException):
+        require_roles(ROLE_QUEUE_MANAGER)(user(ROLE_ADMIN))
+
+
+def test_new_token_role_set_replaces_prior_projection_without_manual_mapping() -> None:
+    approver_claims = {"realm_access": {"roles": [ROLE_APPROVER]}}
+    combined_claims = {"realm_access": {"roles": [ROLE_APPROVER, ROLE_ADMIN]}}
+    reduced_claims = {"realm_access": {"roles": [ROLE_APPROVER]}}
+    assert roles_from_claims(approver_claims, "approval-app") == [ROLE_APPROVER]
+    assert roles_from_claims(combined_claims, "approval-app") == [ROLE_ADMIN, ROLE_APPROVER]
+    assert roles_from_claims(reduced_claims, "approval-app") == [ROLE_APPROVER]

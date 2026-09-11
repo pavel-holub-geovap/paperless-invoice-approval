@@ -148,3 +148,24 @@ Uživatelské názvy backendových stavů se překládají v jedné prezentačn�
 Samotný štítek `Zaokrouhlení` není dostatečný důkaz. Deterministická hranice přijme nenulový `ROUNDING` pouze tehdy, když poslední peněžní částka na témže explicitním řádku souhlasí s hrubou částkou kandidáta, případně se součtem základu a DPH, pokud hrubá částka chybí. Nulová hodnota je významově bez adjustmentu a nevytváří warning. CELKEM, mezisoučet ani souhrnný DPH řádek proto nemohou dodat částku k jinému štítku.
 
 Stejná kanonizace se používá při raw normalizaci, převodu extraction, parsování vytištěné DPH tabulky, validaci a každém ručním uložení. Historická AI odpověď se nemění, ale neplatný odvozený příznak se před vytvořením nové current revize odstraní. Frontend označuje řádek jako zaokrouhlení pouze podle aktuálního výsledku backendové validace, ne podle neověřeného historického pole.
+
+## ADR-028: ADMIN je oddělená role a PURGE je řízená výjimka z append-only historie
+
+Keycloak nově vydává kombinovatelné aplikační role `ADMIN`, `QUEUE_MANAGER` a
+`APPROVER`. `ADMIN` automaticky neimplikuje žádnou další roli. Globální sekce a
+vazby schvalovatel–sekce patří ADMINovi; queue manager je pouze používá u konkrétní
+faktury. Approval ukládá projekci identity podle `sub`, ale efektivní role při nové
+session vždy přebírá z validovaného OIDC tokenu. Role se v Approval nespravují.
+
+Explicitní ADMIN PURGE je businessově schválená jediná výjimka z pravidla, že se
+invoice historie nemaže. Service nejprve odstraní originál a jen jednoznačně
+navázané approved copies přes Paperless REST. Jiná chyba než skutečné 404 blokuje
+lokální delete. Potom explicitně odstraní invoice aggregate, generated XML/response
+soubory a každý ZIP batch, který dokument obsahoval. Zachová se pouze samostatný
+minimal `AdminPurgeAudit` bez FK a bez OCR, částek, bankovních údajů či dokumentu.
+UI i API vyžadují důvod a přesný confirmation token; bulk operuje pouze nad
+vybranými ID a vrací výsledek každé položky.
+
+Tato aplikační pravomoc nemění bezpečnostní hranice automatizovaného Worku: Work
+nesmí svévolně mazat uživatelská data. Live smoke smí purgovat pouze syntetický
+doklad, který v témže scénáři sám vytvořil.

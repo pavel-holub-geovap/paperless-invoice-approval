@@ -14,12 +14,22 @@ export function BasicsSections() {
       <ul>
         <li>Správce fronty začíná ve <strong>Frontě</strong>.</li>
         <li>Schvalovatel začíná v části <strong>Moje schválení</strong>.</li>
-        <li><strong>Nápověda</strong> je dostupná oběma rolím.</li>
+        <li>Administrátor začíná v části <strong>Administrace</strong>.</li>
+        <li><strong>Nápověda</strong> je dostupná všem podporovaným rolím.</li>
       </ul>
     </HelpSection>
 
     <HelpSection id="role" title="3. Role uživatelů">
       <div className="help-role-grid">
+        <article className="help-role-card">
+          <h3>Administrátor</h3>
+          <ul>
+            <li>spravuje globální číselník sekcí a vazby schvalovatelů k sekcím,</li>
+            <li>vidí bezpečný přehled dokladů a minimální historii administrátorských PURGE,</li>
+            <li>může výslovně a nevratně odstranit vybrané doklady z Approval i Paperless,</li>
+            <li>bez další role automaticky nepracuje ve Frontě ani neschvaluje.</li>
+          </ul>
+        </article>
         <article className="help-role-card">
           <h3>Schvalovatel</h3>
           <ul>
@@ -34,11 +44,11 @@ export function BasicsSections() {
           <ul>
             <li>vidí celou frontu a kontroluje originály i údaje,</li>
             <li>nastavuje typ dokladu, režim, sekce a schvalovatele,</li>
-            <li>spravuje oprávnění schvalovatelů k sekcím,</li>
             <li>předává doklady ke schválení, připravuje exporty a potvrzuje skutečně provedený ruční import.</li>
           </ul>
         </article>
       </div>
+      <p>Role přiděluje a odebírá pouze Keycloak. Jeden uživatel může mít více rolí, například <strong>ADMIN + QUEUE_MANAGER</strong>; aplikace pak zobrazí a backendově povolí obě nezávislé oblasti.</p>
       <HelpCallout kind="important"><strong>Oprávnění vždy kontroluje server.</strong> Skrytí tlačítka v obrazovce není jedinou ochranou.</HelpCallout>
     </HelpSection>
 

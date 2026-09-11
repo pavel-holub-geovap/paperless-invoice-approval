@@ -34,6 +34,26 @@ cd ..
 docker compose config --quiet
 ```
 
+## ADMIN, více rolí a PURGE
+
+`backend/tests/test_admin_purge.py` pokrývá explicitní odstranění celého invoice
+aggregate včetně ISDOC extraction, approved-copy vazby, Paperless originálu,
+approval historie, XML/ZIP/POHODA response souborů a zachování minimálního auditu.
+Samostatně ověřuje Paperless 404, timeout/REST chybu bez lokálního delete,
+idempotentní retry, potvrzovací kontrakt, role matrix, nový OIDC user projection a
+obnovu role setu. Migrační test vyžaduje `0012` a indexy purge auditu.
+
+Frontendová regrese `AdminPage.test.tsx` kontroluje samostatnou ADMIN navigaci,
+kombinaci ADMIN+QUEUE_MANAGER, skrytí administrace pro ostatní role, editaci sekcí,
+oprávnění, jednotlivý i bulk confirmation, povinný důvod, audit a read-only identity.
+Nápověda ověřuje opravené vlastnictví konfigurace a výrazné varování před PURGE.
+
+Live scénář `scripts/smoke_admin_purge.py` se smí spustit jen v izolovaném testovacím
+prostředí. Přihlásí `admin1`, `queue-manager` a `approver1`, použije jednoznačně
+pojmenovanou testovací sekci, nahraje vlastní syntetické PDF a purguje pouze Invoice
+ID vrácené tímto uploadem. Poté ověří Approval 404, Paperless 404 a samostatný audit;
+nikdy nevyhledává kandidáty k mazání podle názvu, tagu ani data.
+
 ## Povinný Paperless smoke test (Etapa A)
 
 Použijte pouze `fixtures/synthetic/synthetic-invoice-cs-en.pdf`:

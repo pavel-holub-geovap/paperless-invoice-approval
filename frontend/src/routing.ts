@@ -1,7 +1,7 @@
 export type AppRoute =
   | { page: "dashboard"; invoiceId?: string }
   | { page: "approvals"; historyInvoiceId?: string; history?: boolean; uploaded?: boolean }
-  | { page: "centres" }
+  | { page: "admin" }
   | { page: "exports" }
   | { page: "help" };
 
@@ -13,7 +13,7 @@ export function parseRoute(pathname: string): AppRoute {
   if (pathname === "/approvals/history" || pathname === "/approvals/history/") return { page: "approvals", history: true };
   if (pathname === "/approvals/uploaded" || pathname === "/approvals/uploaded/") return { page: "approvals", uploaded: true };
   if (pathname === "/approvals" || pathname === "/approvals/") return { page: "approvals" };
-  if (pathname === "/cost-centers") return { page: "centres" };
+  if (pathname === "/admin" || pathname === "/admin/" || pathname === "/cost-centers" || pathname === "/cost-centers/") return { page: "admin" };
   if (pathname === "/exports") return { page: "exports" };
   if (pathname === "/help" || pathname === "/help/") return { page: "help" };
   return { page: "dashboard" };

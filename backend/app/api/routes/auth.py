@@ -16,15 +16,15 @@ from app.auth import (
     get_current_user,
     new_session_id,
     require_csrf,
-    roles_from_claims,
     sign_state,
     verify_state,
 )
 from app.config import Settings, get_settings
 from app.db import get_db
-from app.models import OidcSession, UserIdentity
+from app.models import OidcSession
 from app.schemas import CurrentUser
 from app.services.audit import record_event
+from app.services.identity import UnsupportedApplicationRole, synchronize_oidc_identity
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -64,21 +64,12 @@ async def callback(
         raise HTTPException(status_code=400, detail="OIDC state mismatch")
     redirect_uri = f"{settings.app_base_url}/api/auth/callback"
     claims = await exchange_and_validate_code(settings, code, redirect_uri, str(state_payload["nonce"]))
-    subject = str(claims["sub"])
-    user = db.get(UserIdentity, subject)
-    roles = roles_from_claims(claims, settings.keycloak_client_id)
-    if user is None:
-        user = UserIdentity(
-            subject=subject,
-            username=str(claims.get("preferred_username") or subject),
-            email=str(claims["email"]) if claims.get("email") else None,
-            roles=roles,
-        )
-        db.add(user)
-    else:
-        user.username = str(claims.get("preferred_username") or subject)
-        user.email = str(claims["email"]) if claims.get("email") else None
-        user.roles = roles
+    try:
+        user = synchronize_oidc_identity(db, claims, settings.keycloak_client_id)
+    except UnsupportedApplicationRole as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    subject = user.subject
+    roles = user.roles
     session_id = new_session_id()
     db.add(
         OidcSession(

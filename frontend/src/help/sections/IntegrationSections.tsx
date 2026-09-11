@@ -19,7 +19,7 @@ export function IntegrationSections() {
       <ul>
         <li>Originální PDF v Paperless zůstává beze změny.</li>
         <li>Vložený ISDOC a další přílohy zůstávají zachované.</li>
-        <li>Starší schválené kopie se při nové revizi nemažou; zůstanou historické.</li>
+        <li>Starší schválené kopie se při nové revizi nemažou; zůstanou historické, dokud administrátor výslovně neprovede PURGE celého dokladu.</li>
       </ul>
       <p>V detailu dokladu lze mezi Originálem a dostupnou Schválenou kopií přepnout.</p>
     </HelpSection>

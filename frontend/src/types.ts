@@ -287,6 +287,37 @@ export type SectionPermission = {
   revoked_at?: string;
 };
 
+export type AdminInvoice = {
+  id: string;
+  paperless_document_id: number;
+  invoice_number?: string;
+  supplier_name?: string;
+  paperless_title: string;
+  paperless_created_at?: string;
+  status: string;
+  upload_origin: string;
+  uploaded_by?: string;
+};
+
+export type AdminPurgeAudit = {
+  id: string;
+  invoice_id: string;
+  paperless_document_ids: number[];
+  actor_subject: string;
+  actor_display_name?: string;
+  reason: string;
+  result: string;
+  artifact_counts: Record<string, number>;
+  correlation_id?: string;
+  created_at: string;
+};
+
+export type AdminPurgeResponse = {
+  succeeded: number;
+  failed: number;
+  results: Array<{ invoice_id: string; status: string; error?: string }>;
+};
+
 export type ApproverHistoryAssignment = {
   assignment_id: string;
   revision_id: string;

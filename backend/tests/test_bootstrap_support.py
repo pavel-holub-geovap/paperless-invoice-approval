@@ -39,6 +39,7 @@ def valid_environment() -> dict[str, str]:
             "KEYCLOAK_CLIENT_SECRET": "approval-client-secret-123",
             "PAPERLESS_OIDC_CLIENT_SECRET": "paperless-client-secret-123",
             "KEYCLOAK_ADMIN_PASSWORD": "admin-password-123",
+            "TEST_ADMIN_PASSWORD": "test-admin-password-123",
             "TEST_QUEUE_MANAGER_PASSWORD": "manager-password-123",
             "TEST_APPROVER_1_PASSWORD": "approver-one-password-123",
             "TEST_APPROVER_2_PASSWORD": "approver-two-password-123",

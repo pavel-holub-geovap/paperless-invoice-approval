@@ -407,6 +407,40 @@ class SectionPermissionSet(BaseModel):
     active: bool
 
 
+class AdminPurgeRequest(BaseModel):
+    confirmation: Literal["SMAZAT"]
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def meaningful_reason(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("Purge reason must contain at least three non-whitespace characters")
+        return value
+
+
+class AdminBulkPurgeRequest(BaseModel):
+    invoice_ids: list[str] = Field(min_length=1, max_length=100)
+    confirmation: Literal["SMAZAT VYBRANÉ"]
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def meaningful_reason(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("Purge reason must contain at least three non-whitespace characters")
+        return value
+
+    @field_validator("invoice_ids")
+    @classmethod
+    def unique_invoice_ids(cls, values: list[str]) -> list[str]:
+        if len(values) != len(set(values)):
+            raise ValueError("invoice_ids must be unique")
+        return values
+
+
 class ExportCreate(BaseModel):
     invoice_ids: list[str] = Field(min_length=1)
 

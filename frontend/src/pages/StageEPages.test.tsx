@@ -52,7 +52,7 @@ describe("Stage E pages", () => {
       json: async () => [{ id: "c-200", code: "200", name: "Vývoj", pohoda_code: "200", active: true, created_at: "2026-08-23T00:00:00Z", updated_at: "2026-08-23T00:00:00Z" }],
     }));
     render(<CostCenters />);
-    expect(await screen.findByText("Vývoj")).toBeVisible();
+    expect(await screen.findByRole("textbox", { name: "Název sekce 200" })).toHaveValue("Vývoj");
     expect(screen.getByRole("button", { name: "Přidat sekci" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Deaktivovat" })).toBeVisible();
   });

@@ -25,7 +25,7 @@ export function ReviewSections() {
       <ul>
         <li>Správce fronty může nastavovat sekce a přiřazovat k nim schvalovatele.</li>
         <li>Schvalovatel při přípravě vlastního uploadu vidí pouze sekce, ke kterým má oprávnění, a je k nim přiřazen jako schvalovatel.</li>
-        <li>Oprávnění k sekcím spravuje správce fronty na obrazovce <strong>Sekce</strong>.</li>
+        <li>Globální číselník sekcí a oprávnění schvalovatelů spravuje administrátor v části <strong>Administrace</strong>.</li>
         <li>Každá povinná část aktuální revize musí mít oprávněného schvalovatele.</li>
       </ul>
       <HelpCallout kind="warning"><strong>Sekce slouží pro interní schvalování nákladu.</strong> Nejde automaticky o finální účetní středisko, předkontaci ani účet v POHODĚ.</HelpCallout>
@@ -65,7 +65,7 @@ export function ReviewSections() {
         ]}
         alternative="Dokument je schválen v revizi 1. Významná změna vytvoří revizi 2. Původní schválení se nesmaže, ale zůstane v historii označené jako zneplatněné. Aktuální revizi je nutné znovu schválit."
       />
-      <HelpCallout kind="important"><strong>Systém nemaže historii.</strong> Podstatná změna schvalovaných údajů vyžaduje nové schválení, zatímco starší rozhodnutí zůstávají dohledatelná.</HelpCallout>
+      <HelpCallout kind="important"><strong>Běžné workflow nemaže historii.</strong> Podstatná změna schvalovaných údajů vyžaduje nové schválení, zatímco starší rozhodnutí zůstávají dohledatelná. Jedinou výjimkou je výslovný nevratný ADMIN PURGE popsaný v kapitole 20.</HelpCallout>
       <h3>Moje historie</h3>
       <p>Schvalovatel zde vidí faktury, ke kterým měl vztah v libovolné revizi. Detail rozlišuje tehdejší rozhodnutí od aktuálního stavu, ukazuje částku, sekci, komentář a případnou pozdější invalidaci. I když originál v Paperless později chybí, historický záznam zůstane zachován.</p>
     </HelpSection>

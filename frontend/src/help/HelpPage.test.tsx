@@ -87,6 +87,10 @@ describe("integrated user help", () => {
     expect(screen.getByText(/Import do POHODY je vždy ruční/)).toBeVisible();
     expect(screen.getByText(/AI není autorita/)).toBeVisible();
     expect(screen.getByText(/Nejde automaticky o finální účetní středisko/)).toBeVisible();
+    expect(screen.getByRole("heading", { level: 2, name: "20. Administrátor a nevratný PURGE" })).toBeVisible();
+    expect(screen.getByText(/Role přiděluje a odebírá pouze Keycloak/)).toBeVisible();
+    expect(screen.getByText(/PURGE je nevratný/)).toBeVisible();
+    expect(screen.queryByText(/Oprávnění k sekcím spravuje správce fronty/)).not.toBeInTheDocument();
   });
 
   it("contains wide tables locally without widening the mobile page", () => {

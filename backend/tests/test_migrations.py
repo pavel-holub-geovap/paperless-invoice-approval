@@ -67,8 +67,12 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
                 "PRAGMA table_info(approver_section_permissions)"
             ).fetchall()
         }
+        purge_audit_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(admin_purge_audits)").fetchall()
+        }
 
-    assert revision == ("0011",)
+    assert revision == ("0012",)
     assert {
         "paperless_title",
         "paperless_ocr_text",
@@ -155,5 +159,17 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         "revoked_by",
         "revoked_at",
     } <= permission_columns
+    assert {
+        "original_invoice_id",
+        "original_paperless_document_id",
+        "paperless_document_ids",
+        "actor_subject",
+        "actor_display_name",
+        "reason",
+        "artifact_counts",
+        "result",
+        "correlation_id",
+        "created_at",
+    } <= purge_audit_columns
     assert "ix_approval_assignment_approver_invoice" in assignment_indexes
     assert "ix_approval_decision_assignment_created" in decision_indexes

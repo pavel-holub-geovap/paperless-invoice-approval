@@ -23,6 +23,8 @@ SESSION_COOKIE = "pia_session"
 STATE_COOKIE = "pia_oidc_state"
 ROLE_QUEUE_MANAGER = "QUEUE_MANAGER"
 ROLE_APPROVER = "APPROVER"
+ROLE_ADMIN = "ADMIN"
+SUPPORTED_APP_ROLES = frozenset({ROLE_ADMIN, ROLE_QUEUE_MANAGER, ROLE_APPROVER})
 
 
 def _b64(data: bytes) -> str:
@@ -114,7 +116,13 @@ def roles_from_claims(claims: dict[str, object], client_id: str) -> list[str]:
     client = resource_access.get(client_id, {}) if isinstance(resource_access, dict) else {}
     client_roles = client.get("roles", []) if isinstance(client, dict) else []
     group_roles = [str(group).removeprefix("/") for group in groups] if isinstance(groups, list) else []
-    return sorted({str(role) for role in [*realm_roles, *client_roles, *group_roles]})
+    return sorted(
+        {
+            str(role)
+            for role in [*realm_roles, *client_roles, *group_roles]
+            if str(role) in SUPPORTED_APP_ROLES
+        }
+    )
 
 
 def get_current_user(
@@ -129,11 +137,17 @@ def get_current_user(
     user = oidc_session.user
     if not user.active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is disabled")
+    effective_roles = sorted(set(user.roles) & SUPPORTED_APP_ROLES)
+    if not effective_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User has no supported application role",
+        )
     return CurrentUser(
         subject=user.subject,
         username=user.username,
         email=user.email,
-        roles=user.roles,
+        roles=effective_roles,
         csrf_token=oidc_session.csrf_token,
     )
 

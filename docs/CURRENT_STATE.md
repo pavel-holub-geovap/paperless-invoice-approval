@@ -1,12 +1,31 @@
 # Aktuální stav
 
+## ADMIN, Keycloak identity a nevratný PURGE
+
+- Aplikace podporuje nezávislé a kombinovatelné role `ADMIN`, `QUEUE_MANAGER` a
+  `APPROVER`. Keycloak claims jsou jediný zdroj oprávnění; neznámé role se ignorují
+  a přihlášení bez podporované role končí HTTP 403. Lokální identity projection se
+  automaticky vytvoří/obnoví podle stabilního `sub` při OIDC callbacku.
+- `/admin` je dostupné jen ADMINovi. Obsahuje editovatelný číselník sekcí, globální
+  vazby schvalovatel–sekce, read-only seznam již přihlášených identit, přehled
+  dokladů, jednotlivý i výběrový PURGE a minimální audit. Role se v Approval UI
+  nepřidělují. Samotný ADMIN nevidí frontu; kombinace ADMIN+QUEUE_MANAGER vidí obě
+  oblasti.
+- PURGE vyžaduje důvod a přesný potvrzovací text. Paperless originál a jen explicitně
+  navázané approved-copy ID se mažou přes REST dříve než lokální aggregate. HTTP 404
+  je idempotentně přijat, jiné Paperless chyby ponechají lokální data. Běžná auditní
+  historie se při této jediné explicitní výjimce odstraní a zůstane samostatný
+  necitlivý `AdminPurgeAudit` bez FK na Invoice.
+- Testovací provisioning vytváří samostatného `admin1` pouze s `ADMIN`; jeho heslo
+  pochází z neverzovaného `TEST_ADMIN_PASSWORD`.
+
 ## Integrovaná uživatelská nápověda
 
 - Autentizovaní uživatelé s rolemi `QUEUE_MANAGER` i `APPROVER` mají v hlavní
   navigaci položku „Nápověda“. History API route `/help` i přímé odkazy na
   kapitoly jako `/help/#schvalovani`, `/help/#sekce` a `/help/#pohoda` vykresluje
   React spolu se zbytkem aplikace; backend ani databázová migrace nejsou potřeba.
-- Česká příručka má 19 kapitol podle skutečných enumů, UI a workflow aktuálního
+- Česká příručka má 20 kapitol podle skutečných enumů, UI a workflow aktuálního
   HEAD. Pokrývá role, oba způsoby uploadu, Paperless, ISDOC/OCR/AI, ruční opravy
   a validace, sekce, self-approval s povinnou správcovskou kontrolou, rozhodnutí,
   revize, historii, schválené PDF, POHODU, zálohové faktury a všech 14 workflow

@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth import ROLE_APPROVER, ROLE_QUEUE_MANAGER, require_csrf_roles, require_roles
+from app.auth import (
+    ROLE_ADMIN,
+    ROLE_APPROVER,
+    ROLE_QUEUE_MANAGER,
+    require_csrf_roles,
+    require_roles,
+)
 from app.db import get_db
 from app.models import ApproverSectionPermission
 from app.schemas import CurrentUser, SectionPermissionSet
@@ -14,17 +20,22 @@ from app.services.workflow import WorkflowError
 router = APIRouter(prefix="/section-permissions", tags=["section-permissions"])
 
 
+def _admin(user: CurrentUser) -> None:
+    if ROLE_ADMIN not in user.roles:
+        raise HTTPException(status_code=403, detail="ADMIN role required")
+
+
 @router.get("")
 def list_section_permissions(
     include_inactive: bool = False,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
+    user: CurrentUser = Depends(require_roles(ROLE_ADMIN, ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
 ) -> list[dict[str, object]]:
     query = select(ApproverSectionPermission).options(
         selectinload(ApproverSectionPermission.approver),
         selectinload(ApproverSectionPermission.cost_center),
     )
-    if ROLE_QUEUE_MANAGER not in user.roles:
+    if ROLE_ADMIN not in user.roles and ROLE_QUEUE_MANAGER not in user.roles:
         query = query.where(ApproverSectionPermission.approver_subject == user.subject)
     if not include_inactive:
         query = query.where(ApproverSectionPermission.active.is_(True))
@@ -36,8 +47,9 @@ def list_section_permissions(
 def update_section_permission(
     payload: SectionPermissionSet,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_csrf_roles(ROLE_QUEUE_MANAGER)),
+    user: CurrentUser = Depends(require_csrf_roles(ROLE_ADMIN)),
 ) -> dict[str, object]:
+    _admin(user)
     try:
         row = set_section_permission(
             db,

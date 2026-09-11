@@ -24,6 +24,7 @@ export const helpChapters = [
   ["stavy", "Stavy dokumentu"],
   ["situace", "Nejčastější situace"],
   ["problemy", "Co dělat při problému"],
+  ["administrator", "Administrátor a nevratný PURGE"],
 ] as const;
 
 export function HelpPage() {

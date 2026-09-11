@@ -9,7 +9,7 @@ nebo deterministické POHODA XML. Import do POHODY zůstává ruční.
 
 - Paperless-ngx pro originály, přílohy, OCR a technické tagy;
 - Approval FastAPI backend, worker a responzivní React UI;
-- Keycloak/OIDC s rolemi `QUEUE_MANAGER` a `APPROVER`;
+- Keycloak/OIDC s kombinovatelnými rolemi `ADMIN`, `QUEUE_MANAGER` a `APPROVER`;
 - oddělené databáze Approval, Keycloak a Paperless v PostgreSQL;
 - Redis, CPU-only Ollamu s modelem `qwen3:8b` a Nginx reverse proxy;
 - lokální ISDOC 6.0.2 a POHODA XSD bundle bez přístupu do účetního systému.
@@ -20,7 +20,14 @@ Schvalovatel může stejnou zabezpečenou cestou nahrát vlastní PDF, připravi
 sekce a schválit povolené části; finální postup vždy vyžaduje kontrolu konkrétní
 revize správcem fronty.
 
-Po přihlášení je oběma rolím v hlavní navigaci dostupná integrovaná česká
+Keycloak je jediný autoritativní zdroj rolí. `ADMIN` spravuje globální sekce,
+oprávnění schvalovatelů a bezpečný nevratný PURGE; automaticky tím nezískává
+práva `QUEUE_MANAGER`. Běžná workflow historie zůstává append-only. Výjimkou je
+výslovný ADMIN PURGE, který po úspěšném odstranění originálu a jednoznačně
+navázaných schválených kopií v Paperless odstraní celý lokální aggregate a
+ponechá pouze minimální necitlivý audit administrátorské operace.
+
+Po přihlášení je všem podporovaným rolím v hlavní navigaci dostupná integrovaná česká
 `Nápověda` na route `/help`. Obsahuje uživatelský průvodce, responzivní workflow
 diagramy, přímé odkazy na kapitoly a tiskový styl bez externích závislostí.
 Pokyny pro údržbu obsahu jsou v

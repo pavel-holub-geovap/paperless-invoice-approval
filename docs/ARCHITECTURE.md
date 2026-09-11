@@ -69,11 +69,11 @@ Backend, databáze, API a POHODA XML používají ISO datum. React má jedinou p
 
 Český domácí účet prochází jedinou normalizační službou. Kombinovaný vstup `[prefix-]account/bank_code` se rozloží bez hádání číslic; původní text zůstane v `bank_account_raw`. Dodavatelská adresa se strukturuje primárně modelem a konzervativně normalizuje pouze z dodavatelského adresního bloku, nikdy z celého OCR. Volitelný modulo-11 checksum i matematické VAT reconciliation kontroly včetně řádku jsou review WARNING; pouze neplatný/neúplný VAT formát zůstává blocking. `ROUNDING` je deterministicky odvozen výhradně z explicitního řádkového štítku v evidence, nikdy ze souhrnné částky, velikosti rozdílu nebo samotné klasifikace LLM. Deklarované částky se výpočtem nepřepisují.
 
-`QUEUE_MANAGER` vidí celou frontu a smí provádět správcovské změny. `APPROVER` vidí svoje aktuální i historické assignmenty a také dokumenty, které sám nahrál, a to už před vznikem assignmentu. Cizí approver bez uploader/assignment vztahu metadata ani PDF nevidí. Role pocházejí z Keycloak tokenu a backend je kontroluje nezávisle na viditelnosti prvků ve frontendu.
+`ADMIN` spravuje globální číselník sekcí, vazby schvalovatel–sekce a nevratný PURGE. `QUEUE_MANAGER` vidí celou frontu a provádí provozní změny konkrétních dokladů, ale globální konfiguraci nemění. `APPROVER` vidí svoje aktuální i historické assignmenty a také dokumenty, které sám nahrál, a to už před vznikem assignmentu. Cizí approver bez uploader/assignment vztahu metadata ani PDF nevidí. Role jsou kombinovatelné, pocházejí z aktuálního Keycloak tokenu a backend je kontroluje nezávisle na viditelnosti prvků ve frontendu. Samotný `ADMIN` proto nezískává queue ani approval oprávnění.
 
 ### Sekce, self-approval a kontrola revize
 
-Business „Sekce“ používá stávající `CostCenter`; nevzniká druhý překrývající se číselník. `ApproverSectionPermission` je auditovatelná M:N vazba stabilního Keycloak subjectu na sekci. Approver smí vlastní allocations vytvořit pouze pro aktivní povolené sekce a pro každý takový řádek dostane standardní assignment. Každé nové rozhodnutí znovu ověřuje aktuální permission.
+Business „Sekce“ používá stávající `CostCenter`; nevzniká druhý překrývající se číselník. Globální CRUD a aktivaci sekcí i `ApproverSectionPermission` spravuje pouze `ADMIN`. Vazba je auditovatelná M:N relace stabilního Keycloak subjectu na sekci. `QUEUE_MANAGER` aktivní sekce pouze používá pro allocations konkrétní faktury. Approver smí vlastní allocations vytvořit pouze pro aktivní povolené sekce a pro každý takový řádek dostane standardní assignment. Každé nové rozhodnutí znovu ověřuje aktuální permission.
 
 Self-approval je běžný append-only `ApprovalDecision`, ale před queue review nemění dokument na `APPROVED` ani nevytváří schválené PDF. `submitted_to_queue_*` a `queue_manager_reviewed_*` jsou uloženy na `InvoiceRevision`; fork revize tedy review automaticky zneplatní. Správcovská změna klasifikace, režimu, sekcí nebo approverů po předání vytvoří novou revizi, historická rozhodnutí pouze invaliduje a nemaže.
 
@@ -90,6 +90,26 @@ PostgreSQL tabulka `processing_jobs` je approval fronta se stavem, omezeným po�
 ## Důvěryhodné hranice
 
 Browser nikdy nevidí Paperless token ani client secret. Backend drží náhodné opaque session ID v `HttpOnly`, `Secure` (v produkci) a `SameSite=Lax` cookie. Změnové endpointy kontrolují roli a CSRF origin. Exportní archiv je přístupný jen autorizovaným endpointem; normalizované názvy a kontrola resolved cest brání traversal.
+
+## Identity projection a ADMIN PURGE
+
+Keycloak je source of truth pro aplikační role. Při každém úspěšném OIDC callbacku
+se podle stabilního `sub` vytvoří nebo obnoví lokální `UserIdentity`; její role jsou
+projekcí právě ověřených claims, nikoli samostatným IAM. Neznámé realm/client/group
+role se ignorují a uživatel bez alespoň jedné podporované role dostane HTTP 403.
+Nový approver je proto ihned po prvním loginu dostupný ADMINovi pro vazbu na sekci
+bez SQL, restartu nebo Keycloak Admin API integrace.
+
+`admin_purge` je explicitní service-layer orchestrace. V transakci zamkne Invoice,
+načte přesně navázané Paperless ID a artifact cesty, ověří jejich umístění v
+exportním archivu a nejdřív volá Paperless REST DELETE pro derived copies a až
+potom pro originál. HTTP 404 znamená již
+nepřítomný dokument; timeout, auth, síťová chyba a 5xx ukončí operaci bez lokálního
+mazání. Teprve potom se explicitně odstraní invoice-bound entity a soubory. ZIP
+batch obsahující mazaný doklad se odstraní jako celek, protože immutable archiv
+nesmí dál obsahovat purged dokument; samostatné exporty ostatních faktur zůstanou.
+Opakování po úspěchu vrací `ALREADY_PURGED`. Oddělený `AdminPurgeAudit` nemá FK na
+Invoice a drží jen interní/Paperless ID, aktéra, důvod, korelaci a počty artefaktů.
 
 ## Konzistence klienta a audit požadavků
 

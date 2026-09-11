@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.routes import (
+    admin,
     approvals,
     auth,
     cost_centers,
@@ -30,6 +31,7 @@ app = FastAPI(
 )
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 app.include_router(invoices.router, prefix="/api")
 app.include_router(uploads.router, prefix="/api")
 app.include_router(approvals.router, prefix="/api")

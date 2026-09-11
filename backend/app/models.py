@@ -842,3 +842,27 @@ class PohodaResponseUpload(Base):
     parse_errors: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     uploaded_by: Mapped[str] = mapped_column(String(255), nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AdminPurgeAudit(Base):
+    """Minimal durable record that deliberately outlives a purged invoice aggregate."""
+
+    __tablename__ = "admin_purge_audits"
+    __table_args__ = (
+        Index("ix_admin_purge_audit_invoice_created", "original_invoice_id", "created_at"),
+        Index("ix_admin_purge_audit_actor_created", "actor_subject", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    original_invoice_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    original_paperless_document_id: Mapped[int | None] = mapped_column(Integer)
+    paperless_document_ids: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    actor_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_display_name: Mapped[str | None] = mapped_column(String(255))
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    artifact_counts: Mapped[dict[str, int]] = mapped_column(JSON, default=dict, nullable=False)
+    result: Mapped[str] = mapped_column(String(32), default="PURGED", nullable=False)
+    correlation_id: Mapped[str | None] = mapped_column(String(100), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False, index=True
+    )

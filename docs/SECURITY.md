@@ -10,13 +10,13 @@ Immutable export a approved-PDF artifact ukládají pouze snapshoty, reference a
 
 Embedded XML je nedůvěryhodný vstup. Parser zakazuje DTD, entity, síťové resolving a huge tree, neprovádí XInclude, má velikostní limit a filename redukuje na bezpečný leaf pouze pro metadata. Neznámý namespace/verze, neúplný profil, více validních kandidátů nebo poškozené XML nikdy nedostanou `VALID`; následuje OCR/AI fallback.
 
-`QUEUE_MANAGER` může měnit faktury, střediska, rozúčtování a assignments. `APPROVER` získá aktivní úkol jen pro vlastní assignment aktuální revize. Read-only historický detail a PDF může získat také tehdy, pokud měl vlastní assignment v libovolné starší revizi; centrální backendová kontrola tuto podmínku ověřuje z Approval DB při každém přístupu. Znalost cizího invoice ID vede k HTTP 403. Backend znovu ověřuje aktivní Keycloak identitu a roli každého approvera při předání. `RETURN`/`REJECT` vyžadují komentář. Rozhodování používá databázové řádkové zámky a unikátní platné rozhodnutí, takže opakovaný nebo souběžný request nevytvoří dvě approvals.
+`ADMIN` může měnit globální sekce/oprávnění a provést chráněný PURGE, ale samotná role mu nedává provozní práva. `QUEUE_MANAGER` může měnit konkrétní faktury, rozúčtování a assignments, nikoli globální číselník. `APPROVER` získá aktivní úkol jen pro vlastní assignment aktuální revize. Read-only historický detail a PDF může získat také tehdy, pokud měl vlastní assignment v libovolné starší revizi; centrální backendová kontrola tuto podmínku ověřuje z Approval DB při každém přístupu. Znalost cizího invoice ID vede k HTTP 403. Backend znovu ověřuje aktivní Keycloak identitu a roli každého approvera při předání. `RETURN`/`REJECT` vyžadují komentář. Rozhodování používá databázové řádkové zámky a unikátní platné rozhodnutí, takže opakovaný nebo souběžný request nevytvoří dvě approvals.
 
 Paperless fulltext není autorizační systém. Globální Paperless výsledky zůstávají uvnitř backendu a před výpočtem výsledného počtu, metadata nebo snippetu se protínají s historicky povolenými `paperless_document_id`. Frontend nedostává Paperless token, globální počet ani nepovolené kandidáty. Timeout či 5xx fulltextu vrací bezpečnou chybu a nemění `source_status`; pouze HTTP 404 konkrétního dokumentu může znamenat `MISSING`.
 
 Testovací Paperless má vlastní databázi, Redis a volumes. Žádná jeho služba nesmí dostat produkční Paperless credentials nebo mount. Approval backend používá pouze REST API token z runtime Docker volume a nemá Paperless DB heslo. Paperless OIDC client secret je jiný než secret Approval aplikace.
 
-Reconciliation nesmí zaměnit výpadek za smazání: pouze konkrétní HTTP 404 nastaví `MISSING`. Chybějící zdroj blokuje další approval, nový export/import, PDF a ZIP, ale nemaže důkazní historii. Disposition mění pouze `QUEUE_MANAGER`; approver dostane HTTP 403. Paperless tag se zapisuje jen existujícímu dokumentu a automatické fyzické mazání není součástí aplikace.
+Reconciliation nesmí zaměnit výpadek za smazání: pouze konkrétní HTTP 404 nastaví `MISSING`. Chybějící zdroj blokuje další approval, nový export/import, PDF a ZIP, ale nemaže důkazní historii. Disposition mění pouze `QUEUE_MANAGER`; approver dostane HTTP 403. Paperless tag se zapisuje jen existujícímu dokumentu. Jedinou fyzickou mazací cestou je explicitní ADMIN PURGE s důvodem a confirmation.
 
 Correction smoke smí mazat pouze dvě syntetická Paperless ID, která sám právě vytvořil a zaznamenal. Cleanup nevyhledává ani nemaže uživatelské faktury. Report neobsahuje PDF bytes, OCR text, token ani heslo.
 
@@ -28,6 +28,20 @@ Každý HTTP požadavek dostává `X-Request-ID`; klientský identifikátor lze 
 
 `POHODA_TARGET_ICO` a volitelný `POHODA_TARGET_KEY` jsou pouze serverová konfigurace. `.env.example` obsahuje prázdné hodnoty a skutečná konfigurace nesmí být commitována.
 
-Upload PDF je BFF operace pouze pro `QUEUE_MANAGER`; role a CSRF jsou vynuceny backendem a Paperless token se neposílá browseru. Backend ověřuje příponu, MIME, `%PDF-` magic a `UPLOAD_MAX_BYTES`, odstraňuje control/path separátory z názvu a nikdy z něj nekonstruuje lokální filesystem cestu. Dočasný multipart obsah žije pouze po dobu requestu, po předání Paperless se neukládá do DB ani auditu. SHA-256 slouží k diagnostice a přesné duplicate indikaci, nikoli jako automatický důvod ke smazání.
+Upload PDF je BFF operace pro `QUEUE_MANAGER` a `APPROVER`; role a CSRF jsou vynuceny backendem a Paperless token se neposílá browseru. Backend ověřuje příponu, MIME, `%PDF-` magic a `UPLOAD_MAX_BYTES`, odstraňuje control/path separátory z názvu a nikdy z něj nekonstruuje lokální filesystem cestu. Dočasný multipart obsah žije pouze po dobu requestu, po předání Paperless se neukládá do DB ani auditu. SHA-256 slouží k diagnostice a přesné duplicate indikaci, nikoli jako automatický důvod ke smazání.
 
 Retry je povolen jen při prokazatelném connect failure před přijetím uploadu. Timeout, přerušené spojení po odeslání a Paperless 5xx mají stav `SUBMISSION_UNKNOWN`; systém je automaticky neopakuje, protože Paperless upload API nemá Approval idempotency key a první consume task mohl vzniknout.
+
+## Bezpečnost ADMIN PURGE
+
+Purge endpointy vynucují `ADMIN` a CSRF na backendu. Jednotlivý požadavek přijme
+jen `SMAZAT`, bulk pouze `SMAZAT VYBRANÉ`; obě varianty vyžadují neprázdný důvod.
+Service zamkne Invoice, maže derived copies před originálem, přijme Paperless 404 jako již odstraněný objekt a při
+timeoutu, 401/403, síťové chybě nebo 5xx neodstraní lokální aggregate. Approved
+copies se vybírají výhradně z vazby `ApprovedPdfArtifact.paperless_document_id`,
+nikdy plošně podle tagu. Cesty souborů musí po resolve zůstat v exportním rootu.
+
+Po úspěchu přetrvá jen `AdminPurgeAudit`: interní Invoice ID, bezpečná Paperless ID,
+subject/display aktéra, čas, důvod, correlation ID, výsledek a počty typů artefaktů.
+Neobsahuje PDF, OCR, AI výstup, částky ani bankovní data. Opakovaný request je
+idempotentní a odkáže na existující purge audit. Frontend nemá „Smazat vše“.

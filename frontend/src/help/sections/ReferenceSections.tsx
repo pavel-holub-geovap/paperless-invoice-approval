@@ -65,9 +65,21 @@ export function ReferenceSections() {
         <div><dt>Novější revize na serveru</dt><dd>Rozpracovaná lokální data zůstávají zachována. Rozhodněte se podle zobrazené výzvy, zda načíst novou verzi; nepřepisujte změny bez kontroly.</dd></div>
         <div><dt>Originál v Paperless chybí</dt><dd>Operace vyžadující PDF, nové schválení a nový export jsou zablokované. Historie a dříve vytvořené artefakty zůstávají. Kontaktujte správce fronty.</dd></div>
         <div><dt>Nahrávání selhalo</dt><dd>Přečtěte zobrazený důvod. U dočasné chyby použijte Zkusit znovu; při neznámém výsledku soubor neposílejte opakovaně bez kontroly, aby nevznikla duplicita.</dd></div>
-        <div><dt>Nemohu použít sekci</dt><dd>Schvalovatel vidí jen své aktivně povolené sekce. Požádejte správce fronty o kontrolu oprávnění.</dd></div>
+        <div><dt>Nemohu použít sekci</dt><dd>Schvalovatel vidí jen své aktivně povolené sekce. Požádejte administrátora o kontrolu globálního oprávnění; správce fronty pak sekci používá u konkrétní faktury.</dd></div>
       </dl>
       <HelpCallout><strong>Když si nejste jistí:</strong> nic nemažte ani nenahrávejte opakovaně. Poznamenejte číslo dokladu, aktuální stav a text chyby a předejte je správci fronty.</HelpCallout>
+    </HelpSection>
+
+    <HelpSection id="administrator" title="20. Administrátor a nevratný PURGE">
+      <p>Administrátor spravuje globální systémovou konfiguraci. Role <strong>ADMIN</strong> se stejně jako ostatní role přiděluje pouze v Keycloaku. Approval role nevytváří ani nemění.</p>
+      <ul>
+        <li><strong>Sekce:</strong> ADMIN vytváří, upravuje, aktivuje a deaktivuje globální číselník.</li>
+        <li><strong>Oprávnění:</strong> ADMIN nastavuje vazbu schvalovatel ↔ sekce podle stabilního Keycloak subject.</li>
+        <li><strong>Kombinované role:</strong> samotný ADMIN není správce fronty; pro obě činnosti musí mít uživatel role ADMIN + QUEUE_MANAGER.</li>
+      </ul>
+      <HelpCallout kind="warning"><strong>PURGE je nevratný.</strong> Odstraní celý doklad z Approval, originální PDF a jednoznačně navázané schválené kopie z Paperless a příslušné XML, ZIP a další exportní artefakty. Operaci nelze vrátit.</HelpCallout>
+      <p>Před jednotlivým i hromadným PURGE musí administrátor vybrat konkrétní doklady, uvést důvod a opsat potvrzovací text. Neexistuje nechráněná funkce „Smazat vše“. Pokud Paperless odpoví timeoutem, chybou přihlášení nebo HTTP 5xx, lokální faktura se nesmaže. HTTP 404 znamená, že daný Paperless dokument už chybí, a bezpečné dokončení může pokračovat.</p>
+      <p>Po úspěchu zůstává pouze minimální audit: interní ID faktury, bezpečná Paperless ID, kdo a kdy operaci provedl, důvod, výsledek, počty odstraněných artefaktů a korelační ID. PDF, OCR, AI data, částky ani bankovní údaje se do něj nekopírují.</p>
     </HelpSection>
   </>;
 }

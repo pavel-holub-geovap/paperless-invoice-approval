@@ -237,7 +237,7 @@ def provision() -> None:
         role_representations: dict[str, dict[str, Any]] = {}
         group_representations: dict[str, dict[str, Any]] = {}
         existing_groups = request(client, "GET", f"/admin/realms/{realm}/groups").json()
-        for role in ("QUEUE_MANAGER", "APPROVER"):
+        for role in ("ADMIN", "QUEUE_MANAGER", "APPROVER"):
             response = client.get(f"/admin/realms/{realm}/roles/{role}")
             if response.status_code == 404:
                 request(client, "POST", f"/admin/realms/{realm}/roles", json={"name": role})
@@ -253,6 +253,14 @@ def provision() -> None:
             group_representations[role] = group
 
         users = (
+            (
+                "admin1",
+                "admin1@example.test",
+                "Admin",
+                "One",
+                "TEST_ADMIN_PASSWORD",
+                "ADMIN",
+            ),
             (
                 "queue-manager",
                 "queue-manager@example.test",
