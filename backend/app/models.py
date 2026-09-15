@@ -346,6 +346,8 @@ class InvoiceRevision(Base):
     )
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    payment_required: Mapped[bool | None] = mapped_column(Boolean)
+    rounding_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     created_by: Mapped[str] = mapped_column(String(255), default="system")
     submitted_to_queue_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     submitted_to_queue_by: Mapped[str | None] = mapped_column(String(255))

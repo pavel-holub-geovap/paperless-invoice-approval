@@ -16,9 +16,10 @@ nebo deterministické POHODA XML. Import do POHODY zůstává ruční.
 
 Approval nikdy nečte databázi Paperless přímo. Originální PDF neduplikuje do své
 databáze a Paperless token neposílá do prohlížeče. Audit i AI běhy jsou append-only.
-Schvalovatel může stejnou zabezpečenou cestou nahrát vlastní PDF, připravit jeho
-sekce a schválit povolené části; finální postup vždy vyžaduje kontrolu konkrétní
-revize správcem fronty.
+Schvalovatel může stejnou zabezpečenou cestou nahrát vlastní PDF, zvolit typ a
+údaj K zaplacení a připravit rozdělení do libovolných aktivních sekcí. Při
+předání se jeho oprávněné části auditovaně schválí; ostatní pokračují běžným
+workflow a finální postup vždy vyžaduje kontrolu konkrétní revize správcem fronty.
 
 Keycloak je jediný autoritativní zdroj rolí. `ADMIN` spravuje globální sekce,
 oprávnění schvalovatelů a bezpečný nevratný PURGE; automaticky tím nezískává
@@ -126,6 +127,9 @@ a smoke scénáře jsou popsány v [docs/TESTING.md](docs/TESTING.md).
 - Workflow stav mění pouze centralizovaná služba a významná změna vytváří novou
   revizi a invaliduje stará schválení bez mazání historie.
 - Schvalují se allocations konkrétní revize. `RETURN` a `REJECT` vyžadují komentář.
+- `payment_required` a explicitní `rounding_amount` jsou součástí revize;
+  K ZAPLACENÍ a poznámky allocations se tisknou z immutable snapshotu do
+  schválené PDF kopie.
 - Validní vložený ISDOC je primární zdroj a AI přeskočí. Jinak Qwen převádí OCR
   pouze do striktního schématu; neurčuje workflow, střediska ani schvalovatele.
 - XML generuje deterministický backend ze schváleného immutable snapshotu. XSD

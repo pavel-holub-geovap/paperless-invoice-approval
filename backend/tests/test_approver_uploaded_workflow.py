@@ -28,7 +28,6 @@ from app.services.workflow import (
     WorkflowError,
     confirm_original,
     create_invoice,
-    decide,
     submit_for_approval,
     submit_to_queue_review,
     transition,
@@ -71,6 +70,7 @@ def approver_invoice(db: Session):
             "due_date": "2026-09-15",
             "currency": "CZK",
             "total_amount": "121.00",
+            "payment_required": True,
             "vat_breakdown": [{"base": "100.00", "rate": "21", "vat": "21.00"}],
         },
         user.subject,
@@ -98,36 +98,30 @@ def test_permission_grant_and_revoke_are_audited(db: Session) -> None:
     assert "APPROVER_SECTION_PERMISSION_REVOKED" in events
 
 
-def test_uploader_can_only_allocate_permitted_sections_and_is_auto_assigned(
+def test_uploader_can_allocate_any_active_section_and_assignment_waits_for_submit(
     db: Session,
 ) -> None:
     invoice, user, center = approver_invoice(db)
     forbidden = CostCenter(code="SEC-B", name="Sekce B", pohoda_code="SEC-B")
     db.add(forbidden)
     db.flush()
-    with pytest.raises(WorkflowError, match="povolené sekce"):
-        replace_allocations(
-            db,
-            invoice,
-            [AllocationInput(cost_center_id=forbidden.id, amount=Decimal("121.00"))],
-            user.subject,
-            self_assign_subject=user.subject,
-        )
     replace_allocations(
         db,
         invoice,
-        [AllocationInput(cost_center_id=center.id, amount=Decimal("121.00"))],
+        [
+            AllocationInput(cost_center_id=center.id, amount=Decimal("40.00")),
+            AllocationInput(cost_center_id=forbidden.id, amount=Decimal("81.00")),
+        ],
         user.subject,
         self_assign_subject=user.subject,
     )
-    assignment = db.scalar(
-        select(ApprovalAssignment).where(
-            ApprovalAssignment.revision_id == invoice.current_revision.id,
-            ApprovalAssignment.active.is_(True),
-        )
-    )
-    assert assignment is not None
-    assert assignment.approver_subject == user.subject
+    assert db.scalar(select(ApprovalAssignment.id)) is None
+    submit_to_queue_review(db, invoice, user.subject)
+    assignments = db.scalars(select(ApprovalAssignment)).all()
+    assert len(assignments) == 1
+    assert assignments[0].allocation.cost_center_id == center.id
+    assert assignments[0].status.value == "APPROVED"
+    assert db.scalar(select(ApprovalDecision)).action == ApprovalAction.APPROVE
 
 
 def test_self_approval_waits_for_revision_specific_manager_review(db: Session) -> None:
@@ -139,20 +133,11 @@ def test_self_approval_waits_for_revision_specific_manager_review(db: Session) -
         user.subject,
         self_assign_subject=user.subject,
     )
-    assignment = db.scalar(
-        select(ApprovalAssignment).where(
-            ApprovalAssignment.revision_id == invoice.current_revision.id,
-            ApprovalAssignment.active.is_(True),
-        )
-    )
-    assert assignment is not None
-    decide(db, assignment, ApprovalAction.APPROVE, user.subject, None)
-    assert invoice.status == InvoiceStatus.NEEDS_REVIEW
-    assert invoice.current_revision.queue_manager_reviewed_at is None
-
     submit_to_queue_review(db, invoice, user.subject)
     assert invoice.status == InvoiceStatus.QUEUE_REVIEW
     assert invoice.current_revision.submitted_to_queue_by == user.subject
+    assignment = db.scalar(select(ApprovalAssignment).where(ApprovalAssignment.active.is_(True)))
+    assert assignment is not None and assignment.status.value == "APPROVED"
 
     submit_for_approval(db, invoice, "manager-subject")
     assert invoice.status == InvoiceStatus.APPROVED
@@ -163,7 +148,7 @@ def test_self_approval_waits_for_revision_specific_manager_review(db: Session) -
         ).all()
     )
     assert {
-        "UPLOADER_SECTION_SELF_APPROVED",
+        "UPLOADER_SECTION_AUTO_APPROVED",
         "SUBMITTED_TO_QUEUE_MANAGER",
         "QUEUE_MANAGER_REVISION_REVIEWED",
     } <= events
@@ -180,10 +165,9 @@ def test_manager_change_after_submission_creates_revision_and_invalidates_approv
         user.subject,
         self_assign_subject=user.subject,
     )
-    assignment = db.scalar(select(ApprovalAssignment).where(ApprovalAssignment.active.is_(True)))
-    assert assignment is not None
-    decision = decide(db, assignment, ApprovalAction.APPROVE, user.subject, None)
     submit_to_queue_review(db, invoice, user.subject)
+    decision = db.scalar(select(ApprovalDecision).where(ApprovalDecision.valid.is_(True)))
+    assert decision is not None
     old_revision = invoice.current_revision_number
 
     classify_document(
@@ -201,7 +185,7 @@ def test_manager_change_after_submission_creates_revision_and_invalidates_approv
     assert invoice.pohoda_import_method.value == "NONE"
 
 
-def test_revoked_permission_blocks_a_new_decision(db: Session) -> None:
+def test_revoked_permission_before_submit_keeps_allocation_without_auto_approval(db: Session) -> None:
     invoice, user, center = approver_invoice(db)
     replace_allocations(
         db,
@@ -210,8 +194,6 @@ def test_revoked_permission_blocks_a_new_decision(db: Session) -> None:
         user.subject,
         self_assign_subject=user.subject,
     )
-    assignment = db.scalar(select(ApprovalAssignment).where(ApprovalAssignment.active.is_(True)))
-    assert assignment is not None
     set_section_permission(
         db,
         approver_subject=user.subject,
@@ -219,6 +201,33 @@ def test_revoked_permission_blocks_a_new_decision(db: Session) -> None:
         active=False,
         actor="manager-subject",
     )
-    with pytest.raises(WorkflowError, match="již nemá oprávnění"):
-        decide(db, assignment, ApprovalAction.APPROVE, user.subject, None)
+    submit_to_queue_review(db, invoice, user.subject)
+    assert db.scalar(select(ApprovalAssignment.id)) is None
     assert db.scalar(select(ApprovalDecision.id)) is None
+
+
+def test_payment_required_is_explicit_revision_business_data_and_submit_gate(db: Session) -> None:
+    invoice, user, center = approver_invoice(db)
+    current = invoice.current_revision
+    assert current is not None and current.payment_required is True
+    old_number = current.number
+    updated = update_invoice_data(
+        db,
+        invoice,
+        {"payment_required": False},
+        user.subject,
+    )
+    assert updated.number == old_number + 1
+    assert current.payment_required is True
+    assert updated.payment_required is False
+
+    updated.payment_required = None
+    replace_allocations(
+        db,
+        invoice,
+        [AllocationInput(cost_center_id=center.id, amount=Decimal("121.00"))],
+        user.subject,
+        self_assign_subject=user.subject,
+    )
+    with pytest.raises(WorkflowError, match="K zaplacení"):
+        submit_to_queue_review(db, invoice, user.subject)

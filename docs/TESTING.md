@@ -223,6 +223,12 @@ docker compose run --rm --no-deps --env-from-file .env \
 
 Browser musí bez F5 prokázat hodnoty přímo v input elementech. Automatická frontend regrese simuluje stejnou revizi s prázdnými daty během `AI_PROCESSING`, následný serverový snapshot s daty a také dirty draft při refetchi.
 
+## Approver upload, K zaplacení a zaokrouhlení
+
+Doménové testy ověřují, že uploader může použít dvě aktivní sekce i s permission pouze k jedné, že assignment/decision vznikne až při `submit-for-review` a odebraná permission se při podání znovu projeví. Dále pokrývají nullable `payment_required`, revision-significant změny, manuální `rounding_amount`, explicitní nulu, kladnou i zápornou hodnotu, AI evidence a ISDOC `PayableRoundingAmount`.
+
+Approved-PDF regrese parsuje finální PDF, kontroluje ANO/NE, více allocation poznámek, zachování uživatelských hranatých závorek, nepřidání syntetických závorek, zalomení dlouhého textu a byte-for-byte SHA-256 embedded ISDOC attachmentu. Živý scénář spouští `scripts/smoke_approver_upload_sections.py`; vytvoří vlastní syntetický upload, dvě sekce, auto-approval jedné části, manager revision, obě finální rozhodnutí a stáhne schválenou PDF běžným endpointem.
+
 ## Regrese DUZP a českých datumů
 
 Doménové testy pokrývají oddělené Datum vystavení, DUZP a splatnost, varianty `DUZP`, `Datum zd. plnění`, `Datum zdan. plnění`, `Datum uskutečnění zdanitelného plnění` a chybějící DUZP jako `null`. Frontend ověřuje ISO → `DD.MM.YYYY`, český vstup → ISO API payload a inline odmítnutí `31.02.2026`. POHODA regrese parsuje XML a vyžaduje ISO `date`, `dateTax` a `dateDue`.

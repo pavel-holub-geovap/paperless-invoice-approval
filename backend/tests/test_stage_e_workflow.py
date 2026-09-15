@@ -76,6 +76,7 @@ def base_invoice(db, paperless_id: int = 8001):
             "total_without_vat": "1000.00",
             "total_vat": "210.00",
             "total_amount": "1210.00",
+            "payment_required": True,
         },
         "manager",
     )

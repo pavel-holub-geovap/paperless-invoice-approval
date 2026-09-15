@@ -73,9 +73,9 @@ Backend, databáze, API a POHODA XML používají ISO datum. React má jedinou p
 
 ### Sekce, self-approval a kontrola revize
 
-Business „Sekce“ používá stávající `CostCenter`; nevzniká druhý překrývající se číselník. Globální CRUD a aktivaci sekcí i `ApproverSectionPermission` spravuje pouze `ADMIN`. Vazba je auditovatelná M:N relace stabilního Keycloak subjectu na sekci. `QUEUE_MANAGER` aktivní sekce pouze používá pro allocations konkrétní faktury. Approver smí vlastní allocations vytvořit pouze pro aktivní povolené sekce a pro každý takový řádek dostane standardní assignment. Každé nové rozhodnutí znovu ověřuje aktuální permission.
+Business „Sekce“ používá stávající `CostCenter`; nevzniká druhý překrývající se číselník. Globální CRUD a aktivaci sekcí i `ApproverSectionPermission` spravuje pouze `ADMIN`. Vazba je auditovatelná M:N relace stabilního Keycloak subjectu na sekci. `QUEUE_MANAGER` aktivní sekce pouze používá pro allocations konkrétní faktury. Approver-uploader smí vlastní náklad rozdělit do všech aktivních sekcí; permission neurčuje dostupnost sekce, ale právo ji schválit. Při `submit-for-review` backend permissions znovu načte a pro oprávněné allocations vytvoří standardní assignment a append-only `APPROVE` decision. Ostatní allocations čekají na běžné přiřazení správcem fronty.
 
-Self-approval je běžný append-only `ApprovalDecision`, ale před queue review nemění dokument na `APPROVED` ani nevytváří schválené PDF. `submitted_to_queue_*` a `queue_manager_reviewed_*` jsou uloženy na `InvoiceRevision`; fork revize tedy review automaticky zneplatní. Správcovská změna klasifikace, režimu, sekcí nebo approverů po předání vytvoří novou revizi, historická rozhodnutí pouze invaliduje a nemaže.
+Uploader auto-approval je běžný append-only `ApprovalDecision`, ale před queue review nemění dokument na `APPROVED` ani nevytváří schválené PDF. `payment_required` a kanonické `rounding_amount` jsou explicitní nullable sloupce revision snapshotu, nikoli odvozený typ dokladu ani historický AI flag. `submitted_to_queue_*` a `queue_manager_reviewed_*` jsou rovněž uloženy na `InvoiceRevision`; fork revize tedy review automaticky zneplatní. Správcovská změna klasifikace, platebního příznaku, zaokrouhlení, sekcí nebo approverů po předání vytvoří novou revizi, historická rozhodnutí pouze invaliduje a nemaže.
 
 ## Revize a approvals
 

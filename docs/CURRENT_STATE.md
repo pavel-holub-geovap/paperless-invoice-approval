@@ -46,7 +46,7 @@
 
 - `APPROVER` používá stejný `/api/uploads` BFF jako queue manager; metadata nesou `actor_role` a faktura `upload_origin`, stabilní uploader subject i username.
 - Existující `CostCenter` je v českém UI „Sekce“. Explicitní `ApproverSectionPermission` podporuje M:N grant/revoke, audit a kontrolu aktuálního oprávnění při každém novém rozhodnutí.
-- Uploader vidí vlastní dokument už před assignmentem, smí opravit data a rozdělit jej pouze do povolených sekcí. Vzniká normální vlastní assignment/decision.
+- Uploader vidí vlastní dokument už před assignmentem, smí opravit data a rozdělit jej do libovolných aktivních sekcí. Při předání správci vznikne normální assignment/decision pouze pro sekce, ke kterým má uploader v tom okamžiku aktivní permission.
 - Self-approval není finální gate. Předání a kontrola queue-managera jsou uloženy na konkrétní revizi; správcovská změna po předání vytvoří novou revizi a zachová předchozí rozhodnutí jako invalidovanou historii.
 - Schvalovatelská navigace obsahuje „Ke schválení“, „Moje historie“ a „Moje nahrané“ s upload boxem. Manager grid rozlišuje approver-upload a stav kontroly.
 - Živý smoke na `ubuntudocker` 2026-09-05 prošel přes veřejné OIDC relace `queue-manager` a `approver1`: approver nahrál syntetické PDF jako Paperless dokument `55`, OCR má 911 znaků, nepovolená sekce skončila HTTP 409 a povolená sekce vytvořila vlastní assignment. Self-approval dokument neuzavřel, předání správci prošlo a správcovská změna typu vytvořila revizi 2 se zachovaným invalidovaným rozhodnutím revize 1. Překlasifikovaná zálohová faktura má POHODA metodu `NONE`.
@@ -147,7 +147,14 @@
 
 ## Nahrávání faktur z Approval aplikace
 
-- `QUEUE_MANAGER` i `APPROVER` mohou nahrát jeden nebo více PDF přes svoje obrazovky. Browser posílá každý soubor samostatně do Approval endpointu `POST /api/uploads`; Paperless token zůstává pouze na backendu. Approver smí před předáním připravovat pouze svůj vlastní upload a pouze ve svých povolených sekcích.
+- `QUEUE_MANAGER` i `APPROVER` mohou nahrát jeden nebo více PDF přes svoje obrazovky. Browser posílá každý soubor samostatně do Approval endpointu `POST /api/uploads`; Paperless token zůstává pouze na backendu. Approver smí před předáním připravovat pouze svůj vlastní upload, ale může jej rozdělit do všech aktivních sekcí. Permission určuje až auto-approval při podání.
+
+### Platební příznak, zaokrouhlení a schválená PDF
+
+- Revize ukládá explicitní nullable `payment_required` a kanonické `rounding_amount`; migrace 0013 historické hodnoty nedomýšlí. Před podáním musí uživatel zvolit K zaplacení Ano/Ne.
+- Ruční oprava zaokrouhlení používá stejnou revision a validační ochranu jako ostatní finanční data. `NULL` znamená neznámé, `0.00` explicitní nulu bez rounding warningu a nenulová hodnota skutečnou korekci.
+- AI přijme rounding jen s hodnotově shodnou evidence z explicitně označeného řádku. ISDOC 6.0.2 mapuje skutečný `PayableRoundingAmount` do stejného pole.
+- Immutable approved snapshot i výsledná PDF kopie obsahují K ZAPLACENÍ: ANO/NE a plain-text poznámku každé allocation. Renderer žádné hranaté závorky nepřidává a delší text rozkládá do zvětšeného approval bandu mimo originální stránku.
 - Backend přijímá pouze PDF do konfigurovatelného limitu `UPLOAD_MAX_BYTES` (výchozí 8 MiB), kontroluje příponu, MIME i PDF signaturu, počítá SHA-256, sanitizuje název a ukládá pouze metadata. Originální PDF trvale neduplikuje.
 - Paperless upload používá oficiální `POST /api/documents/post_document/`. Worker sleduje Paperless task, OCR, vznik Approval invoice a existující AI pipeline. Opakování se stejným idempotency klíčem a hashem je bezpečné; nejednoznačný timeout po odeslání se automaticky neopakuje.
 - Skutečný smoke vytvořil `codex-approval-upload-6988633cde.pdf`: upload `01fd4ab9-122b-4356-99b0-88cc33751554`, Paperless task `0138235d-8a75-4c39-9a71-220a6683158e`, Paperless document `19` a Approval invoice `1246c15e-44c6-4596-8731-8bbf4315309d`. OCR má 911 znaků, AI skončila `AI_COMPLETED` na `qwen3:8b`, workflow `QUEUE_REVIEW` a UI status `READY_FOR_REVIEW`.

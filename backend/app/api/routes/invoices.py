@@ -70,6 +70,7 @@ from app.services.workflow import (
     confirm_original,
     create_invoice,
     reopen,
+    revision_business_data,
     submit_for_approval,
     submit_to_queue_review,
     update_invoice_data,
@@ -321,7 +322,7 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
         "original_review_confirmed": invoice.original_review_confirmed,
         "original_reviewed_at": invoice.original_reviewed_at,
         "original_reviewed_by": invoice.original_reviewed_by,
-        "data": revision.data,
+        "data": revision_business_data(revision),
         "extracted_fields": [
             {"field_name": field.field_name, "value": field.value, "source_text": field.source_text}
             for field in revision.extracted_fields
@@ -661,6 +662,14 @@ def set_classification(
         _preparer(invoice, user)
     _require_current_revision(invoice, payload.expected_revision)
     try:
+        if "payment_required" in payload.model_fields_set:
+            update_invoice_data(
+                db,
+                invoice,
+                {"payment_required": payload.payment_required},
+                user.subject,
+                "Změna údaje K zaplacení",
+            )
         classify_document(
             db,
             invoice,
@@ -669,6 +678,7 @@ def set_classification(
             actor=user.subject,
             pohoda_eligible=payload.pohoda_eligible,
         )
+        run_validations(db, invoice, user.subject)
         db.commit()
     except WorkflowError as exc:
         db.rollback()

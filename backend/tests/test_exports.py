@@ -100,6 +100,7 @@ def approved_invoice(
             "due_date": "2026-08-15",
             "currency": "CZK",
             "total_amount": total_amount,
+            "payment_required": True,
             "description": "Testovací licence",
             "vat_lines": [{"taxable_base": "100.00", "vat_rate": "21", "vat_amount": "21.00"}],
         },

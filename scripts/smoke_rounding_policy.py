@@ -128,7 +128,7 @@ def main() -> None:
             require(not candidate["applied"], "Candidate was unexpectedly auto-applied")
         require(candidate["model"] == "qwen3:8b", "Unexpected model")
         require(
-            candidate["prompt_version"] == "invoice-extraction.cs-en.v6",
+            candidate["prompt_version"] == "invoice-extraction.cs-en.v7",
             "Unexpected prompt version",
         )
         require(candidate["raw_response_preserved"], "Raw Qwen response was not preserved")

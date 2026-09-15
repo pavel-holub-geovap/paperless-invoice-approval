@@ -9,14 +9,16 @@ from pydantic import ValidationError
 
 from app.schemas import InvoiceExtractionRawV1, InvoiceExtractionV1
 from app.services.rounding import (
+    ROUNDING_AMOUNT_REJECTION_REASON,
     ROUNDING_REJECTION_CODE,
     ROUNDING_REJECTION_REASON,
+    canonical_rounding_amount,
     canonical_rounding_type,
 )
 
 RAW_SCHEMA_VERSION = "invoice-extraction.raw.v1"
 DATE_FIELDS = {"issue_date", "taxable_supply_date", "due_date"}
-DECIMAL_FIELDS = {"total_without_vat", "total_vat", "total_amount"}
+DECIMAL_FIELDS = {"total_without_vat", "total_vat", "total_amount", "rounding_amount"}
 TEXT_FIELDS = {
     "supplier_name",
     "supplier_ico",
@@ -263,6 +265,20 @@ def normalize_raw_extraction(
         else:
             normalized = _normalize_text(value, path=field)
         source = _source(item.source_text)
+        if field == "rounding_amount" and normalized is not None:
+            accepted = canonical_rounding_amount(normalized, source)
+            if accepted is None:
+                rejections.append(
+                    {
+                        "path": field,
+                        "code": ROUNDING_REJECTION_CODE,
+                        "raw": value,
+                        "normalized": None,
+                        "source_text": source,
+                        "reason": ROUNDING_AMOUNT_REJECTION_REASON,
+                    }
+                )
+                normalized = None
         _record_change(changes, field, value, normalized)
         _record_change(changes, f"{field}.source_text", item.source_text, source)
         canonical[field] = {"value": normalized, "source_text": source}

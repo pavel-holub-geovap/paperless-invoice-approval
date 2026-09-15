@@ -94,12 +94,6 @@ def replace_allocations(
     }
     if set(centre_ids) != set(centres):
         raise WorkflowError("Unknown or inactive cost center")
-    if self_assign_subject and any(
-        not has_section_permission(db, self_assign_subject, center_id)
-        for center_id in centre_ids
-    ):
-        raise WorkflowError("Schvalovatel smí použít pouze povolené sekce")
-
     existing = db.scalars(
         select(Allocation).where(
             Allocation.revision_id == revision.id,
@@ -167,26 +161,6 @@ def replace_allocations(
         )
         db.add(allocation)
         db.flush()
-        if self_assign_subject:
-            assignment = ApprovalAssignment(
-                invoice_id=invoice.id,
-                revision_id=revision.id,
-                allocation_id=allocation.id,
-                approver_subject=self_assign_subject,
-                assigned_by=actor,
-            )
-            db.add(assignment)
-            record_event(
-                db,
-                "APPROVER_ADDED",
-                actor=actor,
-                invoice=invoice,
-                new_value={
-                    "allocation_id": allocation.id,
-                    "approver": self_assign_subject,
-                    "source": "UPLOADER_SELF_ASSIGNMENT",
-                },
-            )
         value = {
             "id": allocation.id,
             "cost_center": centres[item.cost_center_id].code,

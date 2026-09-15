@@ -197,7 +197,7 @@ export function Approvals({ history = false, uploaded = false, historyInvoiceId,
     {message && <div className="alert success">{message}</div>}
     {error && <div className="alert danger">{error}</div>}
     {uploaded ? <>
-      <div className="section-heading queue-heading"><div><p className="eyebrow">Moje doklady</p><h1>Nahrané doklady</h1><p className="muted">Nahrajte PDF, počkejte na OCR a AI a potom doplňte sekce a vlastní schválení.</p></div><button className="button primary" onClick={()=>uploadPanelRef.current?.openFilePicker()}>+ Nahrát doklad</button></div>
+      <div className="section-heading queue-heading"><div><p className="eyebrow">Moje doklady</p><h1>Nahrané doklady</h1><p className="muted">Nahrajte PDF, počkejte na OCR a AI, doplňte údaje a rozdělte náklad do sekcí.</p></div><button className="button primary" onClick={()=>uploadPanelRef.current?.openFilePicker()}>+ Nahrát doklad</button></div>
       <InvoiceUploadPanel ref={uploadPanelRef} user={user} onQueueChanged={async () => { await loadUploaded(); return true; }}/>
       <InvoiceTable rows={uploadedRows} onOpen={(id)=>navigate(`/invoices/${encodeURIComponent(id)}`)}/>
     </> : !history ? <>

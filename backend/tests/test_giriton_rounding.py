@@ -76,6 +76,7 @@ def giriton_payload() -> dict:
         "total_without_vat": evidence("4065.29", "Základ celkem 4 065,29"),
         "total_vat": evidence("853.71", "DPH celkem 853,71"),
         "total_amount": evidence("4919.00", "Celkem k úhradě 4 919,00"),
+        "rounding_amount": evidence("0.35", "Zaokrouhlení 0,29 0,06 0,35"),
         "description": evidence("Softwarové služby", "Softwarové služby"),
     }
 
@@ -96,6 +97,7 @@ def test_giriton_address_rounding_and_declared_totals_are_preserved() -> None:
     assert data["total_without_vat"] == "4065.29"
     assert data["total_vat"] == "853.71"
     assert data["total_amount"] == "4919.00"
+    assert data["rounding_amount"] == "0.35"
     assert data["vat_lines"][0]["vat_amount"] == "853.65"
     assert data["vat_lines"][1]["vat_amount"] == "0.06"
     assert data["vat_lines"][0]["normalization"] == "printed_ocr_vat_table"

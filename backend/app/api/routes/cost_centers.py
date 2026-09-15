@@ -13,7 +13,7 @@ from app.auth import (
     require_roles,
 )
 from app.db import get_db
-from app.models import ApproverSectionPermission, CostCenter
+from app.models import CostCenter
 from app.schemas import CostCenterIn, CostCenterOut, CurrentUser
 from app.services.cost_centers import create_cost_center as create_row
 from app.services.cost_centers import update_cost_center as update_row
@@ -33,15 +33,6 @@ def list_cost_centers(
     user: CurrentUser = Depends(require_roles(ROLE_ADMIN, ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
 ) -> list[CostCenter]:
     query = select(CostCenter).order_by(CostCenter.code)
-    if ROLE_ADMIN not in user.roles and ROLE_QUEUE_MANAGER not in user.roles:
-        query = query.join(
-            ApproverSectionPermission,
-            ApproverSectionPermission.cost_center_id == CostCenter.id,
-        ).where(
-            ApproverSectionPermission.approver_subject == user.subject,
-            ApproverSectionPermission.active.is_(True),
-        )
-        include_inactive = False
     if ROLE_ADMIN not in user.roles:
         include_inactive = False
     if not include_inactive:

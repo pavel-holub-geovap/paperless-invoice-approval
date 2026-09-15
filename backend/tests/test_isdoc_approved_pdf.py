@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from copy import deepcopy
 from decimal import Decimal
 from io import BytesIO
 
@@ -116,6 +117,7 @@ def approval_snapshot() -> dict[str, object]:
         "invoice_revision_id": "revision-2",
         "invoice_revision": 2,
         "invoice_number": "ISDOC-2026-001",
+        "payment_required": True,
         "currency": "CZK",
         "total_approved": "1210.00",
         "approval_completed_at": "2026-08-20T12:34:00+00:00",
@@ -124,6 +126,7 @@ def approval_snapshot() -> dict[str, object]:
                 "allocation_id": "allocation-1",
                 "cost_center": {"code": "200", "name": "Vývoj"},
                 "amount": "1210.00",
+                "note": "Licence pro projekt [ABC]",
                 "approvers": [
                     {
                         "subject": "approver-1",
@@ -219,7 +222,7 @@ def test_idoklad_isdoc_602_maps_explicit_paths_totals_payment_and_items() -> Non
     assert data["total_without_vat"] == "4300.00"
     assert data["total_vat"] == "903.00"
     assert data["total_amount"] == "5203.00"
-    assert data["payable_rounding_amount"] == "0.00"
+    assert data["rounding_amount"] == "0.00"
     assert data["vat_lines"] == [
         {
             "vat_rate": "21",
@@ -388,12 +391,38 @@ def test_approved_pdf_is_deterministic_non_overlapping_and_keeps_all_attachments
     assert "Jana Druhá Schvalovatelka" in last_text
     assert "200 - Vývoj" in last_text
     assert "1 210,00 CZK" in last_text
+    assert "K ZAPLACENÍ: ANO" in last_text
+    assert "Poznámka: Licence pro projekt [ABC]" in last_text
+    assert "[Licence pro projekt [ABC]]" not in last_text
     assert "revize 2" in last_text
     before = {(row.filename, row.sha256) for row in enumerate_attachments(original)}
     after = {(row.filename, row.sha256) for row in enumerate_attachments(approved)}
     assert after == before
     assert ("invoice.isdoc", hashlib.sha256(isdoc).hexdigest()) in after
     assert ("note.txt", hashlib.sha256(note).hexdigest()) in after
+
+
+def test_approved_pdf_prints_false_payment_and_wraps_multiple_plain_text_notes() -> None:
+    snapshot = deepcopy(approval_snapshot())
+    snapshot["payment_required"] = False
+    snapshot["allocations"][0]["note"] = "Dlouhá poznámka bez syntaktických závorek " * 12
+    snapshot["allocations"].append(
+        {
+            "allocation_id": "allocation-2",
+            "cost_center": {"code": "300", "name": "Správa"},
+            "amount": "0.00",
+            "note": "Test [ABC]",
+            "approvers": snapshot["allocations"][0]["approvers"][:1],
+        }
+    )
+    approved = create_approved_pdf(source_pdf(), snapshot)
+    page = PdfReader(BytesIO(approved)).pages[-1]
+    text = page.extract_text()
+    assert "K ZAPLACENÍ: NE" in text
+    assert "Dlouhá poznámka bez syntaktických závorek" in text
+    assert "Poznámka: Test [ABC]" in text
+    assert "[Dlouhá poznámka" not in text
+    assert float(page.mediabox.bottom) < 0
 
 
 def test_approved_copy_service_rejects_unapproved_snapshot(db: Session) -> None:

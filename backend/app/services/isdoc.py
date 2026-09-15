@@ -27,7 +27,7 @@ from app.services.audit import record_event
 from app.services.bank_accounts import normalize_payment_data
 from app.services.classification import refresh_business_routing, set_extraction_source
 from app.services.validation import run_validations
-from app.services.workflow import update_invoice_data
+from app.services.workflow import set_revision_business_data, update_invoice_data
 
 ISDOC_NAMESPACE = "http://isdoc.cz/namespace/2013"
 SUPPORTED_ISDOC_VERSIONS = {"6.0.2"}
@@ -329,7 +329,7 @@ def _map_isdoc_602(root: etree._Element) -> IsdocMapping:
             "total_without_vat": total_without_vat,
             "total_vat": total_vat,
             "total_amount": total_amount,
-            "payable_rounding_amount": rounding,
+            "rounding_amount": rounding,
         }
     )
     provenance.update(
@@ -337,7 +337,7 @@ def _map_isdoc_602(root: etree._Element) -> IsdocMapping:
             "total_without_vat": _source(base_total_path, total_without_vat),
             "total_vat": _source(vat_total_path, total_vat),
             "total_amount": _source(total_path, total_amount),
-            "payable_rounding_amount": _source(rounding_path, rounding),
+            "rounding_amount": _source(rounding_path, rounding),
         }
     )
 
@@ -523,7 +523,7 @@ def apply_isdoc_inspection(
             comment="Použití validního ISDOC 6.0.2 jako primárního zdroje dat",
         )
     else:
-        revision.data = data
+        set_revision_business_data(revision, data)
     db.execute(delete(ExtractedField).where(ExtractedField.revision_id == revision.id))
     for field, value in data.items():
         field_provenance = provenance.get(field) or {}

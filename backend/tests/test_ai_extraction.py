@@ -25,6 +25,7 @@ from app.services.extraction import (
     mark_ai_extraction_failed,
     queue_ai_extraction,
 )
+from app.services.extraction_normalization import normalize_raw_extraction
 from app.services.workflow import create_invoice, update_invoice_data
 
 
@@ -78,6 +79,25 @@ def test_schema_is_strict_but_allows_explicit_nulls() -> None:
     payload["invented_field"] = "forbidden"
     with pytest.raises(ValidationError):
         InvoiceExtractionV1.model_validate(payload)
+
+
+def test_explicit_rounding_requires_matching_same_line_evidence() -> None:
+    payload = structured()
+    payload["rounding_amount"] = {
+        "value": "0.35",
+        "source_text": "Zaokrouhlení 0,35",
+    }
+    parsed, diagnostics = normalize_raw_extraction(payload)
+    assert parsed.rounding_amount.value == Decimal("0.35")
+    assert not diagnostics["rejections"]
+
+    payload["rounding_amount"] = {
+        "value": "179.00",
+        "source_text": "Zaokrouhlení 0,00",
+    }
+    parsed, diagnostics = normalize_raw_extraction(payload)
+    assert parsed.rounding_amount.value is None
+    assert diagnostics["rejections"][0]["path"] == "rounding_amount"
     payload = structured()
     payload["supplier_name"]["source_text"] = None
     with pytest.raises(ValidationError, match="source_text provenance"):

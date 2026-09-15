@@ -99,8 +99,44 @@ SIGNIFICANT_FIELDS = {
     "total_vat",
     "total_amount",
     "invoice_items",
-    "payable_rounding_amount",
+    "rounding_amount",
+    "payment_required",
 }
+
+REVISION_COLUMN_FIELDS = {"payment_required", "rounding_amount"}
+
+
+def revision_business_data(revision: InvoiceRevision) -> dict[str, Any]:
+    """Return the complete current business snapshot in API/validation form."""
+    data = dict(revision.data)
+    data["payment_required"] = revision.payment_required
+    data["rounding_amount"] = (
+        str(revision.rounding_amount) if revision.rounding_amount is not None else None
+    )
+    return data
+
+
+def _split_revision_data(data: dict[str, Any]) -> tuple[dict[str, Any], bool | None, Decimal | None]:
+    stored = dict(data)
+    payment_required = stored.pop("payment_required", None)
+    if payment_required is not None and not isinstance(payment_required, bool):
+        raise WorkflowError("K zaplacení musí být Ano, Ne nebo Neurčeno")
+    raw_rounding = stored.pop("rounding_amount", None)
+    if raw_rounding in (None, ""):
+        rounding_amount = None
+    else:
+        try:
+            rounding_amount = Decimal(str(raw_rounding)).quantize(Decimal("0.01"))
+        except (InvalidOperation, ValueError) as exc:
+            raise WorkflowError("Zaokrouhlení musí být platná desetinná částka") from exc
+    return stored, payment_required, rounding_amount
+
+
+def set_revision_business_data(revision: InvoiceRevision, data: dict[str, Any]) -> None:
+    stored, payment_required, rounding_amount = _split_revision_data(data)
+    revision.data = stored
+    revision.payment_required = payment_required
+    revision.rounding_amount = rounding_amount
 
 PAPERLESS_TAG_SETTING: dict[InvoiceStatus, str] = {
     InvoiceStatus.AI_PROCESSING: "paperless_tag_processing",
@@ -202,11 +238,12 @@ def update_invoice_data(
     current = invoice.current_revision
     if current is None:
         raise WorkflowError("Invoice has no revision")
+    current_data = revision_business_data(current)
     allowed = SIGNIFICANT_FIELDS | {"description"}
-    unknown = set(changes) - set(current.data) - allowed
+    unknown = set(changes) - set(current_data) - allowed
     if unknown:
         raise WorkflowError(f"Unknown invoice fields: {', '.join(sorted(unknown))}")
-    merged = normalize_invoice_rounding({**current.data, **changes})
+    merged = normalize_invoice_rounding({**current_data, **changes})
     if set(changes) & {
         "bank_account",
         "bank_account_raw",
@@ -228,10 +265,18 @@ def update_invoice_data(
                 f"{prefix}-{number}" if prefix and number else number or raw or None
             )
         merged = normalize_payment_data(merged)
-    changed = {key: value for key, value in merged.items() if current.data.get(key) != value}
+    stored, payment_required, rounding_amount = _split_revision_data(merged)
+    normalized_merged = {
+        **stored,
+        "payment_required": payment_required,
+        "rounding_amount": str(rounding_amount) if rounding_amount is not None else None,
+    }
+    changed = {
+        key: value for key, value in normalized_merged.items() if current_data.get(key) != value
+    }
     if not changed:
         return current
-    old_values = {key: current.data.get(key) for key in changed}
+    old_values = {key: current_data.get(key) for key in changed}
 
     if set(changed) & SIGNIFICANT_FIELDS:
         new_revision = fork_revision(
@@ -239,13 +284,17 @@ def update_invoice_data(
             invoice,
             actor,
             f"Významná změna polí: {', '.join(sorted(changed))}",
-            data=merged,
+            data=normalized_merged,
         )
         invoice.original_review_confirmed = False
         invoice.original_reviewed_at = None
         invoice.original_reviewed_by = None
     else:
-        current.data = {**current.data, **changed}
+        current.data = {**current.data, **{k: v for k, v in changed.items() if k not in REVISION_COLUMN_FIELDS}}
+        if "payment_required" in changed:
+            current.payment_required = payment_required
+        if "rounding_amount" in changed:
+            current.rounding_amount = rounding_amount
         new_revision = current
 
     for field, new_value in changed.items():
@@ -274,10 +323,14 @@ def fork_revision(
     current = invoice.current_revision
     if current is None:
         raise WorkflowError("Invoice has no revision")
+    source_data = data if data is not None else revision_business_data(current)
+    stored_data, payment_required, rounding_amount = _split_revision_data(source_data)
     new_revision = InvoiceRevision(
         invoice=invoice,
         number=invoice.current_revision_number + 1,
-        data=data if data is not None else dict(current.data),
+        data=stored_data,
+        payment_required=payment_required,
+        rounding_amount=rounding_amount,
         created_by=actor,
         submitted_to_queue_at=(datetime.now(UTC) if current.submitted_to_queue_at else None),
         submitted_to_queue_by=current.submitted_to_queue_by,
@@ -488,6 +541,8 @@ def ready_for_approval(db: Session, invoice: Invoice) -> tuple[bool, list[str]]:
         errors.append("Zdrojový dokument v Paperless chybí.")
     if not revision.data:
         errors.append("Faktura nemá vytěžená ani ručně doplněná data.")
+    if revision.payment_required is None:
+        errors.append("Údaj K zaplacení musí být nastaven na Ano nebo Ne.")
     if not invoice.original_review_confirmed or invoice.original_reviewed_at is None:
         errors.append("Originál nebyl zkontrolován.")
     if db.scalar(
@@ -549,6 +604,92 @@ def ready_for_approval(db: Session, invoice: Invoice) -> tuple[bool, list[str]]:
     return not errors, errors
 
 
+def _auto_approve_uploader_sections(db: Session, invoice: Invoice, actor: str) -> int:
+    """Create ordinary assignments/decisions for uploader-authorized current sections."""
+    revision = invoice.current_revision
+    if revision is None:
+        raise WorkflowError("Invoice has no revision")
+    from app.services.section_permissions import has_section_permission
+
+    approved = 0
+    allocations = db.scalars(
+        select(Allocation).where(
+            Allocation.revision_id == revision.id,
+            Allocation.active.is_(True),
+        )
+    ).all()
+    for allocation in allocations:
+        if not has_section_permission(db, actor, allocation.cost_center_id):
+            continue
+        assignment = db.scalar(
+            select(ApprovalAssignment).where(
+                ApprovalAssignment.revision_id == revision.id,
+                ApprovalAssignment.allocation_id == allocation.id,
+                ApprovalAssignment.approver_subject == actor,
+                ApprovalAssignment.active.is_(True),
+            )
+        )
+        if assignment is None:
+            assignment = ApprovalAssignment(
+                invoice_id=invoice.id,
+                revision_id=revision.id,
+                allocation_id=allocation.id,
+                approver_subject=actor,
+                assigned_by=actor,
+            )
+            db.add(assignment)
+            db.flush()
+            record_event(
+                db,
+                "APPROVER_ADDED",
+                actor=actor,
+                invoice=invoice,
+                new_value={
+                    "allocation_id": allocation.id,
+                    "approver": actor,
+                    "source": "UPLOADER_AUTO_APPROVAL_ON_SUBMIT",
+                },
+            )
+        existing = db.scalar(
+            select(ApprovalDecision).where(
+                ApprovalDecision.assignment_id == assignment.id,
+                ApprovalDecision.valid.is_(True),
+            )
+        )
+        if existing is not None:
+            if existing.action == ApprovalAction.APPROVE:
+                continue
+            raise WorkflowError("Uploader assignment already has a conflicting decision")
+        now = datetime.now(UTC)
+        decision = ApprovalDecision(
+            assignment_id=assignment.id,
+            revision_id=revision.id,
+            action=ApprovalAction.APPROVE,
+            actor_subject=actor,
+        )
+        assignment.status = ApprovalAssignmentStatus.APPROVED
+        assignment.decided_at = now
+        db.add(decision)
+        db.flush()
+        provenance = {
+            "assignment_id": assignment.id,
+            "allocation_id": allocation.id,
+            "revision_id": revision.id,
+            "automatic": True,
+            "reason": "UPLOADER_ACTIVE_SECTION_PERMISSION_AT_SUBMIT",
+        }
+        record_event(db, "APPROVED", actor=actor, invoice=invoice, metadata=provenance)
+        record_event(
+            db,
+            "UPLOADER_SECTION_AUTO_APPROVED",
+            actor=actor,
+            invoice=invoice,
+            metadata=provenance,
+        )
+        approved += 1
+    return approved
+
+
 def submit_to_queue_review(db: Session, invoice: Invoice, actor: str) -> None:
     revision = invoice.current_revision
     if revision is None:
@@ -561,6 +702,10 @@ def submit_to_queue_review(db: Session, invoice: Invoice, actor: str) -> None:
     from app.services.validation import run_validations
 
     ensure_actionable(invoice, "be submitted for queue review")
+    if invoice.document_type == DocumentType.UNCLASSIFIED:
+        raise WorkflowError("Před předáním musí být zvolen typ dokumentu")
+    if revision.payment_required is None:
+        raise WorkflowError("Před předáním musí být určeno K zaplacení Ano nebo Ne")
     run_validations(db, invoice, actor)
     db.flush()
     total, allocated, _ = allocation_totals(db, invoice)
@@ -583,6 +728,7 @@ def submit_to_queue_review(db: Session, invoice: Invoice, actor: str) -> None:
         .limit(1)
     ):
         raise WorkflowError("Doklad má blokující validační chyby")
+    auto_approved = _auto_approve_uploader_sections(db, invoice, actor)
     revision.submitted_to_queue_at = datetime.now(UTC)
     revision.submitted_to_queue_by = actor
     if invoice.status != InvoiceStatus.QUEUE_REVIEW:
@@ -592,7 +738,7 @@ def submit_to_queue_review(db: Session, invoice: Invoice, actor: str) -> None:
         "SUBMITTED_TO_QUEUE_MANAGER",
         actor=actor,
         invoice=invoice,
-        metadata={"revision_id": revision.id},
+        metadata={"revision_id": revision.id, "auto_approved_allocations": auto_approved},
     )
 
 
@@ -696,15 +842,8 @@ def decide(
 
     if not has_section_permission(db, actor, assignment.allocation.cost_center_id):
         raise WorkflowError("Schvalovatel již nemá oprávnění pro tuto sekci")
-    pre_review = (
-        invoice.uploaded_by_subject == actor
-        and revision.queue_manager_reviewed_at is None
-        and invoice.status in {InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.QUEUE_REVIEW}
-    )
-    if invoice.status != InvoiceStatus.AWAITING_APPROVAL and not pre_review:
+    if invoice.status != InvoiceStatus.AWAITING_APPROVAL:
         raise WorkflowError("Invoice is not awaiting approval")
-    if pre_review and action != ApprovalAction.APPROVE:
-        raise WorkflowError("Před kontrolou queue-managera lze vlastní sekci pouze schválit")
     if action in {ApprovalAction.RETURN, ApprovalAction.REJECT} and not (comment and comment.strip()):
         raise WorkflowError("RETURN and REJECT require a comment")
 
@@ -738,15 +877,7 @@ def decide(
         metadata={"assignment_id": assignment.id, "allocation_id": assignment.allocation_id},
     )
 
-    if pre_review:
-        record_event(
-            db,
-            "UPLOADER_SECTION_SELF_APPROVED",
-            actor=actor,
-            invoice=invoice,
-            metadata={"assignment_id": assignment.id, "revision_id": revision.id},
-        )
-    elif action == ApprovalAction.RETURN:
+    if action == ApprovalAction.RETURN:
         transition(db, invoice, InvoiceStatus.RETURNED, actor, comment)
     elif action == ApprovalAction.REJECT:
         transition(db, invoice, InvoiceStatus.REJECTED, actor, comment)

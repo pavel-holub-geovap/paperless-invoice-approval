@@ -65,7 +65,7 @@ export function ReferenceSections() {
         <div><dt>Novější revize na serveru</dt><dd>Rozpracovaná lokální data zůstávají zachována. Rozhodněte se podle zobrazené výzvy, zda načíst novou verzi; nepřepisujte změny bez kontroly.</dd></div>
         <div><dt>Originál v Paperless chybí</dt><dd>Operace vyžadující PDF, nové schválení a nový export jsou zablokované. Historie a dříve vytvořené artefakty zůstávají. Kontaktujte správce fronty.</dd></div>
         <div><dt>Nahrávání selhalo</dt><dd>Přečtěte zobrazený důvod. U dočasné chyby použijte Zkusit znovu; při neznámém výsledku soubor neposílejte opakovaně bez kontroly, aby nevznikla duplicita.</dd></div>
-        <div><dt>Nemohu použít sekci</dt><dd>Schvalovatel vidí jen své aktivně povolené sekce. Požádejte administrátora o kontrolu globálního oprávnění; správce fronty pak sekci používá u konkrétní faktury.</dd></div>
+        <div><dt>Sekci mohu vybrat, ale nemohu ji schválit</dt><dd>U vlastního uploadu schvalovatel vidí všechny aktivní sekce. Globální oprávnění určuje pouze to, kterou část při předání automaticky schválí; ostatní části správce fronty přiřadí oprávněným schvalovatelům.</dd></div>
       </dl>
       <HelpCallout><strong>Když si nejste jistí:</strong> nic nemažte ani nenahrávejte opakovaně. Poznamenejte číslo dokladu, aktuální stav a text chyby a předejte je správci fronty.</HelpCallout>
     </HelpSection>

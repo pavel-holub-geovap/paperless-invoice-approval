@@ -36,6 +36,12 @@ název pro interní schvalovací rozdělení; nesmí být prezentován jako auto
 účetní středisko POHODA. U POHODY musí vždy zůstat výslovně uveden ruční import.
 AI je pouze návrh a platný ISDOC má přednost.
 
+Aktuální uploader workflow musí v kapitolách 5, 8–10 držet tyto významy:
+schvalovatel smí allocation přiřadit do každé aktivní sekce, ale při předání
+automaticky schválí jen sekce s právě platným oprávněním. Typ dokladu a K
+zaplacení jsou oddělené volby, zaokrouhlení je ručně opravitelné a allocation
+poznámky se jako plain text přenesou do immutable schválené PDF kopie.
+
 Nová kapitola musí mít stabilní ASCII `id`, položku v `helpChapters`, správnou
 úroveň nadpisu a cílený test. Diagram musí mít vedle vizuální HTML/CSS podoby také
 textovou alternativu. Nepřidávejte screenshoty s reálnými doklady, hesla, tokeny,

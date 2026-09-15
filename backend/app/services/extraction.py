@@ -33,7 +33,7 @@ from app.services.jobs import enqueue_job
 from app.services.rounding import canonical_rounding_type, normalize_invoice_rounding
 from app.services.supplier_addresses import normalize_supplier_address
 from app.services.validation import run_validations, validate_invoice_data
-from app.services.workflow import update_invoice_data
+from app.services.workflow import set_revision_business_data, update_invoice_data
 
 AI_JOB_TYPE = "AI_EXTRACT_INVOICE"
 
@@ -97,6 +97,7 @@ def extraction_to_invoice_data(
             "total_without_vat": scalar("total_without_vat"),
             "total_vat": scalar("total_vat"),
             "total_amount": scalar("total_amount"),
+            "rounding_amount": scalar("rounding_amount"),
             "description": scalar("description"),
         }
     )
@@ -161,6 +162,7 @@ def _evidence(
         "total_without_vat",
         "total_vat",
         "total_amount",
+        "rounding_amount",
         "description",
     ):
         item: EvidenceValue = getattr(payload, field)
@@ -379,7 +381,7 @@ def complete_ai_extraction(
         and not any(value not in (None, "", [], {}) for value in current.data.values())
     )
     if auto_apply:
-        current.data = data
+        set_revision_business_data(current, data)
         _replace_current_evidence(db, invoice, extraction, payload, data)
         extraction.applied = True
         extraction.applied_at = datetime.now(UTC)
@@ -453,7 +455,9 @@ def apply_ai_extraction(
         _stored_extraction_payload(extraction),
         invoice.paperless_ocr_text,
     )
-    previous_data = dict(invoice.current_revision.data) if invoice.current_revision else {}
+    from app.services.workflow import revision_business_data
+
+    previous_data = revision_business_data(invoice.current_revision) if invoice.current_revision else {}
     update_invoice_data(
         db,
         invoice,

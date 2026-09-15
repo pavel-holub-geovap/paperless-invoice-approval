@@ -4,7 +4,7 @@ import { LinearWorkflowDiagram } from "../WorkflowDiagrams";
 export function ReviewSections() {
   return <>
     <HelpSection id="fakturacni-udaje" title="8. Kontrola fakturačních údajů">
-      <p>Systém předvyplní například dodavatele, číslo faktury, data, platební údaje, základ, DPH a celkovou částku. Zdroj dat vidíte v detailu: platný ISDOC, OCR / AI, nebo ruční zadání.</p>
+      <p>Systém předvyplní například dodavatele, číslo faktury, data, platební údaje, základ, DPH, celkovou částku a explicitní zaokrouhlení. Zdroj dat vidíte v detailu: platný ISDOC, OCR / AI, nebo ruční zadání.</p>
       <ol>
         <li>Porovnejte každou důležitou hodnotu s originálním PDF vlevo.</li>
         <li>Chybnou hodnotu opravte ve Fakturačních údajích.</li>
@@ -12,7 +12,9 @@ export function ReviewSections() {
       </ol>
       <HelpCallout kind="important"><strong>AI není autorita.</strong> Rozhodující jsou ověřené údaje na originálu a jejich aktuální verze uložená uživatelem.</HelpCallout>
       <h3>DPH, součty a zaokrouhlení</h3>
-      <p>Kontroly porovnávají základ, DPH, celkem a jednotlivé DPH řádky. Hodnoty vytištěné na faktuře zůstávají rozhodující; výpočet pomáhá najít nesrovnalost. Zaokrouhlení může vysvětlit drobný rozdíl a systém je ukáže samostatně.</p>
+      <p>Kontroly porovnávají základ, DPH, celkem a jednotlivé DPH řádky. Pole <strong>Zaokrouhlení</strong> lze ručně opravit; prázdná hodnota znamená „není známo“, zatímco 0,00 je explicitní nulové zaokrouhlení bez varování.</p>
+      <h3>Typ dokladu a K zaplacení</h3>
+      <p>Typ dokladu a údaj <strong>K zaplacení: Ano/Ne</strong> jsou nezávislé. I přijatá faktura může být již uhrazená a mít K zaplacení = Ne. Schvalovatel je určí při přípravě vlastního uploadu, správce fronty je může při kontrole změnit. Bez jednoznačné volby K zaplacení nelze doklad předat.</p>
       <dl className="help-meaning-list">
         <div><dt>OK</dt><dd>Kontrola je v pořádku.</dd></div>
         <div><dt>Upozornění</dt><dd>Systém našel možnou nesrovnalost. Porovnejte ji s originálem; samotné upozornění nemusí zablokovat pokračování.</dd></div>
@@ -24,7 +26,8 @@ export function ReviewSections() {
       <p>Jednu fakturu lze rozdělit mezi více interních sekcí. Každý řádek obsahuje sekci, částku nebo procento a může mít poznámku. Součet aktivních částí musí odpovídat celkové částce dokladu.</p>
       <ul>
         <li>Správce fronty může nastavovat sekce a přiřazovat k nim schvalovatele.</li>
-        <li>Schvalovatel při přípravě vlastního uploadu vidí pouze sekce, ke kterým má oprávnění, a je k nim přiřazen jako schvalovatel.</li>
+        <li>Schvalovatel při přípravě vlastního uploadu vidí všechny aktivní sekce. U každé vidí, zda ji při předání automaticky schválí, nebo bude vyžadovat jiného schvalovatele.</li>
+        <li>Poznámka u každého rozdělení je prostý text a po finálním schválení se přenese do schválené PDF kopie bez automatických hranatých závorek.</li>
         <li>Globální číselník sekcí a oprávnění schvalovatelů spravuje administrátor v části <strong>Administrace</strong>.</li>
         <li>Každá povinná část aktuální revize musí mít oprávněného schvalovatele.</li>
       </ul>
@@ -38,7 +41,7 @@ export function ReviewSections() {
         <li>Jeden úkol nemůže mít současně více platných rozhodnutí.</li>
         <li>Finální schválení vznikne až po kontrole správce fronty a po schválení všech povinných úkolů aktuální revize.</li>
       </ul>
-      <HelpCallout><strong>Self-approval není finální approval.</strong> Předběžné schválení vlastní sekce u dokladu nahraného schvalovatelem nenahrazuje kontrolu správce fronty ani ostatní povinná schválení.</HelpCallout>
+      <HelpCallout><strong>Auto-approval není finální approval.</strong> Při předání vlastního uploadu vznikne standardní rozhodnutí APPROVE jen pro sekce, ke kterým má uploader v tom okamžiku oprávnění. Nenahrazuje kontrolu správce fronty ani ostatní povinná schválení.</HelpCallout>
     </HelpSection>
 
     <HelpSection id="vraceni-zamitnuti" title="11. Vrácení a zamítnutí">
@@ -46,11 +49,11 @@ export function ReviewSections() {
       <p>Použijte, když je potřeba doklad doplnit nebo opravit. Komentář je povinný a měl by přesně popsat, co je potřeba změnit. Dokument přejde do stavu Vráceno k doplnění.</p>
       <h3>Zamítnout</h3>
       <p>Použijte, když doklad nemá pokračovat ve schvalování. Komentář je povinný. Zamítnutí platí pro celý dokument; správce fronty jej může podle aktuálních pravidel znovu otevřít k posouzení.</p>
-      <p>U vlastní sekce schvalované ještě před kontrolou správce fronty je dostupné pouze schválení. Vrácení a zamítnutí se používá až u řádného úkolu po této kontrole.</p>
+      <p>Automatické schválení uploaderovy oprávněné části vzniká při předání správci. Vrácení a zamítnutí se používá až u řádného úkolu po kontrole správce fronty.</p>
     </HelpSection>
 
     <HelpSection id="revize" title="12. Změna a nová revize">
-      <p>Revize určuje přesnou podobu údajů, sekcí a schvalovacích úkolů, o které se rozhoduje. Významná změna fakturačních údajů, klasifikace, sekcí nebo schvalovatelů po rozběhnutí procesu založí novou revizi.</p>
+      <p>Revize určuje přesnou podobu údajů, K zaplacení, zaokrouhlení, sekcí, poznámek a schvalovacích úkolů, o které se rozhoduje. Významná změna těchto údajů nebo klasifikace založí novou revizi.</p>
       <LinearWorkflowDiagram
         id="revision-workflow"
         title="Významná změna a nové schválení"

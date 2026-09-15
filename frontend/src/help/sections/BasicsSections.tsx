@@ -36,7 +36,7 @@ export function BasicsSections() {
             <li>vidí přidělené části v záložce Ke schválení,</li>
             <li>může schválit, vrátit nebo zamítnout svůj aktuální úkol,</li>
             <li>vidí svou historii a originály dokladů, ke kterým měl schvalovací vztah,</li>
-            <li>může nahrát vlastní PDF a před předáním je připravit pouze ve svých povolených sekcích.</li>
+            <li>může nahrát vlastní PDF, zvolit typ a K zaplacení a rozdělit náklad do libovolných aktivních sekcí.</li>
           </ul>
         </article>
         <article className="help-role-card">
@@ -59,7 +59,7 @@ export function BasicsSections() {
 
     <HelpSection id="schvalovatel" title="5. Schvalovatel">
       <p>V <strong>Moje schválení</strong> jsou tři záložky: aktuální úkoly, Moje historie a Moje nahrané. Každý úkol se vztahuje ke konkrétní sekci, částce a revizi. Před rozhodnutím otevřete originální PDF a porovnejte je s údaji v úkolu.</p>
-      <p>U vlastního nahraného dokladu můžete před předáním upravit fakturační údaje, klasifikaci a rozdělení do sekcí. Vybrat lze pouze sekce, ke kterým máte aktivní oprávnění; systém vám k nim vytvoří vlastní schvalovací úkol.</p>
+      <p>U vlastního nahraného dokladu můžete před předáním upravit fakturační údaje včetně zaokrouhlení, zvolit typ dokladu a K zaplacení a rozdělit náklad do libovolných aktivních sekcí. Oprávnění neurčuje, kam lze náklad zařadit, ale kterou část smíte schválit.</p>
       <LinearWorkflowDiagram
         id="approver-upload-workflow"
         title="Doklad nahrává schvalovatel"
@@ -67,16 +67,16 @@ export function BasicsSections() {
           "Schvalovatel přetáhne nebo vybere PDF",
           "Paperless uloží originál a provede OCR",
           "ISDOC nebo AI předvyplní údaje",
-          "Schvalovatel zkontroluje údaje a vybere své povolené sekce",
-          "Schvalovatel může schválit vlastní sekce",
-          "Schvalovatel zvolí Předat správci fronty",
+          "Schvalovatel zvolí typ, K zaplacení a zkontroluje údaje včetně zaokrouhlení",
+          "Schvalovatel rozdělí náklad do libovolných aktivních sekcí",
+          "Při volbě Předat správci fronty automaticky schválí části, pro které má aktuální oprávnění",
           "Správce zkontroluje originál, údaje, klasifikaci, sekce a schvalovatele",
           "Případná významná změna vytvoří novou revizi a vyžádá nová schválení",
           "Po všech schváleních následuje finalizace",
         ]}
-        alternative="Schvalovatel nahraje PDF, zkontroluje předvyplněné údaje, rozdělí částku jen do svých povolených sekcí a může tyto vlastní části předběžně schválit. Doklad potom povinně předá správci fronty. Správce provede kontrolu a jeho významné změny mohou založit novou revizi s novým schvalováním."
+        alternative="Schvalovatel nahraje PDF, zvolí typ dokladu a K zaplacení, zkontroluje údaje a rozdělí částku do libovolných aktivních sekcí. Při předání se automaticky schválí jen části, pro které má právě platné oprávnění. Ostatní části projdou běžným schvalováním a celý doklad musí vždy zkontrolovat správce fronty."
       />
-      <HelpCallout kind="warning"><strong>Vlastní schválení není finální schválení dokladu.</strong> Doklad nahraný schvalovatelem musí vždy zkontrolovat a do řádného schvalování předat správce fronty. Před touto kontrolou lze vlastní sekci pouze schválit; vrácení a zamítnutí je dostupné až v běžném schvalování.</HelpCallout>
+      <HelpCallout kind="warning"><strong>Automatické schválení vlastní části není finální schválení dokladu.</strong> Vzniká až při předání, používá aktuální oprávnění a je auditované jako běžné rozhodnutí. Doklad musí vždy zkontrolovat správce fronty a ostatní sekce musí schválit jejich oprávnění schvalovatelé.</HelpCallout>
     </HelpSection>
 
     <HelpSection id="spravce-fronty" title="6. Správce fronty">
@@ -106,7 +106,7 @@ export function BasicsSections() {
         <li>Průběžný stav vidíte pod nahrávací plochou. Po dokončení se doklad objeví ve Frontě nebo v záložce Moje nahrané.</li>
       </ol>
       <p>OCR a lokální AI mohou podle délky dokumentu chvíli trvat. Obrazovka se sama pravidelně obnovuje; není nutné nahrávat soubor znovu.</p>
-      <HelpCallout><strong>Rozdíl rolí:</strong> správce pokračuje přímo úplnou kontrolou ve Frontě. Schvalovatel připravuje jen vlastní nahraný doklad, používá své povolené sekce a nakonec jej musí předat správci fronty.</HelpCallout>
+      <HelpCallout><strong>Rozdíl rolí:</strong> správce pokračuje přímo úplnou kontrolou ve Frontě. Schvalovatel připravuje jen vlastní nahraný doklad, může použít všechny aktivní sekce a nakonec jej musí předat správci fronty.</HelpCallout>
     </HelpSection>
   </>;
 }

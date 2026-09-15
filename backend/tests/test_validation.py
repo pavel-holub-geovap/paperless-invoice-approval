@@ -177,6 +177,24 @@ def test_zero_rounding_summary_is_a_normal_vat_row() -> None:
     assert "VAT_ROUNDING_ADJUSTMENT" not in codes
 
 
+def test_rounding_null_and_negative_have_distinct_business_semantics() -> None:
+    unknown = valid_data()
+    unknown["rounding_amount"] = None
+    assert "VAT_ROUNDING_ADJUSTMENT" not in {
+        row.code for row in validate_invoice_data(unknown)
+    }
+
+    correction = valid_data()
+    correction["rounding_amount"] = "-0.20"
+    warning = next(
+        row
+        for row in validate_invoice_data(correction)
+        if row.code == "VAT_ROUNDING_ADJUSTMENT"
+    )
+    assert warning.actual == "-0.20"
+    assert warning.details["source"] == "current_business_value"
+
+
 def test_manual_save_recalculates_current_revision_without_ai_rerun(db) -> None:
     invoice = create_invoice(db, 1099)
     stale_revision = update_invoice_data(
@@ -190,6 +208,7 @@ def test_manual_save_recalculates_current_revision_without_ai_rerun(db) -> None:
             "total_without_vat": "4000.00",
             "total_vat": "800.00",
             "total_amount": "4800.00",
+            "rounding_amount": "0.30",
             "vat_lines": [
                 {
                     "vat_rate": "21",
@@ -229,6 +248,7 @@ def test_manual_save_recalculates_current_revision_without_ai_rerun(db) -> None:
                 "total_without_vat": "4300.00",
                 "total_vat": "903.00",
                 "total_amount": "5203.00",
+                "rounding_amount": "0.00",
                 "vat_lines": [
                     {
                         "vat_rate": "21",
@@ -311,6 +331,7 @@ def test_manual_save_revalidates_stale_zero_rounding_candidate(db) -> None:
                 "total_without_vat": "159.82",
                 "total_vat": "19.18",
                 "total_amount": "179.00",
+                "rounding_amount": "0.00",
             },
         ),
         db,

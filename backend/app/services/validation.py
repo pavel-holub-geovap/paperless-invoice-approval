@@ -18,7 +18,7 @@ from app.models import (
 )
 from app.services.audit import record_event
 from app.services.bank_accounts import normalize_payment_data, valid_czech_account_checksum
-from app.services.rounding import canonical_rounding_type, explicit_rounding_amount
+from app.services.rounding import explicit_rounding_amount
 
 ICO_RE = re.compile(r"^\d{8}$")
 DIC_RE = re.compile(r"^(CZ)?\d{8,10}$", re.IGNORECASE)
@@ -309,6 +309,7 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
     sum_base = Decimal("0")
     sum_vat = Decimal("0")
     rounding_rows: list[dict[str, Any]] = []
+    current_rounding = as_decimal(data.get("rounding_amount"))
     if not isinstance(vat_rows, list):
         results.append(
             _result(
@@ -355,35 +356,20 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                         details={"row": index + 1, "difference": str(gross - base - vat)},
                     )
                 )
-            is_rounding = canonical_rounding_type(
-                row.get("adjustment_type"),
-                row.get("source_text"),
-                taxable_base=base,
-                vat_amount=vat,
-                gross_amount=gross,
-            ) == "ROUNDING"
+            evidence_rounding = explicit_rounding_amount(row.get("source_text"))
+            is_rounding = bool(
+                current_rounding not in (None, Decimal("0"))
+                and evidence_rounding is not None
+                and abs(evidence_rounding - current_rounding) <= MONEY_TOLERANCE
+            )
             if is_rounding:
-                rounding_amount = explicit_rounding_amount(row.get("source_text"))
-                if rounding_amount is None:
-                    rounding_amount = base + vat
                 rounding_rows.append(
                     {
                         "row": index + 1,
                         "base": str(base),
                         "vat": str(vat),
-                        "total": str(rounding_amount),
+                        "total": str(current_rounding),
                     }
-                )
-                results.append(
-                    _result(
-                        "VAT_ROUNDING_ADJUSTMENT",
-                        ValidationSeverity.WARNING,
-                        f"Faktura obsahuje položku zaokrouhlení {rounding_amount}.",
-                        "vat_lines",
-                        expected="explicit invoice adjustment",
-                        actual=str(rounding_amount),
-                        details=rounding_rows[-1],
-                    )
                 )
             if abs(expected_vat - vat) > MONEY_TOLERANCE:
                 results.append(
@@ -408,6 +394,19 @@ def validate_invoice_data(data: dict[str, Any]) -> list[ValidationResult]:
                 )
             sum_base += base
             sum_vat += vat
+
+    if current_rounding not in (None, Decimal("0")):
+        results.append(
+            _result(
+                "VAT_ROUNDING_ADJUSTMENT",
+                ValidationSeverity.WARNING,
+                f"Faktura obsahuje položku zaokrouhlení {current_rounding}.",
+                "rounding_amount",
+                expected="explicit invoice adjustment",
+                actual=str(current_rounding),
+                details={"rounding": rounding_rows, "source": "current_business_value"},
+            )
+        )
 
     declared_base = amounts["total_without_vat"]
     declared_vat = amounts["total_vat"]
@@ -600,7 +599,10 @@ def run_validations(
     if revision.invoice_id != invoice.id or revision.number != invoice.current_revision_number:
         raise ValueError("Validation revision must be the current invoice revision")
     db.execute(delete(ValidationResult).where(ValidationResult.revision_id == revision.id))
-    results = validate_invoice_data(revision.data)
+    from app.services.workflow import revision_business_data
+
+    business_data = revision_business_data(revision)
+    results = validate_invoice_data(business_data)
     if invoice.source_status == SourceDocumentStatus.MISSING:
         results.append(
             _result(

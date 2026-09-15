@@ -10,6 +10,10 @@ ROUNDING_REJECTION_REASON = (
     "on the same explicit rounding row and that amount must match the candidate; VAT "
     "and invoice summary labels are not rounding evidence."
 )
+ROUNDING_AMOUNT_REJECTION_REASON = (
+    "rounding_amount rejected: source_text must contain the same amount on an explicit "
+    "rounding line; invoice totals and subtotals are not rounding evidence."
+)
 
 ROUNDING_EVIDENCE_TOLERANCE = Decimal("0.01")
 
@@ -87,6 +91,17 @@ def canonical_rounding_type(
     if adjustment_type.casefold() != "rounding":
         return adjustment_type
     return None
+
+
+def canonical_rounding_amount(value: Any, source_text: str | None) -> Decimal | None:
+    """Accept an explicit rounding value only when the same evidence line agrees."""
+    candidate = _as_decimal(value)
+    evidence = explicit_rounding_amount(source_text)
+    if candidate is None or evidence is None:
+        return None
+    if abs(candidate - evidence) > ROUNDING_EVIDENCE_TOLERANCE:
+        return None
+    return candidate.quantize(Decimal("0.01"))
 
 
 def _as_decimal(value: Any) -> Decimal | None:

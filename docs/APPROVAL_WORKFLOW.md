@@ -2,9 +2,11 @@
 
 ## Doklad nahraný schvalovatelem
 
-Schvalovatel nahraje PDF přes stejnou Paperless pipeline, po dokončení OCR/extrakce zkontroluje data a rozdělí částku do sekcí, pro které má aktivní oprávnění. Backend automaticky vytvoří jeho standardní assignmenty; každou sekci schvaluje samostatným `ApprovalDecision`.
+Schvalovatel nahraje PDF přes stejnou Paperless pipeline, po dokončení OCR/extrakce zvolí typ dokladu a `payment_required`, zkontroluje data včetně `rounding_amount` a rozdělí částku do libovolných aktivních sekcí. Section permission není filtr allocation; určuje pouze právo schválit danou sekci.
 
-Ani úplné vlastní schválení nevytvoří finální stav nebo schválené PDF. Uploader explicitně předá aktuální revizi queue-managerovi. Queue manager ověří originál, klasifikaci, režim, sekce a approvery a review potvrdí při předání do standardního approval workflow. Každá významná změna po předání vytvoří novou revizi bez předchozí review značky; dřívější self-approval zůstává v historii jako invalidovaný.
+Teprve při `submit-for-review` backend znovu načte aktuální `ApproverSectionPermission`. Pro každou uploaderovu právě oprávněnou sekci vytvoří standardní `ApprovalAssignment` a platný `ApprovalDecision(APPROVE)` s auditní provenance `UPLOADER_ACTIVE_SECTION_PERMISSION_AT_SUBMIT`. Neoprávněná allocation zůstane beze schválení a queue manager jí přiřadí běžného oprávněného approvera.
+
+Ani úplné automatické schválení uploaderových částí nevytvoří finální stav nebo schválené PDF. Queue manager ověří originál, klasifikaci, K zaplacení, zaokrouhlení, sekce, poznámky a approvery a review potvrdí při předání do standardního approval workflow. Každá významná změna po předání vytvoří novou revizi bez předchozí review značky; dřívější auto-approval zůstává v historii jako invalidovaný.
 
 Workflow stav je nezávislý na `Invoice.disposition` a `source_status`. Ignorování ani Paperless 404 stav nepřepisují; ignored/MISSING pouze zablokují nové předání, rozhodnutí, export a potvrzení importu. Obnovení zdroje/dispozice pokračuje z dochovaného workflow podle jeho běžných preconditions.
 
@@ -22,6 +24,7 @@ Backend při každém `submit` znovu spustí validace a ověří:
 4. existuje alespoň jedna allocation a součet se od total_amount liší nejvýše o 0,01;
 5. každá allocation má povinného approvera;
 6. každý approver je aktivní uložená identita s rolí `APPROVER`.
+7. `payment_required` je explicitně `true` nebo `false`; legacy `NULL` workflow blokuje.
 
 Úspěch provede `READY_FOR_APPROVAL → AWAITING_APPROVAL`, zapíše `SENT_FOR_APPROVAL` a zařadí idempotentní synchronizaci Paperless tagu.
 
@@ -34,7 +37,7 @@ Backend při každém `submit` znovu spustí validace a ověří:
 
 ## Revize a invalidace
 
-Po zahájení schvalování změna dodavatele, identifikátorů, čísel/datem/částek, DPH, platebních údajů, měny, allocation částky/procenta/střediska nebo approvera vytvoří novou revizi. Staré decisions dostanou `valid=false`, čas a důvod invalidace; staré assignmenty dostanou `INVALIDATED`, `active=false`, čas a důvod. Nic se nemaže. Audit obsahuje `REVISION_CREATED` a `APPROVAL_INVALIDATED` s ID dotčených záznamů.
+Po zahájení schvalování změna dodavatele, identifikátorů, čísel/datem/částek, DPH, `payment_required`, `rounding_amount`, platebních údajů, měny, allocation částky/procenta/střediska/poznámky nebo approvera vytvoří novou revizi. Staré decisions dostanou `valid=false`, čas a důvod invalidace; staré assignmenty dostanou `INVALIDATED`, `active=false`, čas a důvod. Nic se nemaže. Audit obsahuje `REVISION_CREATED` a `APPROVAL_INVALIDATED` s ID dotčených záznamů.
 
 ## Souběh a idempotence
 

@@ -15,7 +15,7 @@ export function IntegrationSections() {
     </HelpSection>
 
     <HelpSection id="schvalena-kopie" title="14. Schválená kopie PDF">
-      <p>Po finálním schválení systém vytvoří neměnnou schválenou kopii PDF. V přidané části obsahuje identifikaci workflow a revize, schvalovatele, časy rozhodnutí, sekce a schválené částky.</p>
+      <p>Po finálním schválení systém vytvoří neměnnou schválenou kopii PDF. V přidané části obsahuje identifikaci workflow a revize, schvalovatele, časy rozhodnutí, sekce, schválené částky, poznámky jednotlivých rozdělení a výrazné K ZAPLACENÍ: ANO/NE.</p>
       <ul>
         <li>Originální PDF v Paperless zůstává beze změny.</li>
         <li>Vložený ISDOC a další přílohy zůstávají zachované.</li>

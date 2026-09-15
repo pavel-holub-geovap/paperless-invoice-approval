@@ -55,6 +55,39 @@ function mockEmptyApi() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Stage B pages", () => {
+  it("lets an uploader use every active section and explains auto-approval eligibility", async () => {
+    const approver: User = { subject: "approver-1", username: "approver1", roles: ["APPROVER"], csrf_token: "csrf" };
+    const centers = [
+      { id: "a", code: "A", name: "Správa", pohoda_code: "A", active: true, created_at: "2026-01-01", updated_at: "2026-01-01" },
+      { id: "b", code: "B", name: "Vývoj", pohoda_code: "B", active: true, created_at: "2026-01-01", updated_at: "2026-01-01" },
+    ];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      const payload = path.endsWith("/cost-centers") ? centers : path.endsWith("/section-permissions") ? [{ id: "p", approver_subject: approver.subject, active: true, cost_center: centers[0] }] : [];
+      return Promise.resolve({ ok: true, status: 200, json: async () => payload });
+    }));
+    render(<InvoiceDetail invoice={{
+      ...invoice,
+      status: "NEEDS_REVIEW",
+      paperless: { ...invoice.paperless, uploaded_by_subject: approver.subject, uploaded_by: approver.username, upload_origin: "APPROVER" },
+      data: { total_amount: "1000.00", payment_required: null, rounding_amount: "0.00" },
+      allocations: [
+        { id: "aa", amount: "400.00", note: "Vlastní sekce", vat_breakdown: [], created_by: approver.subject, cost_center: centers[0], assignments: [] },
+        { id: "bb", amount: "600.00", note: "Jiná sekce", vat_breakdown: [], created_by: approver.subject, cost_center: centers[1], assignments: [] },
+      ],
+      allocation_summary: { invoice_total: "1000.00", allocated: "1000.00", remaining: "0.00" },
+    }} user={approver} onBack={() => undefined} onRefresh={() => undefined}/>);
+
+    expect((await screen.findAllByRole("option", { name: /A — Správa · Můžete schválit/ }))[0]).toBeVisible();
+    expect(screen.getAllByRole("option", { name: /B — Vývoj · Vyžaduje jiného schvalovatele/ })[0]).toBeVisible();
+    expect(screen.getByText("Při předání automaticky schválíte")).toBeVisible();
+    expect(screen.getByText("Vyžaduje schválení jiným schvalovatelem")).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Typ dokladu" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "Ano" })).toBeEnabled();
+    expect(screen.getByDisplayValue("0.00")).toHaveAttribute("data-field", "rounding_amount");
+    expect(screen.getByRole("button", { name: "Předat správci fronty" })).toBeVisible();
+  });
+
   it("places the full-width multiline note last and the save action below it", () => {
     mockEmptyApi();
     render(
@@ -364,13 +397,13 @@ describe("Stage B pages", () => {
         invoice={{
           ...invoice,
           data: {
-            currency: "CZK", total_without_vat: "4065.29", total_vat: "853.71", total_amount: "4919.00",
+            currency: "CZK", total_without_vat: "4065.29", total_vat: "853.71", total_amount: "4919.00", rounding_amount: "0.35",
             vat_lines: [
               { vat_rate: "21", taxable_base: "4065.00", vat_amount: "853.65" },
               { vat_rate: "21", taxable_base: "0.29", vat_amount: "0.06", adjustment_type: "ROUNDING" },
             ],
           },
-          validations: [{ code: "VAT_ROUNDING_ADJUSTMENT", severity: "WARNING", field_name: "vat_lines", message: "Faktura obsahuje položku zaokrouhlení 0.35.", expected: "explicit invoice adjustment", actual: "0.35", details: { row: 2, difference: "0.35" } }],
+          validations: [{ code: "VAT_ROUNDING_ADJUSTMENT", severity: "WARNING", field_name: "rounding_amount", message: "Faktura obsahuje položku zaokrouhlení 0.35.", expected: "explicit invoice adjustment", actual: "0.35", details: { rounding: [{ row: 2 }] } }],
         }}
         user={user}
         onBack={() => undefined}
@@ -378,8 +411,8 @@ describe("Stage B pages", () => {
       />,
     );
     expect(screen.getByRole("heading", { name: "DPH a zaokrouhlení" })).toBeVisible();
-    expect(screen.getByText("Zaokrouhlení")).toBeVisible();
-    expect(screen.getAllByText(/pravděpodobně způsoben položkou Zaokrouhlení/)[0].closest(".alert")).toHaveClass("warning");
+    expect(screen.getByDisplayValue("0.35")).toHaveAttribute("data-field", "rounding_amount");
+    expect(screen.getAllByText(/obsahuje explicitní zaokrouhlení/)[0].closest(".alert")).toHaveClass("warning");
     expect(screen.getByText(/VAT_ROUNDING_ADJUSTMENT/).closest(".alert")).toHaveClass("warning");
     await act(async () => undefined);
   });
@@ -411,8 +444,8 @@ describe("Stage B pages", () => {
     );
 
     expect(screen.getByText("DPH řádek 1")).toBeVisible();
-    expect(screen.queryByText("Zaokrouhlení")).not.toBeInTheDocument();
-    expect(screen.queryByText(/pravděpodobně způsoben položkou Zaokrouhlení/)).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Zaokrouhlení" })).toHaveValue("");
+    expect(screen.queryByText(/obsahuje explicitní zaokrouhlení/)).not.toBeInTheDocument();
     await act(async () => undefined);
   });
 
@@ -423,7 +456,7 @@ describe("Stage B pages", () => {
         invoice={{
           ...invoice,
           data: {
-            currency: "CZK", total_without_vat: "159.82", total_vat: "19.18", total_amount: "179.00",
+            currency: "CZK", total_without_vat: "159.82", total_vat: "19.18", total_amount: "179.00", rounding_amount: "0.00",
             vat_lines: [{
               vat_rate: "12", taxable_base: "159.82", vat_amount: "19.18", gross_amount: "179.00",
               adjustment_type: "ROUNDING", source_text: "Zaokrouhlení 0,00",
@@ -443,9 +476,9 @@ describe("Stage B pages", () => {
     );
 
     expect(screen.getByText("DPH řádek 1")).toBeVisible();
-    expect(screen.queryByText("Zaokrouhlení")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Zaokrouhlení" })).toHaveValue("0.00");
     expect(screen.queryByText(/VAT_ROUNDING_ADJUSTMENT/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/pravděpodobně způsoben položkou Zaokrouhlení/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/obsahuje explicitní zaokrouhlení/)).not.toBeInTheDocument();
     await act(async () => undefined);
   });
 

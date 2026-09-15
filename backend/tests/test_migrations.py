@@ -72,7 +72,7 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
             for row in connection.execute("PRAGMA table_info(admin_purge_audits)").fetchall()
         }
 
-    assert revision == ("0012",)
+    assert revision == ("0013",)
     assert {
         "paperless_title",
         "paperless_ocr_text",
@@ -149,6 +149,8 @@ def test_empty_database_upgrades_through_all_revisions(tmp_path: Path) -> None:
         "submitted_to_queue_by",
         "queue_manager_reviewed_at",
         "queue_manager_reviewed_by",
+        "payment_required",
+        "rounding_amount",
     } <= revision_columns
     assert {
         "approver_subject",

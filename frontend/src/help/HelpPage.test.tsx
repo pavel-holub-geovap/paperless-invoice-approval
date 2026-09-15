@@ -76,7 +76,7 @@ describe("integrated user help", () => {
     expect(screen.getByTestId("revision-workflow")).toBeVisible();
     expect(screen.getByTestId("pohoda-workflow")).toBeVisible();
     expect(screen.getAllByText("Textový popis schématu")).toHaveLength(5);
-    expect(screen.getByText(/Vlastní schválení není finální schválení dokladu/)).toBeVisible();
+    expect(screen.getByText(/Automatické schválení vlastní části není finální schválení dokladu/)).toBeVisible();
   });
 
   it("documents current statuses and the manual POHODA boundary", () => {

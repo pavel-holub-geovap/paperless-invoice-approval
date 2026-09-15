@@ -62,6 +62,8 @@ def build_approval_snapshot(db: Session, invoice: Invoice) -> dict[str, Any]:
     revision = invoice.current_revision
     if revision is None:
         raise WorkflowError("Invoice has no current revision")
+    if revision.payment_required is None:
+        raise WorkflowError("K zaplacení musí být před schválením určeno")
     allocations = db.scalars(
         select(Allocation)
         .options(
@@ -113,6 +115,7 @@ def build_approval_snapshot(db: Session, invoice: Invoice) -> dict[str, Any]:
                     "name": allocation.cost_center.name,
                 },
                 "amount": str(Decimal(allocation.amount).quantize(Decimal("0.01"))),
+                "note": allocation.note,
                 "approvers": approvers,
             }
         )
@@ -122,6 +125,7 @@ def build_approval_snapshot(db: Session, invoice: Invoice) -> dict[str, Any]:
         "invoice_revision_id": revision.id,
         "invoice_revision": revision.number,
         "invoice_number": revision.data.get("invoice_number"),
+        "payment_required": revision.payment_required,
         "currency": currency,
         "total_approved": str(
             sum((Decimal(row["amount"]) for row in rows), Decimal("0")).quantize(
@@ -183,10 +187,14 @@ def _stamp_lines(snapshot: dict[str, Any]) -> list[str]:
             f"{centre['code']} - {centre['name']}: "
             f"{_format_money(Decimal(allocation['amount']), currency)} | {approvers}"
         )
+        if allocation.get("note"):
+            lines.append(f"Poznámka: {allocation['note']}")
     completed = snapshot.get("approval_completed_at")
     completed_text = _format_time(datetime.fromisoformat(completed)) if completed else "-"
     lines.extend(
         [
+            "K ZAPLACENÍ: "
+            + ("ANO" if snapshot.get("payment_required") is True else "NE"),
             f"Celkem schváleno: {_format_money(Decimal(snapshot['total_approved']), currency)}",
             f"Dokončeno: {completed_text}",
             f"Workflow ID: {snapshot['invoice_id']} | revize {snapshot['invoice_revision']}",

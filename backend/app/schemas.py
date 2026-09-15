@@ -173,6 +173,9 @@ class InvoiceExtractionRawV1(BaseModel):
     total_without_vat: RawEvidenceValue
     total_vat: RawEvidenceValue
     total_amount: RawEvidenceValue
+    rounding_amount: RawEvidenceValue = Field(
+        default_factory=lambda: RawEvidenceValue(value=None, source_text=None)
+    )
     description: RawEvidenceValue
 
 
@@ -247,6 +250,9 @@ class InvoiceExtractionV1(BaseModel):
     total_without_vat: DecimalEvidence
     total_vat: DecimalEvidence
     total_amount: DecimalEvidence
+    rounding_amount: DecimalEvidence = Field(
+        default_factory=lambda: DecimalEvidence(value=None, source_text=None)
+    )
     description: TextEvidence
 
 
@@ -290,6 +296,7 @@ class AIExtractionApply(BaseModel):
 class DocumentClassificationSet(BaseModel):
     document_type: DocumentType
     processing_mode: ProcessingMode
+    payment_required: bool | None = None
     pohoda_eligible: bool | None = None
     expected_revision: int | None = Field(default=None, ge=1)
 
