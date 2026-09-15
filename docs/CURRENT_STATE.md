@@ -155,6 +155,7 @@
 - Ruční oprava zaokrouhlení používá stejnou revision a validační ochranu jako ostatní finanční data. `NULL` znamená neznámé, `0.00` explicitní nulu bez rounding warningu a nenulová hodnota skutečnou korekci.
 - AI přijme rounding jen s hodnotově shodnou evidence z explicitně označeného řádku. ISDOC 6.0.2 mapuje skutečný `PayableRoundingAmount` do stejného pole.
 - Immutable approved snapshot i výsledná PDF kopie obsahují K ZAPLACENÍ: ANO/NE a plain-text poznámku každé allocation. Renderer žádné hranaté závorky nepřidává a delší text rozkládá do zvětšeného approval bandu mimo originální stránku.
+- Živý smoke 2026-09-15 vytvořil uploaderem `approver1` Paperless dokument `61` a Approval invoice `bd740a88-52d1-476d-a6e5-b567043e8891`. OCR má 911 znaků; A=400 Kč se při podání automaticky schválilo, B=600 Kč nikoli. Správcovská změna vytvořila nové revize a finální revize 6 skončila `APPROVED`. Běžný download endpoint vrátil a parser ověřil artifact `10a7b362-882a-4ced-a007-3dd736216c61`, SHA-256 `adf8d4407e8c0357396a4b451247332cbb83c382c1f46c594c6d9f078496fcfb`, K ZAPLACENÍ: ANO, obě poznámky včetně uživatelských `[B]`, oba schvalovatele a approval band mimo originální obsah.
 - Backend přijímá pouze PDF do konfigurovatelného limitu `UPLOAD_MAX_BYTES` (výchozí 8 MiB), kontroluje příponu, MIME i PDF signaturu, počítá SHA-256, sanitizuje název a ukládá pouze metadata. Originální PDF trvale neduplikuje.
 - Paperless upload používá oficiální `POST /api/documents/post_document/`. Worker sleduje Paperless task, OCR, vznik Approval invoice a existující AI pipeline. Opakování se stejným idempotency klíčem a hashem je bezpečné; nejednoznačný timeout po odeslání se automaticky neopakuje.
 - Skutečný smoke vytvořil `codex-approval-upload-6988633cde.pdf`: upload `01fd4ab9-122b-4356-99b0-88cc33751554`, Paperless task `0138235d-8a75-4c39-9a71-220a6683158e`, Paperless document `19` a Approval invoice `1246c15e-44c6-4596-8731-8bbf4315309d`. OCR má 911 znaků, AI skončila `AI_COMPLETED` na `qwen3:8b`, workflow `QUEUE_REVIEW` a UI status `READY_FOR_REVIEW`.
@@ -195,7 +196,7 @@
 
 ## Závěrečné automatické ověření
 
-- Backend: 189/189 testů; úplná sada obsahuje také regresní testy bootstrapu, skutečného Paperless originálu, historie, Paperless fulltext průniku, historického RBAC, chybějícího originálu a složených filtrů. Frontend: 39/39 testů a production build. Ruff je čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty.
+- Backend: 225/225 testů; úplná sada obsahuje také regresní testy bootstrapu, skutečného Paperless originálu, historie, Paperless fulltext průniku, historického RBAC, chybějícího originálu, uploader auto-approval, payment/rounding revision a approved PDF. Frontend: 66/66 testů a production build. Ruff je čistý. AI hranice navíc přijímá pouze jednoznačné lokalizované numerické řetězce modelu (`21%`, desetinná čárka, mezery tisíců a běžný měnový suffix), striktně odděluje označené české datumy včetně provenance a stále odmítá jiné neschématické hodnoty.
 
 ## Moje historie schvalovatele
 

@@ -229,6 +229,8 @@ Doménové testy ověřují, že uploader může použít dvě aktivní sekce i 
 
 Approved-PDF regrese parsuje finální PDF, kontroluje ANO/NE, více allocation poznámek, zachování uživatelských hranatých závorek, nepřidání syntetických závorek, zalomení dlouhého textu a byte-for-byte SHA-256 embedded ISDOC attachmentu. Živý scénář spouští `scripts/smoke_approver_upload_sections.py`; vytvoří vlastní syntetický upload, dvě sekce, auto-approval jedné části, manager revision, obě finální rozhodnutí a stáhne schválenou PDF běžným endpointem.
 
+Ověřený běh 2026-09-15: Paperless `61`, OCR 911 znaků, invoice `bd740a88-52d1-476d-a6e5-b567043e8891`, finální revize 6, approved artifact `10a7b362-882a-4ced-a007-3dd736216c61`, SHA-256 `adf8d4407e8c0357396a4b451247332cbb83c382c1f46c594c6d9f078496fcfb`. Sekce byly přesně 400/600 Kč; PDF text i zvětšený mediabox prošly.
+
 ## Regrese DUZP a českých datumů
 
 Doménové testy pokrývají oddělené Datum vystavení, DUZP a splatnost, varianty `DUZP`, `Datum zd. plnění`, `Datum zdan. plnění`, `Datum uskutečnění zdanitelného plnění` a chybějící DUZP jako `null`. Frontend ověřuje ISO → `DD.MM.YYYY`, český vstup → ISO API payload a inline odmítnutí `31.02.2026`. POHODA regrese parsuje XML a vyžaduje ISO `date`, `dateTax` a `dateDue`.
