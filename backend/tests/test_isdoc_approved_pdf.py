@@ -427,6 +427,7 @@ def test_approved_pdf_prints_false_payment_and_wraps_multiple_plain_text_notes()
 
 def test_approved_pdf_displays_submitter_separately_from_approvers() -> None:
     snapshot = deepcopy(approval_snapshot())
+    snapshot["allocations"][0]["note"] = "Rozdělení 60 %; ověřeno správcem"
     snapshot["submitted_by"] = {
         "subject": "submitter-subject",
         "name": "submitter1",
@@ -434,7 +435,9 @@ def test_approved_pdf_displays_submitter_separately_from_approvers() -> None:
     }
     approved = create_approved_pdf(source_pdf(), snapshot)
     text = PdfReader(BytesIO(approved)).pages[-1].extract_text()
+    assert "Předložil" in text
     assert "submitter1" in text
+    assert "Rozdělení 60 %; ověřeno správcem" in text
     assert text.index("submitter1") < text.index("Jan Schvalovatel")
     assert "submitter1 |" not in text
     assert "Jan Schvalovatel" in text

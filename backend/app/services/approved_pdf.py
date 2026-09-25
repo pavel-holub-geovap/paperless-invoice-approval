@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import reportlab
 from pypdf import PdfReader, PdfWriter, Transformation
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -38,6 +37,13 @@ from app.services.workflow import WorkflowError, all_required_approved, transiti
 
 STAMP_MARGIN = 12
 PRAGUE = ZoneInfo("Europe/Prague")
+APPROVAL_FONT_NAME = "ApprovalSans"
+APPROVAL_FONT_PATHS = (
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"),
+    Path("C:/Windows/Fonts/DejaVuSans.ttf"),
+)
+REQUIRED_CZECH_GLYPHS = frozenset(map(ord, "ěščřžýáíéůúďťňĚŠČŘŽÝÁÍÉŮÚĎŤŇ"))
 
 
 def _sha256(value: bytes) -> str:
@@ -57,6 +63,19 @@ def _format_money(value: Decimal, currency: str) -> str:
 
 def _format_time(value: datetime) -> str:
     return value.astimezone(PRAGUE).strftime("%d.%m.%Y %H:%M")
+
+
+def _register_approval_font() -> None:
+    if APPROVAL_FONT_NAME in pdfmetrics.getRegisteredFontNames():
+        return
+    for font_path in APPROVAL_FONT_PATHS:
+        if not font_path.is_file():
+            continue
+        font = TTFont(APPROVAL_FONT_NAME, str(font_path))
+        if REQUIRED_CZECH_GLYPHS.issubset(font.face.charToGlyph):
+            pdfmetrics.registerFont(font)
+            return
+    raise RuntimeError("Approved PDF requires DejaVu Sans with complete Czech glyph coverage")
 
 
 def build_approval_snapshot(db: Session, invoice: Invoice) -> dict[str, Any]:
@@ -227,9 +246,7 @@ def _stamp_lines(snapshot: dict[str, Any]) -> list[str]:
 
 def _stamp_overlay(width: float, full_height: float, band_height: float, lines: list[str]) -> bytes:
     output = BytesIO()
-    font_path = Path(reportlab.__file__).resolve().parent / "fonts" / "Vera.ttf"
-    if "ApprovalSans" not in pdfmetrics.getRegisteredFontNames():
-        pdfmetrics.registerFont(TTFont("ApprovalSans", str(font_path)))
+    _register_approval_font()
     pdf = canvas.Canvas(output, pagesize=(width, full_height), invariant=1, pageCompression=1)
     pdf.setFillColorRGB(1, 1, 1)
     pdf.rect(0, 0, width, band_height, fill=1, stroke=0)
@@ -238,7 +255,7 @@ def _stamp_overlay(width: float, full_height: float, band_height: float, lines: 
     pdf.rect(STAMP_MARGIN, STAMP_MARGIN, width - 2 * STAMP_MARGIN, band_height - 2 * STAMP_MARGIN)
     y = band_height - STAMP_MARGIN - 13
     for index, line in enumerate(lines):
-        pdf.setFont("ApprovalSans", 9 if index == 0 else 7.5)
+        pdf.setFont(APPROVAL_FONT_NAME, 9 if index == 0 else 7.5)
         pdf.setFillColorRGB(0.08, 0.22, 0.12)
         pdf.drawString(STAMP_MARGIN + 8, y, line)
         y -= 12 if index == 0 else 10

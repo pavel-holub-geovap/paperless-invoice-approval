@@ -33,7 +33,7 @@ Worker před AI stáhne originální PDF přes Paperless REST, ověří jeho has
 
 Opakovaná ISDOC inspekce se spouští auditovaným manager endpointem a worker znovu čte stejné originální PDF z Paperless. Pokud aktuální revize obsahuje OCR/AI data, validní ISDOC vytvoří standardní novou invoice revision; staré AI extraction, revize, audit a artifacts se nemažou.
 
-Finální approval zařadí idempotentní `CREATE_APPROVED_PDF`. Kopie vždy rozšíří poslední MediaBox/CropBox dolů, původní obsah neposouvá ani nepřekrývá a přidá lidsky čitelné approvals/allocations. Před a po se porovnává manifest všech attachments; odlišný hash generování zablokuje. Artifact patří revizi, approval snapshotu a verzi razítka. Nová revize označí starý artifact `HISTORICAL`.
+Finální approval zařadí idempotentní `CREATE_APPROVED_PDF`. Kopie vždy rozšíří poslední MediaBox/CropBox dolů, původní obsah neposouvá ani nepřekrývá a přidá lidsky čitelné approvals/allocations. Razítko používá DejaVu Sans s kontrolovaným úplným českým pokrytím; generování selže namísto tichého nahrazení nepodporovaných znaků. Před a po se porovnává manifest všech attachments; odlišný hash generování zablokuje. Artifact patří revizi, approval snapshotu a verzi razítka. Nová revize označí starý artifact `HISTORICAL`.
 
 ## Paperless snapshot
 
