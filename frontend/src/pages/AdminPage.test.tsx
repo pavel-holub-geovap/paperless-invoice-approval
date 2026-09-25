@@ -25,17 +25,21 @@ afterEach(() => {
 
 describe("ADMIN navigation and administration", () => {
   it.each([
-    { roles: ["ADMIN"], admin: true, queue: false, approvals: false },
-    { roles: ["QUEUE_MANAGER"], admin: false, queue: true, approvals: false },
-    { roles: ["APPROVER"], admin: false, queue: false, approvals: true },
-    { roles: ["ADMIN", "QUEUE_MANAGER"], admin: true, queue: true, approvals: false },
-  ])("shows independent navigation for $roles", async ({ roles, admin, queue, approvals }) => {
+    { roles: ["ADMIN"], admin: true, queue: false, approvals: false, submissions: false },
+    { roles: ["QUEUE_MANAGER"], admin: false, queue: true, approvals: false, submissions: false },
+    { roles: ["APPROVER"], admin: false, queue: false, approvals: true, submissions: false },
+    { roles: ["INVOICE_SUBMITTER"], admin: false, queue: false, approvals: false, submissions: true },
+    { roles: ["ADMIN", "QUEUE_MANAGER"], admin: true, queue: true, approvals: false, submissions: false },
+    { roles: ["INVOICE_SUBMITTER", "APPROVER"], admin: false, queue: false, approvals: true, submissions: true },
+  ])("shows independent navigation for $roles", async ({ roles, admin, queue, approvals, submissions }) => {
     mockIdentity(roles);
     render(<App/>);
     await screen.findByRole("link", { name: "Nápověda" });
     expect(Boolean(screen.queryByRole("link", { name: "Administrace" }))).toBe(admin);
     expect(Boolean(screen.queryByRole("link", { name: "Fronta" }))).toBe(queue);
     expect(Boolean(screen.queryByRole("link", { name: "Moje schválení" }))).toBe(approvals);
+    expect(Boolean(screen.queryByRole("link", { name: "Předložit fakturu" }))).toBe(submissions);
+    expect(Boolean(screen.queryByRole("link", { name: "Moje předložené" }))).toBe(submissions);
   });
 
   it("does not render administration for a direct QUEUE_MANAGER deep link", async () => {

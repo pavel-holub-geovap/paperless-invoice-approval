@@ -6,6 +6,7 @@ import { InvoiceUploadPanel, type InvoiceUploadPanelHandle } from "./InvoiceUplo
 
 const manager: User = { subject: "manager", username: "queue-manager", roles: ["QUEUE_MANAGER"], csrf_token: "csrf" };
 const approver: User = { subject: "approver", username: "approver1", roles: ["APPROVER"], csrf_token: "csrf" };
+const submitter: User = { subject: "submitter", username: "submitter1", roles: ["INVOICE_SUBMITTER", "APPROVER"], csrf_token: "csrf" };
 const config = {
   max_file_size: 1024 * 1024,
   supported_mime_types: ["application/pdf"],
@@ -65,6 +66,15 @@ describe("invoice upload panel", () => {
     expect(screen.getByRole("button", { name: "Vybrat soubor" })).toBeVisible();
     view.rerender(<InvoiceUploadPanel user={approver} onQueueChanged={() => false} />);
     expect(screen.getByText("Přetáhněte fakturu sem nebo")).toBeInTheDocument();
+  });
+
+  it("sends the explicit submitter mode for a combined-role user", async () => {
+    const fetchMock = mockBase(tracking({ upload_origin: "INVOICE_SUBMITTER" }));
+    render(<InvoiceUploadPanel user={submitter} submissionMode="INVOICE_SUBMITTER" onQueueChanged={() => false} />);
+    fireEvent.change(screen.getByLabelText("Vybrat PDF faktury"), { target: { files: [pdf()] } });
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true));
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect((post?.[1]?.body as FormData).get("submission_mode")).toBe("INVOICE_SUBMITTER");
   });
 
   it("does not load or render a permanent upload history grid", async () => {

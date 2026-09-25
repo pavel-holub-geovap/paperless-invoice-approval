@@ -28,6 +28,7 @@ from app.models import (
     Invoice,
     InvoiceStatus,
     PohodaImportMethod,
+    UploadOrigin,
     UserIdentity,
     new_id,
 )
@@ -120,7 +121,18 @@ def build_approval_snapshot(db: Session, invoice: Invoice) -> dict[str, Any]:
             }
         )
     currency = str(revision.data.get("currency") or "CZK").upper()
-    return {
+    submitter = None
+    if invoice.upload_origin == UploadOrigin.INVOICE_SUBMITTER:
+        submitter = {
+            "subject": invoice.uploaded_by_subject,
+            "name": invoice.uploaded_by_username or invoice.uploaded_by_subject,
+            "submitted_at": (
+                revision.submitted_to_queue_at.isoformat()
+                if revision.submitted_to_queue_at
+                else None
+            ),
+        }
+    snapshot = {
         "invoice_id": invoice.id,
         "invoice_revision_id": revision.id,
         "invoice_revision": revision.number,
@@ -135,6 +147,9 @@ def build_approval_snapshot(db: Session, invoice: Invoice) -> dict[str, Any]:
         "approval_completed_at": max(completion).isoformat() if completion else None,
         "allocations": rows,
     }
+    if submitter:
+        snapshot["submitted_by"] = submitter
+    return snapshot
 
 
 def prepare_approved_pdf_artifact(
@@ -177,6 +192,13 @@ def prepare_approved_pdf_artifact(
 def _stamp_lines(snapshot: dict[str, Any]) -> list[str]:
     currency = snapshot["currency"]
     lines = ["SCHVÁLENO - interní schvalovací informace"]
+    submitter = snapshot.get("submitted_by")
+    if submitter:
+        submitted_at = submitter.get("submitted_at")
+        submitted_text = (
+            _format_time(datetime.fromisoformat(submitted_at)) if submitted_at else "-"
+        )
+        lines.append(f"Předložil: {submitter['name']} ({submitted_text})")
     for allocation in snapshot["allocations"]:
         centre = allocation["cost_center"]
         approvers = ", ".join(

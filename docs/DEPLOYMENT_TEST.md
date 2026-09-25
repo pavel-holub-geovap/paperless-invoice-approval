@@ -220,3 +220,7 @@ rozhodnutí správce.
 - Testovací Keycloak uživatelé, secrets a dokumenty se nesmějí kopírovat do
   produkce. Produkční nasazení vyžaduje samostatný hardening, TLS, rotaci secrets,
   monitoring, zálohy a recovery drill.
+
+## Provisioning předkladatele
+
+Neverzovaný `.env` musí obsahovat samostatné `TEST_SUBMITTER_PASSWORD`. Idempotentní `keycloak-provision` vytvoří realm roli `INVOICE_SUBMITTER`, stejnojmennou group a uživatele `submitter1` pouze s touto rolí. `bootstrap_smoke.py --provisioning` kontroluje existenci role i přesně jednoho testovacího uživatele. Po změně spusťte provisioning job znovu; není potřeba migrace databáze Approval ani ruční založení identity, protože první OIDC login provede standardní projekci podle Keycloak `sub`.

@@ -86,7 +86,7 @@ export function Dashboard({ user, invoiceId, onNavigate }: { user: User; invoice
         <button className="button secondary" disabled={refreshing} aria-busy={refreshing} onClick={() => void refresh()}>{refreshing ? "Obnovuji…" : "Obnovit"}</button>
       </div>
     </div>
-    <InvoiceUploadPanel ref={uploadPanelRef} user={user} onQueueChanged={refreshAfterUpload} />
+    <InvoiceUploadPanel ref={uploadPanelRef} user={user} submissionMode="QUEUE_MANAGER" onQueueChanged={refreshAfterUpload} />
     <div className="filters">
       <label>Pohled<select aria-label="Pohled fronty" value={view} onChange={(e) => setView(e.target.value as typeof view)}><option value="active">Aktivní</option><option value="ignored">Ignorované</option><option value="missing">Chybějící zdroj</option><option value="all">Všechny</option></select></label>
       <label>Workflow<select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Všechny</option>{["NEW","VALIDATION","QUEUE_REVIEW","READY_FOR_APPROVAL","AWAITING_APPROVAL","RETURNED","REJECTED","APPROVED","READY_FOR_EXPORT","EXPORT_CREATED","IMPORTED_TO_POHODA"].map((s)=><option key={s} value={s}>{workflowStatusLabel(s)}</option>)}</select></label>

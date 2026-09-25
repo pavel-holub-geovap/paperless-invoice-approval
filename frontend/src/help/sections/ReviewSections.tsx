@@ -14,7 +14,7 @@ export function ReviewSections() {
       <h3>DPH, součty a zaokrouhlení</h3>
       <p>Kontroly porovnávají základ, DPH, celkem a jednotlivé DPH řádky. Pole <strong>Zaokrouhlení</strong> lze ručně opravit; prázdná hodnota znamená „není známo“, zatímco 0,00 je explicitní nulové zaokrouhlení bez varování.</p>
       <h3>Typ dokladu a K zaplacení</h3>
-      <p>Typ dokladu a údaj <strong>K zaplacení: Ano/Ne</strong> jsou nezávislé. I přijatá faktura může být již uhrazená a mít K zaplacení = Ne. Schvalovatel je určí při přípravě vlastního uploadu, správce fronty je může při kontrole změnit. Bez jednoznačné volby K zaplacení nelze doklad předat.</p>
+      <p>Typ dokladu a údaj <strong>K zaplacení: Ano/Ne</strong> jsou nezávislé. I přijatá faktura může být již uhrazená a mít K zaplacení = Ne. Schvalovatel i předkladatel je určí při přípravě vlastního uploadu, správce fronty je může při kontrole změnit. Bez jednoznačné volby K zaplacení nelze doklad předat.</p>
       <dl className="help-meaning-list">
         <div><dt>OK</dt><dd>Kontrola je v pořádku.</dd></div>
         <div><dt>Upozornění</dt><dd>Systém našel možnou nesrovnalost. Porovnejte ji s originálem; samotné upozornění nemusí zablokovat pokračování.</dd></div>
@@ -27,6 +27,7 @@ export function ReviewSections() {
       <ul>
         <li>Správce fronty může nastavovat sekce a přiřazovat k nim schvalovatele.</li>
         <li>Schvalovatel při přípravě vlastního uploadu vidí všechny aktivní sekce. U každé vidí, zda ji při předání automaticky schválí, nebo bude vyžadovat jiného schvalovatele.</li>
+        <li>Předkladatel může navrhnout libovolnou aktivní sekci a poznámku, ale nevytváří assignment ani rozhodnutí. Schvalovatele určí správce fronty.</li>
         <li>Poznámka u každého rozdělení je prostý text a po finálním schválení se přenese do schválené PDF kopie bez automatických hranatých závorek.</li>
         <li>Globální číselník sekcí a oprávnění schvalovatelů spravuje administrátor v části <strong>Administrace</strong>.</li>
         <li>Každá povinná část aktuální revize musí mít oprávněného schvalovatele.</li>

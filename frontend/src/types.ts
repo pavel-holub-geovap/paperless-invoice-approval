@@ -21,8 +21,10 @@ export type InvoiceListItem = {
   paperless_created_at?: string;
   approval_created_at?: string;
   uploaded_by?: string;
-  upload_origin?: "PAPERLESS_SYNC" | "QUEUE_MANAGER" | "APPROVER";
+  upload_origin?: "PAPERLESS_SYNC" | "QUEUE_MANAGER" | "APPROVER" | "INVOICE_SUBMITTER";
   queue_manager_reviewed?: boolean;
+  submitted_to_queue_at?: string;
+  payment_required?: boolean;
   source_pdf_sha256?: string;
   sync_status: "PENDING" | "SYNCED" | "ERROR";
   ai_status: AIStatus;
@@ -206,7 +208,7 @@ export type Invoice = {
     source_pdf_sha256?: string;
     uploaded_by?: string;
     uploaded_by_subject?: string;
-    upload_origin?: "PAPERLESS_SYNC" | "QUEUE_MANAGER" | "APPROVER";
+    upload_origin?: "PAPERLESS_SYNC" | "QUEUE_MANAGER" | "APPROVER" | "INVOICE_SUBMITTER";
   };
   original_review_confirmed: boolean;
   original_reviewed_at?: string;
@@ -422,7 +424,7 @@ export type UploadTracking = {
   ai_status?: AIStatus;
   workflow_status?: string;
   uploaded_by: string;
-  upload_origin?: "QUEUE_MANAGER" | "APPROVER";
+  upload_origin?: "QUEUE_MANAGER" | "APPROVER" | "INVOICE_SUBMITTER";
   source_created_at?: string;
   approval_created_at?: string;
   error_code?: string;

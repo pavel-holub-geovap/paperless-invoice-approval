@@ -30,6 +30,7 @@ from app.models import (
     InvoiceStatus,
     ProcessingMode,
     SourceDocumentStatus,
+    UploadOrigin,
     ValidationResult,
     ValidationSeverity,
     new_id,
@@ -89,6 +90,12 @@ def _viewer(db: Session, invoice: Invoice, user: CurrentUser) -> None:
         return
     if "APPROVER" in user.roles and invoice.uploaded_by_subject == user.subject:
         return
+    if (
+        "INVOICE_SUBMITTER" in user.roles
+        and invoice.upload_origin == UploadOrigin.INVOICE_SUBMITTER
+        and invoice.uploaded_by_subject == user.subject
+    ):
+        return
     if "APPROVER" in user.roles and db.scalar(
         select(ApprovalAssignment.id)
         .where(
@@ -108,6 +115,12 @@ def _pdf_viewer(db: Session, invoice: Invoice, user: CurrentUser) -> None:
         return
     if "APPROVER" in user.roles and invoice.uploaded_by_subject == user.subject:
         return
+    if (
+        "INVOICE_SUBMITTER" in user.roles
+        and invoice.upload_origin == UploadOrigin.INVOICE_SUBMITTER
+        and invoice.uploaded_by_subject == user.subject
+    ):
+        return
     if "APPROVER" in user.roles and user_can_access_invoice_history(
         db, user.subject, invoice.id
     ):
@@ -117,8 +130,14 @@ def _pdf_viewer(db: Session, invoice: Invoice, user: CurrentUser) -> None:
 
 def _preparer(invoice: Invoice, user: CurrentUser) -> bool:
     revision = invoice.current_revision
+    role_matches_origin = (
+        invoice.upload_origin == UploadOrigin.APPROVER and "APPROVER" in user.roles
+    ) or (
+        invoice.upload_origin == UploadOrigin.INVOICE_SUBMITTER
+        and "INVOICE_SUBMITTER" in user.roles
+    )
     if (
-        "APPROVER" not in user.roles
+        not role_matches_origin
         or invoice.uploaded_by_subject != user.subject
         or revision is None
         or revision.submitted_to_queue_at is not None
@@ -427,7 +446,7 @@ def list_invoices(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[InvoiceListItem]:
-    if not ({"QUEUE_MANAGER", "APPROVER"} & set(user.roles)):
+    if not ({"QUEUE_MANAGER", "APPROVER", "INVOICE_SUBMITTER"} & set(user.roles)):
         raise HTTPException(status_code=403, detail="Invoice access role required")
     source_order = (
         Invoice.paperless_created_at.asc().nullslast()
@@ -440,18 +459,21 @@ def list_invoices(
         .order_by(source_order, Invoice.updated_at.desc())
     )
     if "QUEUE_MANAGER" not in user.roles:
-        query = query.where(
-            or_(
-                Invoice.uploaded_by_subject == user.subject,
-                select(ApprovalAssignment.id)
-                .where(
-                    ApprovalAssignment.invoice_id == Invoice.id,
-                    ApprovalAssignment.approver_subject == user.subject,
-                    ApprovalAssignment.active.is_(True),
+        if "INVOICE_SUBMITTER" in user.roles and "APPROVER" not in user.roles:
+            query = query.where(Invoice.uploaded_by_subject == user.subject)
+        else:
+            query = query.where(
+                or_(
+                    Invoice.uploaded_by_subject == user.subject,
+                    select(ApprovalAssignment.id)
+                    .where(
+                        ApprovalAssignment.invoice_id == Invoice.id,
+                        ApprovalAssignment.approver_subject == user.subject,
+                        ApprovalAssignment.active.is_(True),
+                    )
+                    .exists(),
                 )
-                .exists(),
             )
-        )
     if scope == "uploaded":
         query = query.where(Invoice.uploaded_by_subject == user.subject)
     if status_filter:
@@ -522,6 +544,8 @@ def list_invoices(
                 uploaded_by=invoice.uploaded_by_username,
                 upload_origin=invoice.upload_origin,
                 queue_manager_reviewed=revision.queue_manager_reviewed_at is not None,
+                submitted_to_queue_at=revision.submitted_to_queue_at,
+                payment_required=revision.payment_required,
                 source_pdf_sha256=invoice.source_pdf_sha256,
                 sync_status=invoice.sync_status,
                 ai_status=invoice.ai_status,

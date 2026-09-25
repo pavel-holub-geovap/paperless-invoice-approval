@@ -73,9 +73,10 @@ describe("integrated user help", () => {
     expect(screen.getByTestId("main-workflow")).toBeVisible();
     expect(screen.getByTestId("queue-manager-workflow")).toBeVisible();
     expect(screen.getByTestId("approver-upload-workflow")).toBeVisible();
+    expect(screen.getByTestId("submitter-workflow")).toBeVisible();
     expect(screen.getByTestId("revision-workflow")).toBeVisible();
     expect(screen.getByTestId("pohoda-workflow")).toBeVisible();
-    expect(screen.getAllByText("Textový popis schématu")).toHaveLength(5);
+    expect(screen.getAllByText("Textový popis schématu")).toHaveLength(6);
     expect(screen.getByText(/Automatické schválení vlastní části není finální schválení dokladu/)).toBeVisible();
   });
 

@@ -8,7 +8,13 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import ROLE_APPROVER, ROLE_QUEUE_MANAGER, require_csrf_roles, require_roles
+from app.auth import (
+    ROLE_APPROVER,
+    ROLE_INVOICE_SUBMITTER,
+    ROLE_QUEUE_MANAGER,
+    require_csrf_roles,
+    require_roles,
+)
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.models import DocumentUpload
@@ -53,7 +59,9 @@ def _audit_rejected(
 @router.get("/config")
 def upload_config(
     settings: Settings = Depends(get_settings),
-    _: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
+    _: CurrentUser = Depends(
+        require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER, ROLE_INVOICE_SUBMITTER)
+    ),
 ) -> dict[str, Any]:
     return {
         "max_file_size": settings.upload_max_bytes,
@@ -67,7 +75,9 @@ def upload_config(
 def list_uploads(
     limit: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
+    user: CurrentUser = Depends(
+        require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER, ROLE_INVOICE_SUBMITTER)
+    ),
 ) -> list[dict[str, Any]]:
     rows = db.scalars(
         select(DocumentUpload)
@@ -82,7 +92,9 @@ def list_uploads(
 def get_upload(
     upload_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
+    user: CurrentUser = Depends(
+        require_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER, ROLE_INVOICE_SUBMITTER)
+    ),
 ) -> dict[str, Any]:
     upload = db.get(DocumentUpload, upload_id)
     if upload is None:
@@ -96,8 +108,11 @@ def get_upload(
 async def upload_invoice(
     document: Annotated[UploadFile, File()],
     idempotency_key: Annotated[str, Form()],
+    submission_mode: Annotated[str | None, Form()] = None,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_csrf_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
+    user: CurrentUser = Depends(
+        require_csrf_roles(ROLE_QUEUE_MANAGER, ROLE_APPROVER, ROLE_INVOICE_SUBMITTER)
+    ),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     original_filename = document.filename or ""
@@ -151,7 +166,10 @@ async def upload_invoice(
             file_size=size,
             mime_type="application/pdf",
             sha256=digest.hexdigest(),
+            submission_mode=submission_mode,
         )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.commit()

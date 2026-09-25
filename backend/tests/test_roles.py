@@ -3,7 +3,14 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from app.auth import ROLE_ADMIN, ROLE_APPROVER, ROLE_QUEUE_MANAGER, require_roles, roles_from_claims
+from app.auth import (
+    ROLE_ADMIN,
+    ROLE_APPROVER,
+    ROLE_INVOICE_SUBMITTER,
+    ROLE_QUEUE_MANAGER,
+    require_roles,
+    roles_from_claims,
+)
 from app.schemas import CurrentUser
 
 
@@ -26,6 +33,17 @@ def test_approver_cannot_use_queue_manager_dependency() -> None:
 def test_approver_role_is_accepted() -> None:
     dependency = require_roles(ROLE_APPROVER)
     assert dependency(user(ROLE_APPROVER)).roles == [ROLE_APPROVER]
+
+
+def test_invoice_submitter_role_is_accepted_from_keycloak_claims() -> None:
+    claims = {
+        "realm_access": {"roles": [ROLE_INVOICE_SUBMITTER, "offline_access"]},
+        "groups": ["/INVOICE_SUBMITTER", "/unknown"],
+    }
+    assert roles_from_claims(claims, "approval-app") == [ROLE_INVOICE_SUBMITTER]
+    assert require_roles(ROLE_INVOICE_SUBMITTER)(user(ROLE_INVOICE_SUBMITTER)).roles == [
+        ROLE_INVOICE_SUBMITTER
+    ]
 
 
 def test_roles_are_read_from_keycloak_group_claim() -> None:
@@ -68,3 +86,14 @@ def test_new_token_role_set_replaces_prior_projection_without_manual_mapping() -
     assert roles_from_claims(approver_claims, "approval-app") == [ROLE_APPROVER]
     assert roles_from_claims(combined_claims, "approval-app") == [ROLE_ADMIN, ROLE_APPROVER]
     assert roles_from_claims(reduced_claims, "approval-app") == [ROLE_APPROVER]
+
+
+def test_submitter_and_approver_combination_is_preserved() -> None:
+    claims = {
+        "realm_access": {"roles": [ROLE_APPROVER, ROLE_INVOICE_SUBMITTER]},
+        "groups": ["/unknown-role"],
+    }
+    assert roles_from_claims(claims, "approval-app") == [
+        ROLE_APPROVER,
+        ROLE_INVOICE_SUBMITTER,
+    ]

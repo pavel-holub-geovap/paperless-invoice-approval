@@ -45,6 +45,15 @@ def approver() -> CurrentUser:
     )
 
 
+def submitter(*extra_roles: str) -> CurrentUser:
+    return CurrentUser(
+        subject="submitter-subject",
+        username="submitter1",
+        roles=["INVOICE_SUBMITTER", *extra_roles],
+        csrf_token="csrf",
+    )
+
+
 def file(name: str = "invoice.pdf", content: bytes = PDF, mime: str = "application/pdf"):
     return UploadFile(
         filename=name,
@@ -93,6 +102,40 @@ async def test_approver_upload_uses_the_same_pipeline_with_provenance(
     assert result["status"] == "PAPERLESS_PROCESSING"
     assert result["upload_origin"] == "APPROVER"
     assert db.scalar(select(DocumentUpload.actor_role)) == "APPROVER"
+
+
+@pytest.mark.asyncio
+async def test_submitter_upload_persists_explicit_mode_for_combined_role(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def accepted(db: Session, upload: DocumentUpload, _: bytes, __: Settings) -> None:
+        mark_submission_accepted(db, upload, "task-submitter")
+
+    monkeypatch.setattr(upload_routes, "submit_upload", accepted)
+    result = await upload_routes.upload_invoice(
+        document=file(),
+        idempotency_key="upload-test-submitter",
+        submission_mode="INVOICE_SUBMITTER",
+        db=db,
+        user=submitter("APPROVER"),
+        settings=Settings(upload_max_bytes=1024),
+    )
+    assert result["upload_origin"] == "INVOICE_SUBMITTER"
+    assert db.scalar(select(DocumentUpload.actor_role)) == "INVOICE_SUBMITTER"
+
+
+def test_upload_mode_must_be_granted_by_current_roles(db: Session) -> None:
+    with pytest.raises(PermissionError, match="not permitted"):
+        prepare_upload(
+            db,
+            user=submitter(),
+            idempotency_key="upload-forbidden-mode",
+            filename="invoice.pdf",
+            file_size=len(PDF),
+            mime_type="application/pdf",
+            sha256=hashlib.sha256(PDF).hexdigest(),
+            submission_mode="APPROVER",
+        )
 
 
 @pytest.mark.asyncio

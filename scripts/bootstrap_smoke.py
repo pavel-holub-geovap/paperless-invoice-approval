@@ -130,7 +130,7 @@ def keycloak_provisioning(settings: Settings) -> None:
         client.headers["Authorization"] = f"Bearer {token_response.json()['access_token']}"
         realm = settings.keycloak_realm
         require(client.get(f"/admin/realms/{realm}").status_code == 200, "Keycloak realm is missing")
-        for role in ("QUEUE_MANAGER", "APPROVER"):
+        for role in ("QUEUE_MANAGER", "APPROVER", "INVOICE_SUBMITTER"):
             require(
                 client.get(f"/admin/realms/{realm}/roles/{role}").status_code == 200,
                 f"Keycloak role {role} is missing",
@@ -165,7 +165,13 @@ def keycloak_provisioning(settings: Settings) -> None:
                 rows[0].get("webOrigins") == expected["webOrigins"],
                 f"Keycloak client {client_id!r} has unexpected web origins",
             )
-        for username in ("queue-manager", "approver1", "approver2", "approver3"):
+        for username in (
+            "queue-manager",
+            "approver1",
+            "approver2",
+            "approver3",
+            "submitter1",
+        ):
             rows = request_json(
                 client,
                 f"/admin/realms/{realm}/users",
@@ -173,7 +179,7 @@ def keycloak_provisioning(settings: Settings) -> None:
                 params={"username": username, "exact": "true"},
             )
             require(len(rows) == 1, f"Keycloak user {username!r} is missing or duplicated")
-    print("[OK] Keycloak realm, 2 clients, 2 roles and 4 unique test users")
+    print("[OK] Keycloak realm, 2 clients, 3 business roles and 5 unique test users")
 
 
 def database_check() -> None:

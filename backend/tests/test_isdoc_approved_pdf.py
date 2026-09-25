@@ -425,6 +425,21 @@ def test_approved_pdf_prints_false_payment_and_wraps_multiple_plain_text_notes()
     assert float(page.mediabox.bottom) < 0
 
 
+def test_approved_pdf_displays_submitter_separately_from_approvers() -> None:
+    snapshot = deepcopy(approval_snapshot())
+    snapshot["submitted_by"] = {
+        "subject": "submitter-subject",
+        "name": "submitter1",
+        "submitted_at": "2026-09-25T08:15:00+00:00",
+    }
+    approved = create_approved_pdf(source_pdf(), snapshot)
+    text = PdfReader(BytesIO(approved)).pages[-1].extract_text()
+    assert "submitter1" in text
+    assert text.index("submitter1") < text.index("Jan Schvalovatel")
+    assert "submitter1 |" not in text
+    assert "Jan Schvalovatel" in text
+
+
 def test_approved_copy_service_rejects_unapproved_snapshot(db: Session) -> None:
     invoice = create_invoice(db, 8103)
     assert invoice.status != InvoiceStatus.APPROVED

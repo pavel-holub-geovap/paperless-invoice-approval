@@ -83,6 +83,7 @@ const labels = {
   PAPERLESS_SYNC: "Synchronizace z Paperless",
   QUEUE_MANAGER: "Správce fronty",
   APPROVER: "Schvalovatel",
+  INVOICE_SUBMITTER: "Předkladatel faktury",
 } as const;
 
 export type DisplayCode = keyof typeof labels;

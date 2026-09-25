@@ -375,6 +375,8 @@ class InvoiceListItem(BaseModel):
     uploaded_by: str | None
     upload_origin: str
     queue_manager_reviewed: bool = False
+    submitted_to_queue_at: datetime | None = None
+    payment_required: bool | None = None
     source_pdf_sha256: str | None
     sync_status: PaperlessSyncStatus
     ai_status: AIExtractionStatus

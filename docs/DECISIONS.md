@@ -169,3 +169,9 @@ vybranými ID a vrací výsledek každé položky.
 Tato aplikační pravomoc nemění bezpečnostní hranice automatizovaného Worku: Work
 nesmí svévolně mazat uživatelská data. Live smoke smí purgovat pouze syntetický
 doklad, který v témže scénáři sám vytvořil.
+
+## ADR-029: Upload provenance určuje předložení versus schválení
+
+Nová Keycloak role `INVOICE_SUBMITTER` není variantou role `APPROVER`. Obě cesty používají stejné upload API, editor, revize a allocations, ale klient posílá explicitní `submission_mode` a backend ověří, že jej aktuální role dovoluje. Stabilní hodnota se ukládá do existujícího `DocumentUpload.actor_role` a následně `Invoice.upload_origin`; aktuální kombinace rolí ji zpětně nepřepisuje. Databázová migrace proto není potřeba.
+
+Pouze provenience `APPROVER` smí při `submit-for-review` vytvořit standardní uploader assignment a `APPROVE` pro právě oprávněné sekce. Provenience `INVOICE_SUBMITTER` nevytvoří žádné approval rozhodnutí ani při kombinované roli a permission. Stejná identita může později schválit pouze explicitně jako běžně přiřazený approver. Tím zůstává auditovatelný invariant `submission != approval` a Keycloak zůstává jediným zdrojem rolí.

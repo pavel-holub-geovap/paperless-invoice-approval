@@ -2,8 +2,8 @@
 
 ## ADMIN, Keycloak identity a nevratný PURGE
 
-- Aplikace podporuje nezávislé a kombinovatelné role `ADMIN`, `QUEUE_MANAGER` a
-  `APPROVER`. Keycloak claims jsou jediný zdroj oprávnění; neznámé role se ignorují
+- Aplikace podporuje nezávislé a kombinovatelné role `ADMIN`, `QUEUE_MANAGER`,
+  `APPROVER` a `INVOICE_SUBMITTER`. Keycloak claims jsou jediný zdroj oprávnění; neznámé role se ignorují
   a přihlášení bez podporované role končí HTTP 403. Lokální identity projection se
   automaticky vytvoří/obnoví podle stabilního `sub` při OIDC callbacku.
 - `/admin` je dostupné jen ADMINovi. Obsahuje editovatelný číselník sekcí, globální
@@ -21,16 +21,16 @@
 
 ## Integrovaná uživatelská nápověda
 
-- Autentizovaní uživatelé s rolemi `QUEUE_MANAGER` i `APPROVER` mají v hlavní
+- Autentizovaní uživatelé se všemi podporovanými rolemi včetně `INVOICE_SUBMITTER` mají v hlavní
   navigaci položku „Nápověda“. History API route `/help` i přímé odkazy na
   kapitoly jako `/help/#schvalovani`, `/help/#sekce` a `/help/#pohoda` vykresluje
   React spolu se zbytkem aplikace; backend ani databázová migrace nejsou potřeba.
-- Česká příručka má 20 kapitol podle skutečných enumů, UI a workflow aktuálního
+- Česká příručka má 21 kapitol podle skutečných enumů, UI a workflow aktuálního
   HEAD. Pokrývá role, oba způsoby uploadu, Paperless, ISDOC/OCR/AI, ruční opravy
   a validace, sekce, self-approval s povinnou správcovskou kontrolou, rozhodnutí,
   revize, historii, schválené PDF, POHODU, zálohové faktury a všech 14 workflow
   stavů pod uživatelskými názvy.
-- Pět workflow diagramů je tvořeno pouze sémantickým HTML a lokálním CSS, má
+- Šest workflow diagramů je tvořeno pouze sémantickým HTML a lokálním CSS, má
   viditelnou textovou alternativu, responzivní breakpointy a tisková pravidla.
   Příručka nepoužívá CDN, externí web, screenshoty ani citlivá runtime data.
 - Struktura a kontrolní seznam pro další aktualizace jsou popsány v
@@ -50,7 +50,14 @@
 - Self-approval není finální gate. Předání a kontrola queue-managera jsou uloženy na konkrétní revizi; správcovská změna po předání vytvoří novou revizi a zachová předchozí rozhodnutí jako invalidovanou historii.
 - Schvalovatelská navigace obsahuje „Ke schválení“, „Moje historie“ a „Moje nahrané“ s upload boxem. Manager grid rozlišuje approver-upload a stav kontroly.
 - Živý smoke na `ubuntudocker` 2026-09-05 prošel přes veřejné OIDC relace `queue-manager` a `approver1`: approver nahrál syntetické PDF jako Paperless dokument `55`, OCR má 911 znaků, nepovolená sekce skončila HTTP 409 a povolená sekce vytvořila vlastní assignment. Self-approval dokument neuzavřel, předání správci prošlo a správcovská změna typu vytvořila revizi 2 se zachovaným invalidovaným rozhodnutím revize 1. Překlasifikovaná zálohová faktura má POHODA metodu `NONE`.
-- Na integrační VM je Alembic `0011 (head)`, všech 9 dlouhodobých služeb je healthy a všechny 3 provisioning joby skončily `exited/0`.
+- Aktuální Alembic head je `0013`; role předkladatele používá existující string provenance sloupce a novou migraci nevyžaduje.
+
+## Předkladatel faktury
+
+- Role `INVOICE_SUBMITTER` pochází pouze z Keycloaku. Provisioning vytváří `submitter1` jen s touto rolí a při prvním OIDC loginu vznikne běžná identity projection bez SQL zásahu.
+- Navigace nabízí „Předložit fakturu“ a „Moje předložené“. Předkladatel vidí jen vlastní uploady, může před submit upravit vytěžená data, typ, K zaplacení, popis, zaokrouhlení a návrh rozúčtování částkou nebo procentem do všech aktivních sekcí. Section permission nepotřebuje.
+- Explicitní upload provenance `INVOICE_SUBMITTER` je uložena v existujících string sloupcích, takže nebyla potřeba nová migrace. Po předání do `QUEUE_REVIEW` je dokument pro předkladatele read-only a samotné předložení nikdy nevytvoří assignment ani `ApprovalDecision`, ani u kombinované role s `APPROVER`.
+- Queue manager vidí předkladatele a celý návrh, může jej měnit a standardně přiřazuje approvery. Approved PDF uvádí „Předložil“ odděleně; schvalovací řádky obsahují jen skutečné decision aktéry.
 
 ## Shared Docker host bootstrap (2026-09-02)
 

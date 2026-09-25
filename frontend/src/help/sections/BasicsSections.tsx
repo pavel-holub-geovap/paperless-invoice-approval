@@ -14,6 +14,7 @@ export function BasicsSections() {
       <ul>
         <li>Správce fronty začíná ve <strong>Frontě</strong>.</li>
         <li>Schvalovatel začíná v části <strong>Moje schválení</strong>.</li>
+        <li>Předkladatel začíná v části <strong>Předložit fakturu</strong>.</li>
         <li>Administrátor začíná v části <strong>Administrace</strong>.</li>
         <li><strong>Nápověda</strong> je dostupná všem podporovaným rolím.</li>
       </ul>
@@ -37,6 +38,15 @@ export function BasicsSections() {
             <li>může schválit, vrátit nebo zamítnout svůj aktuální úkol,</li>
             <li>vidí svou historii a originály dokladů, ke kterým měl schvalovací vztah,</li>
             <li>může nahrát vlastní PDF, zvolit typ a K zaplacení a rozdělit náklad do libovolných aktivních sekcí.</li>
+          </ul>
+        </article>
+        <article className="help-role-card">
+          <h3>Předkladatel faktury</h3>
+          <ul>
+            <li>nahrává vlastní PDF a vidí pouze své předložené doklady,</li>
+            <li>kontroluje vytěžené údaje, typ, K zaplacení, popis a zaokrouhlení,</li>
+            <li>navrhuje rozdělení částkou nebo procentem do libovolných aktivních sekcí a doplňuje poznámky,</li>
+            <li>po předání správci má doklad jen pro čtení a nikdy jím nevznikne schválení.</li>
           </ul>
         </article>
         <article className="help-role-card">
@@ -79,6 +89,26 @@ export function BasicsSections() {
       <HelpCallout kind="warning"><strong>Automatické schválení vlastní části není finální schválení dokladu.</strong> Vzniká až při předání, používá aktuální oprávnění a je auditované jako běžné rozhodnutí. Doklad musí vždy zkontrolovat správce fronty a ostatní sekce musí schválit jejich oprávnění schvalovatelé.</HelpCallout>
     </HelpSection>
 
+    <HelpSection id="predkladatel" title="Předkladatel faktury">
+      <p>V nabídce <strong>Předložit fakturu</strong> nahrajte PDF. Po OCR a vytěžení zkontrolujte originál, opravte údaje, zvolte typ a K zaplacení, doplňte věcný popis a rozdělte náklad. V části <strong>Moje předložené</strong> vidíte pouze své dokumenty.</p>
+      <LinearWorkflowDiagram
+        id="submitter-workflow"
+        title="Doklad předkládá předkladatel"
+        steps={[
+          "Předkladatel nahraje PDF",
+          "Paperless uloží originál a provede OCR",
+          "Předkladatel zkontroluje údaje a navrhne sekce částkami nebo procenty",
+          "Předkladatel předá návrh správci fronty bez schvalovacího rozhodnutí",
+          "Správce zkontroluje a případně upraví návrh a přiřadí schvalovatele",
+          "Oprávnění schvalovatelé rozhodnou o všech částech",
+          "Po úplném schválení vznikne schválená kopie",
+          "Správce připraví podklad pro ruční zpracování v POHODĚ",
+        ]}
+        alternative="Předkladatel připraví vlastní doklad a návrh rozdělení. Po předání je návrh jen pro čtení. Správce fronty jej zkontroluje a určí schvalovatele; předkladatel se nikdy automaticky nepočítá mezi schvalovatele."
+      />
+      <HelpCallout kind="important"><strong>Rozhoduje původ uploadu.</strong> Ani uživatel, který má současně roli schvalovatele, při použití funkce Předložit fakturu automaticky neschválí žádnou část.</HelpCallout>
+    </HelpSection>
+
     <HelpSection id="spravce-fronty" title="6. Správce fronty">
       <p>Správce zpracovává doklady ve Frontě. U každého dokladu vidí vlevo originální PDF a vpravo klasifikaci, zdroj vytěžení, fakturační údaje, validace, sekce, schvalovatele, workflow a audit.</p>
       <LinearWorkflowDiagram
@@ -106,7 +136,7 @@ export function BasicsSections() {
         <li>Průběžný stav vidíte pod nahrávací plochou. Po dokončení se doklad objeví ve Frontě nebo v záložce Moje nahrané.</li>
       </ol>
       <p>OCR a lokální AI mohou podle délky dokumentu chvíli trvat. Obrazovka se sama pravidelně obnovuje; není nutné nahrávat soubor znovu.</p>
-      <HelpCallout><strong>Rozdíl rolí:</strong> správce pokračuje přímo úplnou kontrolou ve Frontě. Schvalovatel připravuje jen vlastní nahraný doklad, může použít všechny aktivní sekce a nakonec jej musí předat správci fronty.</HelpCallout>
+      <HelpCallout><strong>Rozdíl rolí:</strong> správce pokračuje úplnou kontrolou ve Frontě. Schvalovatel může při předání automaticky schválit své oprávněné sekce. Předkladatel pouze navrhuje rozdělení a žádné schválení mu nevzniká.</HelpCallout>
     </HelpSection>
   </>;
 }

@@ -51,13 +51,32 @@ def prepare_upload(
     file_size: int,
     mime_type: str,
     sha256: str,
+    submission_mode: str | None = None,
 ) -> tuple[DocumentUpload, bool]:
+    allowed_origins = {
+        role
+        for role in ("QUEUE_MANAGER", "APPROVER", "INVOICE_SUBMITTER")
+        if role in user.roles
+    }
+    if submission_mode is None:
+        submission_mode = next(
+            (
+                role
+                for role in ("QUEUE_MANAGER", "APPROVER", "INVOICE_SUBMITTER")
+                if role in allowed_origins
+            ),
+            None,
+        )
+    if submission_mode not in allowed_origins:
+        raise PermissionError("Submission mode is not permitted for this user")
     existing = db.scalar(
         select(DocumentUpload).where(DocumentUpload.idempotency_key == idempotency_key)
     )
     if existing:
         if existing.actor_subject != user.subject:
             raise ValueError("Idempotency key is already in use")
+        if existing.actor_role != submission_mode:
+            raise ValueError("Idempotency key does not match the original submission mode")
         if (
             existing.sha256 != sha256
             or existing.file_size != file_size
@@ -77,9 +96,7 @@ def prepare_upload(
         idempotency_key=idempotency_key,
         actor_subject=user.subject,
         actor_username=user.username,
-        actor_role=(
-            "QUEUE_MANAGER" if "QUEUE_MANAGER" in user.roles else "APPROVER"
-        ),
+        actor_role=submission_mode,
         filename=filename,
         file_size=file_size,
         mime_type=mime_type,

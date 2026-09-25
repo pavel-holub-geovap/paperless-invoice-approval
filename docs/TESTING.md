@@ -95,6 +95,12 @@ Backend regrese pokrývají manager i approver PDF accepted přes shodnou pipeli
 
 Live scénář spouští `scripts/smoke_approver_upload_sections.py`. Vytvoří dvě jednoznačně pojmenované testovací sekce a syntetický PDF dokument, povolí approver1 jen první sekci, ověří backendový zákaz druhé, self-approval, předání, manager reclassification/revizi, POHODA `NONE`, revision review a zachovanou invalidovanou historii. Vytvořená auditní data automaticky nemaže.
 
+## Předkladatel faktury
+
+`test_submitter_rbac.py`, `test_uploads.py`, `test_roles.py` a `test_approver_uploaded_workflow.py` ověřují Keycloak claim, neznámé role, kombinované role, explicitní upload mode, izolaci vlastních dokumentů, read-only stav po submit, všechny aktivní sekce, procenta 60/25/15 a nulový počet assignments/decisions. Regresní approver test nadále vyžaduje původní permission-based self-approval. PDF test odděluje „Předložil“ od skutečných approverů.
+
+Live scénář `scripts/smoke_invoice_submitter.py` přihlásí `submitter1` pouze s `INVOICE_SUBMITTER`, nahraje syntetické PDF explicitně v předkladatelském režimu, uloží věcný popis a návrh 60/25/15 se třemi poznámkami, předá jej správci a ověří nulové auto-approval i HTTP 403 při následné editaci. Queue manager přiřadí tři oprávněné approvery, standardní rozhodnutí dovedou doklad do `APPROVED` a smoke ověří approved PDF i audit provenance. Test nemaže vytvořený dokument ani historii.
+
 ## Moje historie
 
 Backendové regrese vytvářejí APPROVE, RETURN, REJECT i assignment bez rozhodnutí, invalidují starou revizi a ověřují, že historie i immutable decision zůstávají dostupné původnímu approverovi. Cizí approver dostává HTTP 403 pro detail i PDF. Mockovaný Paperless fulltext vrací povolený i nepovolený dokument; response musí obsahovat jen bezpečný průnik bez cizích metadata a snippetu. Samostatně se testují pagination, složené decision/date/cost-center/search filtry, `MISSING`, timeout bez změny source statusu a využití kompozitního DB indexu.

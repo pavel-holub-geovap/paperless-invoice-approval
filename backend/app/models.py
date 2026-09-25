@@ -97,6 +97,7 @@ class UploadOrigin(enum.StrEnum):
     PAPERLESS_SYNC = "PAPERLESS_SYNC"
     QUEUE_MANAGER = "QUEUE_MANAGER"
     APPROVER = "APPROVER"
+    INVOICE_SUBMITTER = "INVOICE_SUBMITTER"
 
 
 class InvoiceDisposition(enum.StrEnum):

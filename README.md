@@ -9,7 +9,7 @@ nebo deterministické POHODA XML. Import do POHODY zůstává ruční.
 
 - Paperless-ngx pro originály, přílohy, OCR a technické tagy;
 - Approval FastAPI backend, worker a responzivní React UI;
-- Keycloak/OIDC s kombinovatelnými rolemi `ADMIN`, `QUEUE_MANAGER` a `APPROVER`;
+- Keycloak/OIDC s kombinovatelnými rolemi `ADMIN`, `QUEUE_MANAGER`, `APPROVER` a `INVOICE_SUBMITTER`;
 - oddělené databáze Approval, Keycloak a Paperless v PostgreSQL;
 - Redis, CPU-only Ollamu s modelem `qwen3:8b` a Nginx reverse proxy;
 - lokální ISDOC 6.0.2 a POHODA XSD bundle bez přístupu do účetního systému.
@@ -20,6 +20,11 @@ Schvalovatel může stejnou zabezpečenou cestou nahrát vlastní PDF, zvolit ty
 údaj K zaplacení a připravit rozdělení do libovolných aktivních sekcí. Při
 předání se jeho oprávněné části auditovaně schválí; ostatní pokračují běžným
 workflow a finální postup vždy vyžaduje kontrolu konkrétní revize správcem fronty.
+
+Předkladatel faktury používá samostatný režim uploadu: doplní údaje a navrhne
+rozúčtování do libovolných aktivních sekcí, ale jeho předání nikdy nevytvoří
+schválení. Stabilní upload provenance toto pravidlo zachová i při kombinaci rolí
+`INVOICE_SUBMITTER + APPROVER`; po předání je dokument pro předkladatele jen ke čtení.
 
 Keycloak je jediný autoritativní zdroj rolí. `ADMIN` spravuje globální sekce,
 oprávnění schvalovatelů a bezpečný nevratný PURGE; automaticky tím nezískává

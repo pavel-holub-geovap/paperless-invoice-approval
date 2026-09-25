@@ -198,7 +198,7 @@ export function Approvals({ history = false, uploaded = false, historyInvoiceId,
     {error && <div className="alert danger">{error}</div>}
     {uploaded ? <>
       <div className="section-heading queue-heading"><div><p className="eyebrow">Moje doklady</p><h1>Nahrané doklady</h1><p className="muted">Nahrajte PDF, počkejte na OCR a AI, doplňte údaje a rozdělte náklad do sekcí.</p></div><button className="button primary" onClick={()=>uploadPanelRef.current?.openFilePicker()}>+ Nahrát doklad</button></div>
-      <InvoiceUploadPanel ref={uploadPanelRef} user={user} onQueueChanged={async () => { await loadUploaded(); return true; }}/>
+      <InvoiceUploadPanel ref={uploadPanelRef} user={user} submissionMode="APPROVER" onQueueChanged={async () => { await loadUploaded(); return true; }}/>
       <InvoiceTable rows={uploadedRows} onOpen={(id)=>navigate(`/invoices/${encodeURIComponent(id)}`)}/>
     </> : !history ? <>
       <div className="section-heading"><div><p className="eyebrow">Moje práce</p><h1>Ke schválení</h1><p className="muted">Každý úkol patří konkrétní revizi, rozúčtování, středisku a částce. Seznam se automaticky obnovuje.</p></div></div>

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Allocation,
     ApprovalAction,
     ApprovalAssignment,
     ApprovalDecision,
@@ -20,7 +21,7 @@ from app.models import (
     UserIdentity,
 )
 from app.schemas import AllocationInput
-from app.services.approval_setup import replace_allocations
+from app.services.approval_setup import replace_allocations, replace_approvers
 from app.services.classification import classify_document
 from app.services.section_permissions import has_section_permission, set_section_permission
 from app.services.validation import run_validations
@@ -28,6 +29,7 @@ from app.services.workflow import (
     WorkflowError,
     confirm_original,
     create_invoice,
+    decide,
     submit_for_approval,
     submit_to_queue_review,
     transition,
@@ -204,6 +206,112 @@ def test_revoked_permission_before_submit_keeps_allocation_without_auto_approval
     submit_to_queue_review(db, invoice, user.subject)
     assert db.scalar(select(ApprovalAssignment.id)) is None
     assert db.scalar(select(ApprovalDecision.id)) is None
+
+
+def test_submitter_provenance_never_auto_approves_even_with_approver_permission(
+    db: Session,
+) -> None:
+    invoice, user, center = approver_invoice(db)
+    user.roles = ["APPROVER", "INVOICE_SUBMITTER"]
+    invoice.upload_origin = UploadOrigin.INVOICE_SUBMITTER
+    replace_allocations(
+        db,
+        invoice,
+        [AllocationInput(cost_center_id=center.id, amount=Decimal("121.00"))],
+        user.subject,
+    )
+    submit_to_queue_review(db, invoice, user.subject)
+    assert invoice.status == InvoiceStatus.QUEUE_REVIEW
+    assert db.scalar(select(ApprovalAssignment.id)) is None
+    assert db.scalar(select(ApprovalDecision.id)) is None
+    event = db.scalar(
+        select(AuditEvent).where(AuditEvent.event_type == "SUBMITTED_TO_QUEUE_MANAGER")
+    )
+    assert event is not None
+    assert event.metadata_json["submission_mode"] == "INVOICE_SUBMITTER"
+    assert event.metadata_json["auto_approved_allocations"] == 0
+
+
+def test_submitter_can_propose_60_25_15_across_all_active_sections_without_permissions(
+    db: Session,
+) -> None:
+    invoice, user, first = approver_invoice(db)
+    user.roles = ["INVOICE_SUBMITTER"]
+    invoice.upload_origin = UploadOrigin.INVOICE_SUBMITTER
+    second = CostCenter(code="SEC-B", name="Sekce B", pohoda_code="SEC-B")
+    third = CostCenter(code="SEC-C", name="Sekce C", pohoda_code="SEC-C")
+    db.add_all([second, third])
+    db.flush()
+    replace_allocations(
+        db,
+        invoice,
+        [
+            AllocationInput(
+                cost_center_id=first.id,
+                percentage=Decimal("60"),
+                note="60 procent licence",
+            ),
+            AllocationInput(
+                cost_center_id=second.id,
+                percentage=Decimal("25"),
+                note="25 procent licence",
+            ),
+            AllocationInput(
+                cost_center_id=third.id,
+                percentage=Decimal("15"),
+                note="15 procent licence",
+            ),
+        ],
+        user.subject,
+    )
+    submit_to_queue_review(db, invoice, user.subject)
+    allocations = db.scalars(
+        select(Allocation).where(Allocation.revision_id == invoice.current_revision.id)
+    ).all()
+    assert [row.percentage for row in allocations] == [
+        Decimal("60"),
+        Decimal("25"),
+        Decimal("15"),
+    ]
+    assert [row.note for row in allocations] == [
+        "60 procent licence",
+        "25 procent licence",
+        "15 procent licence",
+    ]
+    assert db.scalar(select(ApprovalAssignment.id)) is None
+    assert db.scalar(select(ApprovalDecision.id)) is None
+
+
+def test_combined_submitter_can_only_approve_later_through_explicit_assignment(
+    db: Session,
+) -> None:
+    invoice, user, center = approver_invoice(db)
+    user.roles = ["APPROVER", "INVOICE_SUBMITTER"]
+    invoice.upload_origin = UploadOrigin.INVOICE_SUBMITTER
+    replace_allocations(
+        db,
+        invoice,
+        [AllocationInput(cost_center_id=center.id, amount=Decimal("121.00"))],
+        user.subject,
+    )
+    submit_to_queue_review(db, invoice, user.subject)
+    assert db.scalar(select(ApprovalDecision.id)) is None
+    allocation = db.scalar(
+        select(Allocation).where(
+            Allocation.revision_id == invoice.current_revision.id,
+            Allocation.active.is_(True),
+        )
+    )
+    assert allocation is not None
+    replace_approvers(db, invoice, allocation, [user.subject], "manager-subject")
+    submit_for_approval(db, invoice, "manager-subject")
+    assignment = db.scalar(
+        select(ApprovalAssignment).where(ApprovalAssignment.active.is_(True))
+    )
+    assert assignment is not None and assignment.status.value == "PENDING"
+    decision = decide(db, assignment, ApprovalAction.APPROVE, user.subject, None)
+    assert decision.actor_subject == user.subject
+    assert decision.action == ApprovalAction.APPROVE
 
 
 def test_payment_required_is_explicit_revision_business_data_and_submit_gate(db: Session) -> None:

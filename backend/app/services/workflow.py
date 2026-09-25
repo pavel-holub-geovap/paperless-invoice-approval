@@ -23,6 +23,7 @@ from app.models import (
     IsdocStatus,
     ProcessingMode,
     SourceDocumentStatus,
+    UploadOrigin,
     UserIdentity,
     ValidationResult,
     ValidationSeverity,
@@ -728,7 +729,14 @@ def submit_to_queue_review(db: Session, invoice: Invoice, actor: str) -> None:
         .limit(1)
     ):
         raise WorkflowError("Doklad má blokující validační chyby")
-    auto_approved = _auto_approve_uploader_sections(db, invoice, actor)
+    # Immutable upload provenance controls self-approval. A later role change or
+    # combined APPROVER+INVOICE_SUBMITTER identity cannot turn a proposal into a
+    # decision.
+    auto_approved = (
+        _auto_approve_uploader_sections(db, invoice, actor)
+        if invoice.upload_origin == UploadOrigin.APPROVER
+        else 0
+    )
     revision.submitted_to_queue_at = datetime.now(UTC)
     revision.submitted_to_queue_by = actor
     if invoice.status != InvoiceStatus.QUEUE_REVIEW:
@@ -738,7 +746,11 @@ def submit_to_queue_review(db: Session, invoice: Invoice, actor: str) -> None:
         "SUBMITTED_TO_QUEUE_MANAGER",
         actor=actor,
         invoice=invoice,
-        metadata={"revision_id": revision.id, "auto_approved_allocations": auto_approved},
+        metadata={
+            "revision_id": revision.id,
+            "submission_mode": invoice.upload_origin.value,
+            "auto_approved_allocations": auto_approved,
+        },
     )
 
 

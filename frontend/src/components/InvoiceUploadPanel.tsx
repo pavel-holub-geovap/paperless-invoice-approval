@@ -10,6 +10,7 @@ export type InvoiceUploadPanelHandle = { openFilePicker: () => void };
 type Props = {
   user: User;
   onQueueChanged: (invoiceId?: string) => boolean | Promise<boolean>;
+  submissionMode?: "QUEUE_MANAGER" | "APPROVER" | "INVOICE_SUBMITTER";
 };
 
 const statusLabels: Record<string, string> = {
@@ -49,7 +50,7 @@ function localFromServer(row: UploadTracking, previous?: LocalUpload): LocalUplo
 }
 
 export const InvoiceUploadPanel = forwardRef<InvoiceUploadPanelHandle, Props>(function InvoiceUploadPanel(
-  { user, onQueueChanged },
+  { user, onQueueChanged, submissionMode },
   ref,
 ) {
   const [config, setConfig] = useState<UploadConfig>({
@@ -61,7 +62,8 @@ export const InvoiceUploadPanel = forwardRef<InvoiceUploadPanelHandle, Props>(fu
   const [items, setItems] = useState<LocalUpload[]>([]);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const canUpload = user.roles.some((role) => role === "QUEUE_MANAGER" || role === "APPROVER");
+  const effectiveMode = submissionMode || (user.roles.includes("QUEUE_MANAGER") ? "QUEUE_MANAGER" : user.roles.includes("APPROVER") ? "APPROVER" : "INVOICE_SUBMITTER");
+  const canUpload = user.roles.includes(effectiveMode);
 
   useImperativeHandle(ref, () => ({ openFilePicker: () => inputRef.current?.click() }), []);
 
@@ -99,6 +101,7 @@ export const InvoiceUploadPanel = forwardRef<InvoiceUploadPanelHandle, Props>(fu
     const body = new FormData();
     body.append("document", item.file, item.filename);
     body.append("idempotency_key", item.idempotency_key);
+    body.append("submission_mode", effectiveMode);
     try {
       const result = await api<UploadTracking>("/uploads", { method: "POST", body });
       await applyServerState(item.localId, result);
@@ -113,7 +116,7 @@ export const InvoiceUploadPanel = forwardRef<InvoiceUploadPanelHandle, Props>(fu
         retryable: Boolean(detail.retryable),
       });
     }
-  }, [applyServerState, update]);
+  }, [applyServerState, effectiveMode, update]);
 
   const acceptFiles = useCallback((files: File[]) => {
     const additions = files.map<LocalUpload>((file) => {

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth import (
     ROLE_ADMIN,
     ROLE_APPROVER,
+    ROLE_INVOICE_SUBMITTER,
     ROLE_QUEUE_MANAGER,
     require_csrf_roles,
     require_roles,
@@ -30,7 +31,9 @@ def _admin(user: CurrentUser) -> None:
 def list_cost_centers(
     include_inactive: bool = False,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(ROLE_ADMIN, ROLE_QUEUE_MANAGER, ROLE_APPROVER)),
+    user: CurrentUser = Depends(
+        require_roles(ROLE_ADMIN, ROLE_QUEUE_MANAGER, ROLE_APPROVER, ROLE_INVOICE_SUBMITTER)
+    ),
 ) -> list[CostCenter]:
     query = select(CostCenter).order_by(CostCenter.code)
     if ROLE_ADMIN not in user.roles:

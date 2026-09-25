@@ -53,7 +53,7 @@ Historický list je jedna faktura na řádek a používá dávkové načtení as
 
 ### Approval upload orchestrace
 
-Upload z browseru končí výhradně na `POST /api/uploads`; `QUEUE_MANAGER` i `APPROVER` s platným CSRF používají stejný endpoint a bezpečnostní pipeline. Backend streamově ověří limit a PDF signaturu, spočítá SHA-256, sanitizuje display filename a do `document_uploads` uloží metadata, stabilní subject, roli/origin, correlation a idempotency key, nikoli PDF bytes. Následně jedním multipart požadavkem volá oficiální Paperless `/api/documents/post_document/` s ID konfigurovaného inbox tagu.
+Upload z browseru končí výhradně na `POST /api/uploads`; `QUEUE_MANAGER`, `APPROVER` i `INVOICE_SUBMITTER` s platným CSRF používají stejný endpoint a bezpečnostní pipeline. Požadavek nese explicitní `submission_mode`, který musí odpovídat jedné z rolí uživatele a uloží se neměnně do `DocumentUpload.actor_role` a `Invoice.upload_origin`. Backend streamově ověří limit a PDF signaturu, spočítá SHA-256, sanitizuje display filename a do `document_uploads` uloží metadata, stabilní subject, origin, correlation a idempotency key, nikoli PDF bytes. Následně jedním multipart požadavkem volá oficiální Paperless `/api/documents/post_document/` s ID konfigurovaného inbox tagu.
 
 Paperless vrátí task UUID dříve než document ID. Worker proto sleduje `/api/tasks/?task_id=...`; po získání `related_document_ids` idempotentně vytvoří jeden Invoice, stáhne snapshot přes REST a standardní cesta spustí OCR-dependent AI job. Tracking API odvozuje uživatelské stavy Paperless/OCR/AI/workflow a React je polluje po 3 s. Connect failure před odesláním dovoluje retry stejného souboru se stejným idempotency key; timeout, přerušená odpověď a 5xx jsou `SUBMISSION_UNKNOWN`, protože automatické opakování by mohlo vytvořit druhý Paperless dokument.
 
@@ -76,6 +76,12 @@ Backend, databáze, API a POHODA XML používají ISO datum. React má jedinou p
 Business „Sekce“ používá stávající `CostCenter`; nevzniká druhý překrývající se číselník. Globální CRUD a aktivaci sekcí i `ApproverSectionPermission` spravuje pouze `ADMIN`. Vazba je auditovatelná M:N relace stabilního Keycloak subjectu na sekci. `QUEUE_MANAGER` aktivní sekce pouze používá pro allocations konkrétní faktury. Approver-uploader smí vlastní náklad rozdělit do všech aktivních sekcí; permission neurčuje dostupnost sekce, ale právo ji schválit. Při `submit-for-review` backend permissions znovu načte a pro oprávněné allocations vytvoří standardní assignment a append-only `APPROVE` decision. Ostatní allocations čekají na běžné přiřazení správcem fronty.
 
 Uploader auto-approval je běžný append-only `ApprovalDecision`, ale před queue review nemění dokument na `APPROVED` ani nevytváří schválené PDF. `payment_required` a kanonické `rounding_amount` jsou explicitní nullable sloupce revision snapshotu, nikoli odvozený typ dokladu ani historický AI flag. `submitted_to_queue_*` a `queue_manager_reviewed_*` jsou rovněž uloženy na `InvoiceRevision`; fork revize tedy review automaticky zneplatní. Správcovská změna klasifikace, platebního příznaku, zaokrouhlení, sekcí nebo approverů po předání vytvoří novou revizi, historická rozhodnutí pouze invaliduje a nemaže.
+
+### Předkladatel faktury a provenance
+
+`INVOICE_SUBMITTER` používá stejný editor, extraction pipeline, allocation model a stav `QUEUE_REVIEW`, ale jinou business cestu než approver-uploader. Vidí jen vlastní dokumenty podle stabilního Keycloak `sub`, před předáním může upravit vlastní draft a navrhnout libovolné aktivní sekce bez `ApproverSectionPermission`; po předání je jeho detail read-only. `submit_to_queue_review` vytváří uploader auto-approval výhradně při uloženém `upload_origin=APPROVER`. Hodnota `INVOICE_SUBMITTER` proto nikdy sama nevytvoří assignment ani decision, i když má stejná identita současně roli `APPROVER` a section permission.
+
+Správce fronty vidí předkladatele, původ uploadu, věcnou poznámku, návrh allocations a jejich poznámky, může návrh standardně upravit a přiřadí oprávněné schvalovatele. Po finálním approval immutable PDF snapshot uvádí předkladatele samostatně jako „Předložil“, mimo seznam approverů. Původní `APPROVER` upload a jeho oprávněný částečný self-approval zůstávají beze změny.
 
 ## Revize a approvals
 
