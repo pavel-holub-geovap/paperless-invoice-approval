@@ -25,6 +25,7 @@ from app.models import (
     ApprovalAssignment,
     ApprovalAssignmentStatus,
     AuditEvent,
+    ExtractedField,
     OidcSession,
     UserIdentity,
 )
@@ -255,6 +256,26 @@ def test_self_supplier_warning_never_rewrites_data(db, monkeypatch):
     warning = next(row for row in results if row.code == "SUPPLIER_IS_TARGET_UNIT")
     assert warning.severity.value == "WARNING"
     assert invoice.current_revision.data["supplier_ico"] == "15049248"
+
+
+@pytest.mark.parametrize("source,warning", [
+    ("Statutární město Pardubice Smlouva/objednávka", True),
+    ("Dodavatel: GEOVAP, spol.\n s r.o.", False),
+])
+def test_supplier_name_must_match_its_evidence_without_rewriting(db, source, warning):
+    invoice, _ = prepared_invoice(db)
+    update_invoice_data(db, invoice, {"supplier_name": "GEOVAP, spol. s r.o."}, "manager")
+    db.add(ExtractedField(
+        revision_id=invoice.current_revision.id, field_name="supplier_name",
+        value="GEOVAP, spol. s r.o.", source_text=source,
+    ))
+    db.flush()
+    results = run_validations(db, invoice)
+    mismatches = [row for row in results if row.code == "SUPPLIER_EVIDENCE_MISMATCH"]
+    assert bool(mismatches) is warning
+    if mismatches:
+        assert mismatches[0].severity.value == "WARNING"
+    assert invoice.current_revision.data["supplier_name"] == "GEOVAP, spol. s r.o."
 
 
 def test_logout_deletes_local_session_and_redirects_to_fixed_keycloak(db):

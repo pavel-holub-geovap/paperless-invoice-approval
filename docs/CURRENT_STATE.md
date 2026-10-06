@@ -11,6 +11,7 @@
 - Volitelný ARES je bounded server-side HTTPS lookup s timeoutem; nedostupnost ani neshoda nejsou blocking a nikdy nezapisují do faktury.
 - Generated XML přechází do EXPORT_CREATED až po validním immutable artefaktu. Účetní PDF/ZIP používají hashed approved copy aktuální revize; staré exporty bez této vazby vyžadují re-export, nikoli přepsání historie.
 - OIDC logout ruší lokální relaci a Keycloak relaci přes RP-initiated logout. Migrace `0014` přidává nullable display_name a šifrovaný ID-token logout hint; secrets se nezobrazují v auditu.
+- Read-only kontrola skutečné starší extrakce v7 potvrdila smíchanou identitu: název GEOVAP s evidencí „Statutární město Pardubice“ a IČO z jiného bloku. Schema validity nekontrolovala tuto sémantiku. Nová validace přidává neblokující `SUPPLIER_EVIDENCE_MISMATCH`, pokud nezměněný název neodpovídá vlastní evidenci; ruční oprava zůstává autoritativní. Historické doklady se automaticky nepřepisují.
 
 ## ADMIN, Keycloak identity a nevratný PURGE
 

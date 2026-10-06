@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Allocation,
+    ExtractedField,
     Invoice,
     InvoiceRevision,
     SourceDocumentStatus,
@@ -606,12 +607,28 @@ def run_validations(
     from app.config import get_settings
 
     target_ico = get_settings().pohoda_target_ico
-    if target_ico and str(business_data.get("supplier_ico") or "").replace(" ", "") == target_ico:
+    if target_ico and str(_value(business_data, "supplier_ico", "ico") or "").replace(" ", "") == target_ico:
         results.append(_result(
             "SUPPLIER_IS_TARGET_UNIT", ValidationSeverity.WARNING,
             "Rozpoznaný dodavatel odpovídá vlastní účetní jednotce. Zkontrolujte, zda nebyl zaměněn dodavatel a odběratel.",
             "supplier_ico", expected="supplier distinct from customer", actual=target_ico,
         ))
+    # A schema-valid AI value can still belong to the customer. Preserve it,
+    # but expose inconsistent evidence rather than silently correcting history.
+    supplier_name = business_data.get("supplier_name")
+    name_evidence = db.scalar(select(ExtractedField).where(
+        ExtractedField.revision_id == revision.id,
+        ExtractedField.field_name == "supplier_name",
+    ))
+    if name_evidence and supplier_name and name_evidence.value == supplier_name and name_evidence.source_text:
+        normalized_name = " ".join(str(supplier_name).casefold().split())
+        normalized_source = " ".join(name_evidence.source_text.casefold().split())
+        if normalized_name not in normalized_source:
+            results.append(_result(
+                "SUPPLIER_EVIDENCE_MISMATCH", ValidationSeverity.WARNING,
+                "Název dodavatele není obsažen v uvedené zdrojové evidenci. Ověřte dodavatele a odběratele v originálu.",
+                "supplier_name", expected="supplier name present in evidence", actual=supplier_name,
+            ))
     if invoice.source_status == SourceDocumentStatus.MISSING:
         results.append(
             _result(
