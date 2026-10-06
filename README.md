@@ -5,6 +5,11 @@ dokladů. Originál a OCR spravuje Paperless-ngx, přihlášení Keycloak, struk
 vytěžení lokální Ollama/Qwen3 a účetní předání vzniká jako schválené PDF s ISDOC
 nebo deterministické POHODA XML. Import do POHODY zůstává ruční.
 
+Detail dokladu má skládací sekce, informativní ověření dodavatele v ARES a
+jednoduché rozúčtování celé částky do jedné sekce. Schvalovatel otevře originální
+PDF i read-only kontext všech sekcí přímo u úkolu; účetní podklady po schválení
+používají schválenou kopii. Přesný postup vysvětluje integrovaná Nápověda.
+
 ## Co stack obsahuje
 
 - Paperless-ngx pro originály, přílohy, OCR a technické tagy;

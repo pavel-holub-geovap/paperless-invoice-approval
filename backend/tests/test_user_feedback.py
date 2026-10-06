@@ -285,14 +285,19 @@ def test_readable_identity_and_business_history_hide_system_payload(db):
     )
 
 
-def test_self_supplier_warning_never_rewrites_data(db, monkeypatch):
+@pytest.mark.parametrize("ico_field", ["supplier_ico", "ico"])
+def test_self_supplier_warning_never_rewrites_data(db, monkeypatch, ico_field):
     invoice, _ = prepared_invoice(db)
     update_invoice_data(db, invoice, {"supplier_ico": "15049248"}, "manager")
+    if ico_field == "ico":
+        data = dict(invoice.current_revision.data)
+        data["ico"] = data.pop("supplier_ico")
+        invoice.current_revision.data = data
     monkeypatch.setattr("app.config.get_settings", lambda: Settings(pohoda_target_ico="15049248"))
     results = run_validations(db, invoice)
     warning = next(row for row in results if row.code == "SUPPLIER_IS_TARGET_UNIT")
     assert warning.severity.value == "WARNING"
-    assert invoice.current_revision.data["supplier_ico"] == "15049248"
+    assert invoice.current_revision.data[ico_field] == "15049248"
 
 
 @pytest.mark.parametrize("source,warning", [

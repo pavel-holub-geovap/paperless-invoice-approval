@@ -4,6 +4,28 @@ Tento návod je autoritativní postup pro nový Linux test server. Skripty jsou
 záměrně nedestruktivní: neprovádějí Git pull, nemažou Docker volumes, databáze,
 Paperless dokumenty, audit, exporty ani Ollama modely.
 
+### Ověřená opravná iterace 2026-10-06
+
+Na vyhrazeném `ubuntudocker` proběhl fast-forward update, Compose config,
+build/recreate backendu, workeru a frontendu a additive Alembic upgrade `0014`.
+`status.sh` prošel: devět dlouhodobých služeb healthy, tři provisioning jobs
+exit 0, DB/OIDC/Paperless/Ollama/XSD kontroly OK. Na dockdev se agent nepřipojoval.
+
+Skutečný syntetický ISDOC doklad Paperless #71 prošel RETURN bez komentáře,
+revizí 2 → 3 s PENDING carry-forward a finálním schválením se zachovanými
+embedded attachments. Plain PDF #73 prošlo skutečným OCR (501 znaků) a Qwen v8:
+supplier IČO 28652240, DUZP 2026-09-30. Stav byl před XML APPROVED a teprve po
+immutable XML EXPORT_CREATED. Stažené XML má XSD_VALID, cílové IČO 15049248,
+bez key; SHA-256 c624680330d90259fd19bba13a6f34f793e96a39120d33c4135a2023454216e7.
+ZIP bytes obsahují stejnou current approved PDF kopii jako její download endpoint,
+odlišnou od originálu. OIDC login/logout/relogin prošel managerovi i approver1;
+ADMIN-only audit vrací ostatním rolím 403. Live UI ověřilo skutečný PDF canvas,
+celý read-only kontext, comma save 1497,38 → 1497.38 a returned banner #75.
+
+Read-only preflight čisté instalace upozornil na méně než 15 GiB volného místa
+(přibližně 10 GiB). Stávající runtime smoke je OK; žádné volumes/data nebyly
+mazány ani nebyl kvůli tomu snižován diskový limit nového bootstrapu.
+
 ## 1. Předpoklady
 
 Host musí mít:

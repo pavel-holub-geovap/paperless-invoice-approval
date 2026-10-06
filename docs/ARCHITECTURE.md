@@ -1,5 +1,10 @@
 # Architektura
 
+PDF náhled používá společný React `PdfPreview` a lokálně bundlovaný PDF.js worker.
+Čte pouze autentizované Approval PDF endpointy, nikoli Paperless přímo; nemění
+originál, nezveřejňuje token a nepoužívá CDN. Explicitní samostatný PDF odkaz a
+native iframe slouží jako fallback při chybě rendereru.
+
 ### Interakce po uživatelském testování
 
 `CollapsibleCard` a `PdfPreview` jsou malé sdílené React komponenty bez nového frameworku. Form draft nadále respektuje očekávanou revizi a odmítá tiché přepsání pollingem. Decimal parser převádí pouze zápis, neprovádí float výpočty; business matematika zůstává Decimal na serveru. Režim jedné sekce je existující percentage=100, nikoli nový persistentní koncept.

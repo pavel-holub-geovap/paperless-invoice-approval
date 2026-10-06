@@ -1,5 +1,10 @@
 # Bezpečnost
 
+PDF.js a jeho worker jsou bundlovány lokálně s uzamčenou verzí. Renderer čte
+jen same-origin BFF download s existující session, bez CDN a Paperless tokenu.
+PDF obsah se vykresluje, nikoli vykonává jako aplikační skript; business workflow
+nemění. Explicitní download zůstává dostupný i při render chybě.
+
 OIDC logout ruší lokální session s CSRF kontrolou a vrací pouze fixed Keycloak realm end-session URL s fixed post-logout redirect. ID-token hint je v DB šifrovaný APP_SECRET_KEY-derived Fernet klíčem a nikdy se nezapisuje do auditu. U legacy/rotated-key session může Keycloak požadovat potvrzení; lokální relace je přesto zrušena. Nullable migrace nemění starší identity/session data.
 
 `/api/admin/system-audit` je backend ADMIN-only; fronta a approver nemohou technický payload získat. Business history projekce nezpřístupňuje raw AI/JSON diagnostiku. Stabilní subject zůstává v uloženém auditu, lidské jméno je snapshot/projekce.

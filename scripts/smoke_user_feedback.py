@@ -164,12 +164,15 @@ def verify_xml_export(manager, base, user, plain):
     require(plain["status"] in {"APPROVED", "EXPORT_CREATED"}, "Invoice is not approved")
     require(plain["data"].get("supplier_ico") == "28652240", "Supplier identity mismatch")
     require(plain["data"].get("taxable_supply_date") == "2026-09-30", "DUZP mismatch")
-    generated = response_json(api(
+    generated = plain.get("pohoda_export") or response_json(api(
         manager, "POST", f"{base}/api/exports/invoices/{plain['id']}/generate",
         user, {"reason": "Synthetic feedback smoke"}, expected=201,
     ), "generated XML")
+    require(generated["status"] == "XSD_VALID", "XSD validity missing")
+    require(generated["pohoda_target_validation"]["status"] == "TARGET_UNIT_VALID", "Target semantic validation missing")
     xml_response = manager.get(f"{base}/api/exports/artifacts/{generated['id']}/xml")
     require(xml_response.status_code == 200, "Actual XML download failed")
+    require(hashlib.sha256(xml_response.content).hexdigest() == generated["xml_sha256"], "Downloaded XML differs from validated immutable artifact")
     root = ET.fromstring(xml_response.content)
     require(root.attrib["ico"] == "15049248", "XML target unit mismatch")
     current = detail(manager, base, plain["id"])
@@ -195,6 +198,7 @@ def verify_xml_export(manager, base, user, plain):
         "xml_sha256": hashlib.sha256(xml_response.content).hexdigest(),
         "xml_target_ico": root.attrib["ico"], "xml_key": root.attrib.get("key"),
         "xsd": generated["status"], "zip_batch_id": batch["id"],
+        "target_semantics": generated["pohoda_target_validation"]["status"],
         "approved_pdf_sha256": hashlib.sha256(pdf).hexdigest(), "zip_approved_pdf": "PASS",
     }
 
