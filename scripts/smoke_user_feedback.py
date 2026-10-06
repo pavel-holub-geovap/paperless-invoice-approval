@@ -193,24 +193,33 @@ def main():
             "Admin audit missing",
         )
         if args.phase == "prepare":
-            number = "FEEDBACK-" + uuid.uuid4().hex[:8]
-            xml = (
-                isdoc_xml()
-                .replace(b"SMOKE-ISDOC-2026-001", number.encode())
-                .replace(b"1210.00", b"1497.38")
-                .replace(b"1000.00", b"1237.50")
-                .replace(b"210.00", b"259.88")
-            )
-            original = with_attachment(synthetic_pdf(number), "invoice.isdoc", xml)
-            tracking = upload(manager, base, user, number + ".pdf", original)
-            invoice = wait_detail(
-                manager,
-                base,
-                tracking["invoice_id"],
-                lambda row: row["isdoc"]["status"] == "VALID",
-                "valid ISDOC",
-                300,
-            )
+            if args.invoice:
+                invoice = detail(manager, base, args.invoice)
+                require(
+                    str(invoice["data"].get("invoice_number", "")).startswith(
+                        "FEEDBACK-"
+                    ),
+                    "Only a synthetic fixture can be resumed",
+                )
+            else:
+                number = "FEEDBACK-" + uuid.uuid4().hex[:8]
+                xml = (
+                    isdoc_xml()
+                    .replace(b"SMOKE-ISDOC-2026-001", number.encode())
+                    .replace(b"1210.00", b"1497.38")
+                    .replace(b"1000.00", b"1237.50")
+                    .replace(b"210.00", b"259.88")
+                )
+                original = with_attachment(synthetic_pdf(number), "invoice.isdoc", xml)
+                tracking = upload(manager, base, user, number + ".pdf", original)
+                invoice = wait_detail(
+                    manager,
+                    base,
+                    tracking["invoice_id"],
+                    lambda row: row["isdoc"]["status"] == "VALID",
+                    "valid ISDOC",
+                    300,
+                )
             invoice = response_json(
                 api(
                     manager,
@@ -226,6 +235,20 @@ def main():
                     },
                 ),
                 "fields",
+            )
+            invoice = response_json(
+                api(
+                    manager,
+                    "PUT",
+                    f"{base}/api/invoices/{invoice['id']}/classification",
+                    user,
+                    {
+                        "document_type": "RECEIVED_INVOICE",
+                        "processing_mode": "FOR_APPROVAL",
+                        "expected_revision": invoice["current_revision_number"],
+                    },
+                ),
+                "classification",
             )
             invoice = configure(
                 manager,
@@ -263,7 +286,7 @@ def main():
                     "paperless_document_id": invoice["paperless_document_id"],
                     "status": invoice["status"],
                     "total": "1497.38",
-                    "isdoc_sha256": hashlib.sha256(xml).hexdigest(),
+                    "isdoc_sha256": invoice["isdoc"]["sha256"],
                     "single_then_multiple": "PASS",
                     "rbac": "PASS",
                 }

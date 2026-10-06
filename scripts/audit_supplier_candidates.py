@@ -15,15 +15,16 @@ def main():
     with SessionLocal() as db:
         for run, invoice in db.execute(select(AIExtraction, Invoice).join(Invoice, Invoice.id == AIExtraction.invoice_id)):
             parsed = run.parsed_result or {}
-            ico = parsed.get("supplier_ico") or {}
+            ico = parsed.get("supplier_ico") or parsed.get("ico") or {}
             value = ico.get("value") if isinstance(ico, dict) else ico
-            if str(value or "").replace(" ", "") != target:
-                continue
             name = parsed.get("supplier_name") or {}
+            name_value = name.get("value") if isinstance(name, dict) else name
+            if str(value or "").replace(" ", "") != target and "geovap" not in str(name_value or "").casefold():
+                continue
             matches.append({
                 "invoice_id": invoice.id, "paperless_document_id": invoice.paperless_document_id,
                 "extraction_id": run.id, "prompt_version": run.prompt_version,
-                "supplier_name": name.get("value") if isinstance(name, dict) else name,
+                "supplier_name": name_value,
                 "supplier_evidence": name.get("source_text") if isinstance(name, dict) else None,
                 "ico_evidence": ico.get("source_text") if isinstance(ico, dict) else None,
                 "ocr_has_supplier_label": "dodavatel" in (invoice.paperless_ocr_text or "").casefold(),
