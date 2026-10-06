@@ -190,7 +190,7 @@ def verify_xml_export(manager, base, user, plain):
         "xml_invoice_id": plain["id"], "paperless_document_id": plain["paperless_document_id"],
         "ai_supplier_ico": plain["data"]["supplier_ico"],
         "duzp": plain["data"]["taxable_supply_date"],
-        "ocr_length": len(plain["source"]["ocr_text"]),
+        "ocr_length": len(plain["paperless"]["ocr_text"]),
         "xml_artifact_id": generated["id"],
         "xml_sha256": hashlib.sha256(xml_response.content).hexdigest(),
         "xml_target_ico": root.attrib["ico"], "xml_key": root.attrib.get("key"),
