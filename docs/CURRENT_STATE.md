@@ -13,6 +13,7 @@
 - OIDC logout ruší lokální relaci a Keycloak relaci přes RP-initiated logout. Migrace `0014` přidává nullable display_name a šifrovaný ID-token logout hint; secrets se nezobrazují v auditu.
 - Read-only kontrola skutečné starší extrakce v7 potvrdila smíchanou identitu: název GEOVAP s evidencí „Statutární město Pardubice“ a IČO z jiného bloku. Schema validity nekontrolovala tuto sémantiku. Nová validace přidává neblokující `SUPPLIER_EVIDENCE_MISMATCH`, pokud nezměněný název neodpovídá vlastní evidenci; ruční oprava zůstává autoritativní. Historické doklady se automaticky nepřepisují.
 - Live OCR/AI smoke odhalil falešný unhealthy worker při dlouhém čekání na Qwen: heartbeat byl aktualizován jen mezi jobs, nikoli během async HTTP requestu. Samostatný task ve stejném event loopu aktualizuje heartbeat po 15 s; zablokovaný event loop nebo nedostupná DB stále způsobí stale healthcheck.
+- Náhled používá lokálně bundlovaný PDF.js s vlastním workerem, stránkováním a explicitním originálním/approved odkazem. Nezávisí na native PDF pluginu browseru; chyby mají iframe/link fallback. Soubor se nemění a nepoužívá CDN. Existující frontend dependencies jsou připnuté na dosavadní lockfile verze, aby přidání PDF rendereru neprovedlo nesouvisející major upgrade.
 
 ## ADMIN, Keycloak identity a nevratný PURGE
 

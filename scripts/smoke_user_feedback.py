@@ -15,7 +15,12 @@ from xml.etree import ElementTree as ET
 from app.services.isdoc import enumerate_attachments
 from generate_isdoc_smoke_fixtures import isdoc_xml, with_attachment
 from smoke_isdoc_approved_pdf import api, detail, upload, wait_detail
-from smoke_stage_b import KeycloakLoginForm, login, require, response_json
+from smoke_stage_b import KeycloakLoginForm, login, require
+
+
+def response_json(response, context):
+    require(response.status_code in {200, 201}, f"{context} returned HTTP {response.status_code}")
+    return response.json()
 
 
 def logout_relogin(client, base, user, username, password):
