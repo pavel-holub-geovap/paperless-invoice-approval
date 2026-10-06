@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,7 +24,6 @@ from app.models import (
 from app.services.approved_pdf import prepare_approved_pdf_artifact
 from app.services.validation import run_validations
 from app.services.workflow import (
-    WorkflowError,
     confirm_original,
     create_invoice,
     decide,
@@ -127,12 +125,11 @@ def test_parallel_approval_waits_for_every_required_assignment(db: Session) -> N
     assert invoice.status == InvoiceStatus.APPROVED
 
 
-def test_return_requires_comment_and_returns_whole_invoice(db: Session) -> None:
+def test_return_without_comment_returns_whole_invoice(db: Session) -> None:
     invoice, assignments = prepared_invoice(db)
     submit_for_approval(db, invoice, "manager")
-    with pytest.raises(WorkflowError, match="comment"):
-        decide(db, assignments[0], ApprovalAction.RETURN, "approver-1", "")
-    decide(db, assignments[0], ApprovalAction.RETURN, "approver-1", "Doplňte DUZP")
+    decision = decide(db, assignments[0], ApprovalAction.RETURN, "approver-1", " ")
+    assert decision.comment is None
     assert invoice.status == InvoiceStatus.RETURNED
 
 

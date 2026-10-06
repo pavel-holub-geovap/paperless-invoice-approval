@@ -16,6 +16,8 @@ from app.models import (
     Allocation,
     ApprovalAssignment,
     ApprovalDecision,
+    ApprovedPdfArtifact,
+    ApprovedPdfStatus,
     ExportArtifact,
     ExportArtifactStatus,
     ExportBatch,
@@ -215,6 +217,20 @@ def latest_valid_artifact(db: Session, invoice: Invoice) -> ExportArtifact | Non
     )
 
 
+async def current_approved_pdf(db: Session, paperless: PaperlessClient, invoice: Invoice) -> tuple[bytes, ApprovedPdfArtifact]:
+    artifact = db.scalar(select(ApprovedPdfArtifact).where(
+        ApprovedPdfArtifact.invoice_id == invoice.id,
+        ApprovedPdfArtifact.revision_id == invoice.current_revision.id,
+        ApprovedPdfArtifact.status == ApprovedPdfStatus.STORED,
+    ).order_by(ApprovedPdfArtifact.created_at.desc()))
+    if artifact is None or artifact.paperless_document_id is None:
+        raise WorkflowError("Schválené PDF aktuální revize ještě není bezpečně uloženo. Vyčkejte na worker.")
+    pdf = await paperless.download_pdf(artifact.paperless_document_id)
+    if _sha256(pdf) != artifact.approved_pdf_sha256:
+        raise WorkflowError("Hash immutable schválené PDF kopie nesouhlasí")
+    return pdf, artifact
+
+
 async def generate_export_artifact(
     db: Session,
     settings: Settings,
@@ -312,7 +328,9 @@ async def generate_export_artifact(
             + "; ".join(target_validation["errors"])
         )
     errors = validate_xml_detailed(xml, settings.pohoda_xsd_path)
-    pdf = await paperless.download_pdf(invoice.paperless_document_id)
+    pdf, approved = await current_approved_pdf(db, paperless, invoice)
+    snapshot["approved_pdf_artifact_id"] = approved.id
+    snapshot["approved_pdf_sha256"] = approved.approved_pdf_sha256
     artifact_id = new_id()
     settings.export_archive_dir.mkdir(parents=True, exist_ok=True)
     artifact_dir = _safe_path(settings.export_archive_dir, "artifacts")
@@ -389,6 +407,8 @@ async def generate_export_artifact(
     else:
         transition(db, invoice, InvoiceStatus.XML_READY, actor)
         transition(db, invoice, InvoiceStatus.READY_FOR_EXPORT, actor)
+        transition(db, invoice, InvoiceStatus.EXPORT_CREATED, actor)
+        record_event(db, "EXPORT_CREATED", actor=actor, invoice=invoice, metadata={"export_id": artifact.id, "method": "GENERATED_XML"})
     return artifact
 
 
@@ -419,9 +439,11 @@ async def create_export_batch(
         xml_path = Path(artifact.xml_path)
         xml = xml_path.read_bytes()
         validate_immutable_artifact_xml(artifact, xml)
-        pdf = await paperless.download_pdf(invoice.paperless_document_id)
+        pdf, approved = await current_approved_pdf(db, paperless, invoice)
+        if artifact.source_snapshot.get("approved_pdf_artifact_id") != approved.id:
+            raise WorkflowError("XML snapshot does not reference the current approved PDF; create a re-export")
         if _sha256(pdf) != artifact.pdf_sha256:
-            raise WorkflowError("Paperless PDF changed since XML snapshot generation")
+            raise WorkflowError("Approved PDF changed since XML snapshot generation")
         stem = safe_stem(str(invoice.current_revision.data.get("invoice_number") or invoice.id))
         prepared.append((invoice, artifact, pdf, xml, stem))
 

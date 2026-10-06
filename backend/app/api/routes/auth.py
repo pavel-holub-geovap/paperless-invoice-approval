@@ -3,7 +3,9 @@ from __future__ import annotations
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlencode
 
+from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -17,6 +19,7 @@ from app.auth import (
     new_session_id,
     require_csrf,
     sign_state,
+    token_cipher,
     verify_state,
 )
 from app.config import Settings, get_settings
@@ -64,6 +67,7 @@ async def callback(
         raise HTTPException(status_code=400, detail="OIDC state mismatch")
     redirect_uri = f"{settings.app_base_url}/api/auth/callback"
     claims = await exchange_and_validate_code(settings, code, redirect_uri, str(state_payload["nonce"]))
+    id_token = claims.pop("_id_token", None)
     try:
         user = synchronize_oidc_identity(db, claims, settings.keycloak_client_id)
     except UnsupportedApplicationRole as exc:
@@ -77,6 +81,8 @@ async def callback(
             subject=subject,
             expires_at=datetime.now(UTC) + timedelta(seconds=settings.session_ttl_seconds),
             csrf_token=secrets.token_urlsafe(24),
+            id_token_encrypted=token_cipher(settings).encrypt(str(id_token).encode()).decode()
+            if id_token else None,
         )
     )
     record_event(
@@ -105,17 +111,28 @@ def me(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     return user
 
 
-@router.post("/logout", status_code=204)
+@router.post("/logout")
 def logout(
     response: Response,
     request: Request,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_csrf),
-) -> None:
+    settings: Settings = Depends(get_settings),
+) -> dict[str, str]:
+    parameters = {"client_id": settings.keycloak_client_id,
+                  "post_logout_redirect_uri": f"{settings.app_base_url}/"}
     session_id = request.cookies.get(SESSION_COOKIE)
     if session_id:
         session = db.get(OidcSession, session_id)
         if session:
+            if session.id_token_encrypted:
+                try:
+                    parameters["id_token_hint"] = token_cipher(settings).decrypt(
+                        session.id_token_encrypted.encode()
+                    ).decode()
+                except InvalidToken:
+                    # Legacy/key-rotated sessions still log out locally; Keycloak can confirm logout.
+                    pass
             db.delete(session)
             record_event(
                 db,
@@ -125,3 +142,5 @@ def logout(
             )
             db.commit()
     response.delete_cookie(SESSION_COOKIE, path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return {"logout_url": f"{settings.oidc_issuer_public}/protocol/openid-connect/logout?{urlencode(parameters)}"}

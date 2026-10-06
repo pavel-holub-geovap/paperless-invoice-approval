@@ -28,6 +28,7 @@ from app.models import (
     ValidationResult,
 )
 from app.schemas import CurrentUser
+from app.services.approved_pdf import mark_approved_pdf_stored, prepare_approved_pdf_artifact
 from app.services.exports import (
     create_export_batch,
     generate_export_artifact,
@@ -141,6 +142,11 @@ def approved_invoice(
     confirm_original(db, invoice, "manager")
     submit_for_approval(db, invoice, "manager")
     decide(db, assignment, ApprovalAction.APPROVE, "approver-1", None)
+    approved = prepare_approved_pdf_artifact(db, invoice, Settings())
+    approved.approved_pdf_sha256 = hashlib.sha256(b"%PDF-1.4\n% synthetic fixture " + str(paperless_id + 10000).encode()).hexdigest()
+    approved.approved_pdf_size = 100
+    mark_approved_pdf_stored(db, approved, paperless_id + 10000)
+    db.flush()
     return invoice
 
 
@@ -204,7 +210,10 @@ async def test_export_zip_and_explicit_import_are_separate_states(
     assert artifact is not None
     assert artifact.source_snapshot["revision_id"] == invoice.current_revision.id
     assert artifact.xml_sha256 == hashlib.sha256(Path(artifact.xml_path).read_bytes()).hexdigest()
-    assert artifact.pdf_sha256 == hashlib.sha256(await FakePaperless().download_pdf(501)).hexdigest()
+    assert artifact.pdf_sha256 == hashlib.sha256(await FakePaperless().download_pdf(10501)).hexdigest()
+    with zipfile.ZipFile(batch.archive_path) as archive:
+        assert archive.read("invoice-EXP-TEST-1/invoice.pdf") == await FakePaperless().download_pdf(10501)
+        assert archive.read("invoice-EXP-TEST-1/invoice.pdf") != await FakePaperless().download_pdf(501)
     serialized_xml = Path(artifact.xml_path).read_bytes()
     root = etree.fromstring(serialized_xml)
     supplier_ico = root.xpath(

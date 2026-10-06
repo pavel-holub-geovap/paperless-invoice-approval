@@ -4,7 +4,6 @@ from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
-from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from app.api.routes.approvals import make_decision
@@ -220,10 +219,7 @@ def test_return_reject_comments_and_reopen_history(db) -> None:
     _, assignments = configure_full_approval(db, invoice, centres)
     confirm_original(db, invoice, "manager")
     submit_for_approval(db, invoice, "manager")
-    with pytest.raises(WorkflowError, match="comment"):
-        decide(db, assignments[0], ApprovalAction.RETURN, "approver-1", "")
-    with pytest.raises(ValidationError):
-        ApprovalRequest(action=ApprovalAction.REJECT, comment="")
+    assert ApprovalRequest(action=ApprovalAction.REJECT, comment=" ").comment is None
 
     reject = decide(db, assignments[0], ApprovalAction.REJECT, "approver-1", "Plnění odmítnuto")
     assert invoice.status == InvoiceStatus.REJECTED

@@ -27,8 +27,9 @@ from app.services.approver_history import (
     list_approver_history,
     user_can_access_invoice_history,
 )
+from app.services.identity import identity_display
 from app.services.section_permissions import has_section_permission
-from app.services.workflow import WorkflowError, decide
+from app.services.workflow import WorkflowError, decide, revision_business_data
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -140,7 +141,14 @@ def my_approvals(
                 "allocation_amount": assignment.allocation.amount,
                 "allocation_percentage": assignment.allocation.percentage,
                 "allocation_note": assignment.allocation.note,
-                "invoice_data": revision.data,
+                "invoice_data": revision_business_data(revision),
+                "allocations": [{"id": allocation.id, "cost_center": allocation.cost_center.code,
+                                 "amount": str(allocation.amount), "note": allocation.note,
+                                 "own": allocation.id == assignment.allocation_id,
+                                 "assignments": [{"approver": identity_display(db, item.approver_subject),
+                                                  "status": item.status.value}
+                                                 for item in allocation.assignments if item.active]}
+                                for allocation in invoice.allocations if allocation.active and allocation.revision_id == revision.id],
                 "assignment_status": assignment.status,
                 "decision": valid_decision.action if valid_decision else None,
                 "comment": valid_decision.comment if valid_decision else None,

@@ -603,6 +603,15 @@ def run_validations(
 
     business_data = revision_business_data(revision)
     results = validate_invoice_data(business_data)
+    from app.config import get_settings
+
+    target_ico = get_settings().pohoda_target_ico
+    if target_ico and str(business_data.get("supplier_ico") or "").replace(" ", "") == target_ico:
+        results.append(_result(
+            "SUPPLIER_IS_TARGET_UNIT", ValidationSeverity.WARNING,
+            "Rozpoznaný dodavatel odpovídá vlastní účetní jednotce. Zkontrolujte, zda nebyl zaměněn dodavatel a odběratel.",
+            "supplier_ico", expected="supplier distinct from customer", actual=target_ico,
+        ))
     if invoice.source_status == SourceDocumentStatus.MISSING:
         results.append(
             _result(

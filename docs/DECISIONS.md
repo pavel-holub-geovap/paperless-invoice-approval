@@ -172,6 +172,18 @@ doklad, který v témže scénáři sám vytvořil.
 
 ## ADR-029: Upload provenance určuje předložení versus schválení
 
+<!-- ADR-030 below supersedes only the prior comment/UX/export rules, not upload provenance. -->
+
 Nová Keycloak role `INVOICE_SUBMITTER` není variantou role `APPROVER`. Obě cesty používají stejné upload API, editor, revize a allocations, ale klient posílá explicitní `submission_mode` a backend ověří, že jej aktuální role dovoluje. Stabilní hodnota se ukládá do existujícího `DocumentUpload.actor_role` a následně `Invoice.upload_origin`; aktuální kombinace rolí ji zpětně nepřepisuje. Databázová migrace proto není potřeba.
 
 Pouze provenience `APPROVER` smí při `submit-for-review` vytvořit standardní uploader assignment a `APPROVE` pro právě oprávněné sekce. Provenience `INVOICE_SUBMITTER` nevytvoří žádné approval rozhodnutí ani při kombinované roli a permission. Stejná identita může později schválit pouze explicitně jako běžně přiřazený approver. Tím zůstává auditovatelný invariant `submission != approval` a Keycloak zůstává jediným zdrojem rolí.
+
+## ADR-030: Bezpečné zjednodušení po uživatelském testování
+
+Výslovné nové zadání mění RETURN/REJECT komentář z povinného na doporučený. Whitespace se normalizuje na null, neexistuje fiktivní důvod. Rozhodnutí, actor a timestamp zůstávají v append-only auditu. Nejde o změnu oprávnění ani globálního REJECT.
+
+Jedna sekce je existující percentage=100. Nepotvrzený návrh se při změně celku přepočítá v nové auditované revizi; submitted/reviewed rozúčtování se skrytě nepřepisuje. Přechod na více sekcí zachová řádek a vyžaduje explicitní uložení. Carry-forward přenáší jen identitu/required assignment oprávněného schvalovatele zachované sekce, nikdy rozhodnutí. Nový assignment má vždy PENDING.
+
+Business history je bezpečná čitelná projekce auditu. Raw technický audit je samostatný ADMIN-only modul, bez nové business DB tabulky. Display name a šifrovaný logout hint jsou dvě nullable additive migration pole.
+
+EXPORT_CREATED představuje konkrétní importní artefakt: uložené current approved PDF_ISDOC nebo validované current immutable XML. ZIP/PDF pro účetní používají pouze current approved PDF s ověřeným hashem a vazbou ve snapshotu; original review surface zůstává oddělený. Legacy XML snapshot bez approved-copy reference lze stáhnout historicky, ale nový ZIP vyžaduje re-export; staré bytes se neopravují in-place.

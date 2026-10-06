@@ -32,6 +32,7 @@ def record_event(
         identity = db.get(UserIdentity, actor)
         if identity is not None:
             enriched.setdefault("actor_username", identity.username)
+            enriched.setdefault("actor_display_name", identity.display_name or identity.username)
             enriched.setdefault("actor_roles", list(identity.roles))
     audit = AuditEvent(
         invoice_id=invoice.id if invoice else None,

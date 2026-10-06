@@ -62,7 +62,7 @@ export default function App() {
         </>}
         <a className={route.page === "help" ? "active" : ""} href="/help" onClick={nav("/help")}><span className="help-nav-icon" aria-hidden="true">?</span>Nápověda</a>
       </nav>
-      <div className="user"><span>{user.username}</span><button onClick={() => void api("/auth/logout", { method: "POST" }).then(() => location.reload())}>Odhlásit</button></div>
+      <div className="user"><span>{user.display_name || user.username}</span><button onClick={() => void api<{logout_url:string}>("/auth/logout", { method: "POST" }).then((result) => {setApiUser(null); location.assign(result.logout_url);})}>Odhlásit</button></div>
     </header>
     <main className="app-shell">
       {route.page === "dashboard" && (user.roles.includes("QUEUE_MANAGER") ? <Dashboard user={user} invoiceId={route.invoiceId} onNavigate={navigate}/> : <section className="empty"><h1>Nemáte oprávnění k frontě</h1></section>)}

@@ -62,8 +62,10 @@ from app.services.extraction import (
     queue_ai_extraction,
     stored_extraction_to_invoice_data,
 )
+from app.services.identity import identity_display
 from app.services.jobs import enqueue_job
 from app.services.paperless_sync import mark_source_missing
+from app.services.supplier_registry import verify_supplier
 from app.services.validation import run_validations
 from app.services.workflow import (
     WorkflowError,
@@ -341,6 +343,7 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
         "original_review_confirmed": invoice.original_review_confirmed,
         "original_reviewed_at": invoice.original_reviewed_at,
         "original_reviewed_by": invoice.original_reviewed_by,
+        "original_reviewed_by_display": identity_display(db, invoice.original_reviewed_by),
         "data": revision_business_data(revision),
         "extracted_fields": [
             {"field_name": field.field_name, "value": field.value, "source_text": field.source_text}
@@ -376,6 +379,7 @@ def serialize_invoice(db: Session, invoice: Invoice) -> dict[str, Any]:
                     {
                         "id": assignment.id,
                         "approver_subject": assignment.approver_subject,
+                        "approver_display_name": identity_display(db, assignment.approver_subject),
                         "required": assignment.required,
                         "status": assignment.status,
                         "assigned_by": assignment.assigned_by,
@@ -1070,14 +1074,14 @@ def invoice_audit(
     _viewer(db, invoice, user)
     events = db.scalars(
         select(AuditEvent)
-        .where(AuditEvent.invoice_id == invoice_id)
+        .where(AuditEvent.invoice_id == invoice_id, AuditEvent.event_type.in_(BUSINESS_EVENTS))
         .order_by(AuditEvent.created_at)
     ).all()
     return [
         {
             "id": row.id,
             "timestamp": row.created_at,
-            "actor": row.actor_subject,
+            "actor": identity_display(db, row.actor_subject),
             "revision": row.revision_number,
             "event_type": row.event_type,
             "old_state": row.old_state,
@@ -1085,7 +1089,29 @@ def invoice_audit(
             "old_value": row.old_value,
             "new_value": row.new_value,
             "comment": row.comment,
-            "metadata": row.metadata_json,
+            "metadata": {key: value for key, value in row.metadata_json.items() if key in {"actor_display_name", "actor_username", "field", "field_name"}},
         }
         for row in events
     ]
+
+
+BUSINESS_EVENTS = {
+    "DOCUMENT_DISCOVERED", "DOCUMENT_CLASSIFIED", "PROCESSING_MODE_CHANGED",
+    "EXTRACTION_FROM_ISDOC_CREATED", "AI_EXTRACTION_APPLIED", "AI_REEXTRACTION_APPLIED",
+    "INVOICE_FIELD_CHANGED", "FIELD_CHANGED", "REVISION_CREATED", "WORKFLOW_TRANSITION",
+    "ORIGINAL_REVIEW_CONFIRMED", "ALLOCATION_CREATED", "ALLOCATION_REMOVED", "ALLOCATIONS_REPLACED",
+    "APPROVERS_REPLACED", "APPROVER_CARRIED_FORWARD", "APPROVED", "RETURNED", "REJECTED",
+    "APPROVED_PDF_CREATED", "APPROVED_PDF_STORED", "XML_GENERATED", "EXPORT_CREATED", "IMPORTED_TO_POHODA",
+    "ALLOCATION_CHANGED", "ALLOCATION_AUTORECALCULATED", "SENT_FOR_APPROVAL", "SUBMITTED_TO_QUEUE_MANAGER",
+    "QUEUE_MANAGER_REVISION_REVIEWED", "APPROVAL_INVALIDATED", "REEXPORTED", "INVOICE_REOPENED",
+}
+
+
+@router.get("/{invoice_id}/supplier-verification")
+async def supplier_verification(
+    invoice_id: str, ico: str = Query(max_length=8), name: str | None = Query(default=None, max_length=500),
+    address: str | None = Query(default=None, max_length=1000),
+    db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    _viewer(db, _invoice_or_404(db, invoice_id), user)
+    return await verify_supplier(ico, name, address)

@@ -33,6 +33,7 @@ export function IntegrationSections() {
         <li><strong>Potvrzení importu:</strong> stav Importováno do POHODY nastaví oprávněný uživatel teprve po skutečně provedeném ručním importu.</li>
       </ul>
       <HelpCallout kind="important"><strong>Import do POHODY je vždy ruční.</strong> Stav Export vytvořen pouze říká, že existuje podklad; neznamená provedený import.</HelpCallout>
+      <p>Samotné Schváleno ještě neznamená Export vytvořen. PDF + ISDOC je připraveno až po bezpečném uložení schválené kopie; XML až po vytvoření a validaci konkrétního artefaktu. <strong>Stáhnout schválené PDF</strong> a ZIP pro účetní používají kopii aktuální schválené revize se zachovanými přílohami. Originální PDF je oddělené a nikdy se nepřepisuje. Pokud kopie ještě nevznikla, vyčkejte na dokončení workeru.</p>
     </HelpSection>
 
     <HelpSection id="zalohove-faktury" title="16. Zálohové faktury a další typy dokladů">

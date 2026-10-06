@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api, pragueDateTime } from "../lib/api";
-import type { AdminInvoice, AdminPurgeAudit, AdminPurgeResponse, UserReference } from "../types";
+import type { AdminInvoice, AdminPurgeAudit, AdminPurgeResponse, UserReference, AuditEvent } from "../types";
 import { CostCenters } from "./CostCenters";
 
 type PurgeTarget = { invoiceIds: string[]; label: string; bulk: boolean };
@@ -16,6 +16,9 @@ export function AdminPage() {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [systemAudit, setSystemAudit] = useState<AuditEvent[]>([]);
+  const [auditInvoice, setAuditInvoice] = useState("");
+  const loadSystemAudit = () => void api<AuditEvent[]>(`/admin/system-audit${auditInvoice?`?invoice_id=${encodeURIComponent(auditInvoice)}`:""}`).then(setSystemAudit).catch(e=>setError(e.message));
 
   const load = useCallback(async () => {
     try {
@@ -109,6 +112,7 @@ export function AdminPage() {
       <div className="table-wrap"><table><thead><tr><th>Uživatel</th><th>Keycloak subject</th><th>Aktuálně známé role</th></tr></thead><tbody>{users.map((row) => <tr key={row.subject}><td>{row.username}<small>{row.email}</small></td><td className="hash">{row.subject}</td><td>{row.roles.join(", ")}</td></tr>)}</tbody></table></div>
     </section>
 
+    <section className="admin-block"><h2>Systémový audit</h2><p>Technické události jsou dostupné pouze administrátorům. Append-only historie se nemění.</p><label>Volitelné ID faktury<input value={auditInvoice} onChange={e=>setAuditInvoice(e.target.value)}/></label><button className="button secondary" onClick={loadSystemAudit}>Načíst systémový audit</button><ol className="audit-list">{systemAudit.map(event=><li key={event.id}><strong>{event.event_type}</strong><span>{pragueDateTime(event.timestamp)} · {String(event.metadata.actor_display_name||event.actor)}</span><details><summary>Technické podrobnosti</summary><pre>{JSON.stringify(event,null,2)}</pre></details></li>)}</ol></section>
     {target && <div className="modal-backdrop"><section className="purge-modal" role="dialog" aria-modal="true" aria-labelledby="purge-title">
       <p className="eyebrow danger-text">Nevratná operace</p><h2 id="purge-title">Nevratně odstranit {target.label}?</h2>
       <p>Doklad bude nevratně odstraněn z Approval i Paperless. Odstraní se originál, jednoznačně navázané schválené kopie a exportní artefakty. Operaci nelze vrátit.</p>

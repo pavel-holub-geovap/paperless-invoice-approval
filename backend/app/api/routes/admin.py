@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -10,11 +10,26 @@ from app.auth import ROLE_ADMIN, require_csrf_roles, require_roles
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.integrations.paperless import PaperlessClient
-from app.models import AdminPurgeAudit, Invoice
+from app.models import AdminPurgeAudit, AuditEvent, Invoice
 from app.schemas import AdminBulkPurgeRequest, AdminPurgeRequest, CurrentUser
 from app.services.admin_purge import AdminPurgeError, AdminPurgeExternalError, purge_invoice
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/system-audit")
+def system_audit(
+    invoice_id: str | None = None, limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db), user: CurrentUser = Depends(require_roles(ROLE_ADMIN)),
+) -> list[dict[str, Any]]:
+    query = select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit)
+    if invoice_id:
+        query = query.where(AuditEvent.invoice_id == invoice_id)
+    return [{"id": row.id, "invoice_id": row.invoice_id, "timestamp": row.created_at,
+             "actor": row.actor_subject, "revision": row.revision_number, "event_type": row.event_type,
+             "old_state": row.old_state, "new_state": row.new_state, "old_value": row.old_value,
+             "new_value": row.new_value, "comment": row.comment, "metadata": row.metadata_json}
+            for row in db.scalars(query).all()]
 
 
 def _admin(user: CurrentUser) -> None:

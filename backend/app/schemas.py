@@ -341,10 +341,7 @@ class ApprovalRequest(BaseModel):
 
     @model_validator(mode="after")
     def comment_for_negative_action(self) -> ApprovalRequest:
-        if self.action in {ApprovalAction.RETURN, ApprovalAction.REJECT} and not (
-            self.comment and self.comment.strip()
-        ):
-            raise ValueError("RETURN and REJECT require a comment")
+        self.comment = self.comment.strip() or None if self.comment else None
         return self
 
 
@@ -471,6 +468,7 @@ class ImportConfirmation(BaseModel):
 class CurrentUser(BaseModel):
     subject: str
     username: str
+    display_name: str | None = None
     email: str | None = None
     roles: list[str]
     csrf_token: str | None = None

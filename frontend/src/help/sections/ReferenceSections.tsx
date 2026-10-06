@@ -9,7 +9,7 @@ const statuses = [
   ["Připraveno ke schválení", "Byly splněny podmínky pro vytvoření schvalovacích úkolů."],
   ["Čeká na schválení", "Čeká se na všechna povinná rozhodnutí aktuální revize."],
   ["Vráceno k doplnění", "Schvalovatel požaduje opravu nebo doplnění."],
-  ["Zamítnuto", "Dokument byl zamítnut s povinným komentářem."],
+  ["Zamítnuto", "Dokument byl zamítnut; důvod je doporučený, ale nepovinný."],
   ["Schváleno", "Všechna povinná schválení aktuální revize jsou platná."],
   ["XML připraveno", "Byl připraven mezikrok XML podkladu."],
   ["Připraveno k exportu", "Schválený doklad může vytvořit exportní podklad."],

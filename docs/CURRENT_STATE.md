@@ -1,5 +1,17 @@
 # Aktuální stav
 
+## Připomínky uživatelského testování (říjen 2026)
+
+- Detail používá přístupné skládací karty se stavy v hlavičkách. Technické sekce jsou zavřené, business editor otevřený; nová validační upozornění otevřou validace. AI stav/spinner odráží backend, ochrana rozepsaného formuláře zůstává zachována.
+- Jedna sekce se ukládá jako 100 %. Přepočet celku mění pouze nepotvrzený návrh, v nové revizi s auditem; potvrzené rozúčtování vyžaduje explicitní uložení. Finanční vstupy přijímají českou čárku a převádějí ji na canonical decimal string bez floating-point business matematiky.
+- RETURN/REJECT mají doporučený, nepovinný komentář (výslovné nové business zadání nahrazuje starší požadavek povinnosti). Vrácení je zobrazeno v horním banneru.
+- Carry-forward zachované sekce vytváří nové PENDING assignments pouze aktivním identitám s rolí APPROVER a aktuálním oprávněním. Stará rozhodnutí zůstávají invalidovaná v historii.
+- Schvalovatel otevře PDF a read-only kontext všech sekcí přímo u úkolu. Business historie je oddělena od systémového auditu `/api/admin/system-audit`, vynuceného backendem jen pro ADMIN.
+- Prompt v8 rozlišuje bloky dodavatel/odběratel a jejich IČO/DIČ/adresy. Shoda s `POHODA_TARGET_ICO` přidává WARNING bez přepisu. DUZP parser podporuje DÚZP a „Datum uskutečnění zd. plnění“ s vlastní evidencí.
+- Volitelný ARES je bounded server-side HTTPS lookup s timeoutem; nedostupnost ani neshoda nejsou blocking a nikdy nezapisují do faktury.
+- Generated XML přechází do EXPORT_CREATED až po validním immutable artefaktu. Účetní PDF/ZIP používají hashed approved copy aktuální revize; staré exporty bez této vazby vyžadují re-export, nikoli přepsání historie.
+- OIDC logout ruší lokální relaci a Keycloak relaci přes RP-initiated logout. Migrace `0014` přidává nullable display_name a šifrovaný ID-token logout hint; secrets se nezobrazují v auditu.
+
 ## ADMIN, Keycloak identity a nevratný PURGE
 
 - Aplikace podporuje nezávislé a kombinovatelné role `ADMIN`, `QUEUE_MANAGER`,

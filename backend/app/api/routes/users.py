@@ -22,6 +22,6 @@ def list_users(
     if role:
         users = [user for user in users if role in user.roles]
     return [
-        {"subject": user.subject, "username": user.username, "email": user.email, "roles": user.roles}
+        {"subject": user.subject, "username": user.username, "display_name": user.display_name, "email": user.email, "roles": user.roles}
         for user in users
     ]

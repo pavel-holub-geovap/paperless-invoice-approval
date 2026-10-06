@@ -1,5 +1,15 @@
 # Architektura
 
+### Interakce po uživatelském testování
+
+`CollapsibleCard` a `PdfPreview` jsou malé sdílené React komponenty bez nového frameworku. Form draft nadále respektuje očekávanou revizi a odmítá tiché přepsání pollingem. Decimal parser převádí pouze zápis, neprovádí float výpočty; business matematika zůstává Decimal na serveru. Režim jedné sekce je existující percentage=100, nikoli nový persistentní koncept.
+
+`supplier_registry.verify_supplier` je oddělený nezávazný ARES reader: pevný oficiální URL prefix, ověřené IČO, pětisekundový timeout, 256 KiB limit, žádný redirect ani persist/auto-replace. Browser nedostává externí credentials.
+
+Business historie filtruje auditní projekci, nikoli uložený audit. Kompletní systémový audit je na ADMIN-only route. Stabilní OIDC sub se nemění; display name je projekce identity a audit snapshot. OIDC ID token pro logout je uložen Fernetem s klíčem odvozeným z APP_SECRET_KEY, nikdy v plaintextu v DB/auditu.
+
+Export snapshot zahrnuje ID/hash immutable approved PDF aktuální revize. ZIP ověřuje shodu schválených bytes; bez dostupné kopie nebo při obsolete snapshotu bezpečně selže. Originál zůstává zvlášť dostupný přes Paperless original download.
+
 ## Komponenty
 
 - `frontend`: statický React build; používá pouze backend API a serverovou OIDC session.

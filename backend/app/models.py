@@ -183,6 +183,7 @@ class UserIdentity(Base):
 
     subject: Mapped[str] = mapped_column(String(255), primary_key=True)
     username: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255))
     email: Mapped[str | None] = mapped_column(String(320))
     roles: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -200,6 +201,7 @@ class OidcSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    id_token_encrypted: Mapped[str | None] = mapped_column(Text)
     csrf_token: Mapped[str] = mapped_column(String(64), nullable=False)
     user: Mapped[UserIdentity] = relationship()
 

@@ -1,5 +1,11 @@
 # Bezpečnost
 
+OIDC logout ruší lokální session s CSRF kontrolou a vrací pouze fixed Keycloak realm end-session URL s fixed post-logout redirect. ID-token hint je v DB šifrovaný APP_SECRET_KEY-derived Fernet klíčem a nikdy se nezapisuje do auditu. U legacy/rotated-key session může Keycloak požadovat potvrzení; lokální relace je přesto zrušena. Nullable migrace nemění starší identity/session data.
+
+`/api/admin/system-audit` je backend ADMIN-only; fronta a approver nemohou technický payload získat. Business history projekce nezpřístupňuje raw AI/JSON diagnostiku. Stabilní subject zůstává v uloženém auditu, lidské jméno je snapshot/projekce.
+
+ARES používá pevný HTTPS host bez redirectů, checksum IČO, timeout 5 s a limit odpovědi 256 KiB. Přenáší pouze veřejné IČO, nikoli OCR, PDF, názvy/částky dokladu nebo tokeny. Název/adresa se porovnávají lokálně na backendu. Chyba/neshoda není blocking a data se nepřepisují.
+
 Secrets se načítají výhradně z prostředí nebo mountovaných secret souborů. `.env`, privátní klíče, databázové dumpy, modely a skutečné faktury jsou ignorované. Před commitem je nutná kontrola diffu na tokeny a hesla.
 
 OIDC používá Authorization Code flow; aplikace drží session serverově a posílá pouze HttpOnly cookie. Role se validují na backendu. Paperless token je pouze serverový. Logovací filtry odstraňují Authorization/Cookie hlavičky a nikdy nelogují OCR či celé dokumenty.

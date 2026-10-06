@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 import httpx
 from authlib.jose import JsonWebKey, jwt
+from cryptography.fernet import Fernet
 from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -108,7 +109,13 @@ async def exchange_and_validate_code(
     claims.validate()
     if claims.get("nonce") != expected_nonce:
         raise HTTPException(status_code=400, detail="OIDC nonce mismatch")
-    return dict(claims)
+    return {**dict(claims), "_id_token": token_payload["id_token"]}
+
+
+def token_cipher(settings: Settings) -> Fernet:
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(
+        settings.app_secret_key.get_secret_value().encode()
+    ).digest()))
 
 
 def roles_from_claims(claims: dict[str, object], client_id: str) -> list[str]:
@@ -149,6 +156,7 @@ def get_current_user(
     return CurrentUser(
         subject=user.subject,
         username=user.username,
+        display_name=user.display_name,
         email=user.email,
         roles=effective_roles,
         csrf_token=oidc_session.csrf_token,

@@ -9,7 +9,8 @@ _DATE = r"(?P<date>\d{1,2}\s*[.]\s*\d{1,2}\s*[.]\s*\d{4})"
 _LABELS = {
     "issue_date": r"(?:datum\s+vystavení|vystaveno)",
     "taxable_supply_date": (
-        r"(?:DUZP|datum\s+zd[.]?\s*plnění|datum\s+zdan[.]?\s*plnění|"
+        r"(?:D[ÚU]ZP|datum\s+zd[.]?\s*plnění|datum\s+zdan[.]?\s*plnění|"
+        r"datum\s+uskutečnění\s+zd[.]?\s*plnění|"
         r"datum\s+zdanitelného\s+plnění|datum\s+uskutečnění\s+zdanitelného\s+plnění)"
     ),
     "due_date": r"(?:datum\s+splatnosti|splatnost)",

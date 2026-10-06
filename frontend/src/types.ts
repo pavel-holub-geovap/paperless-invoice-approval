@@ -1,6 +1,7 @@
 export type User = {
   subject: string;
   username: string;
+  display_name?: string;
   email?: string;
   roles: string[];
   csrf_token: string;
@@ -117,7 +118,8 @@ export type AIExtraction = {
 
 export type Assignment = {
   id: string;
-  approver_subject: string;
+      approver_subject: string;
+      approver_display_name?: string;
   required: boolean;
   status: string;
   assigned_by: string;
@@ -213,6 +215,7 @@ export type Invoice = {
   original_review_confirmed: boolean;
   original_reviewed_at?: string;
   original_reviewed_by?: string;
+  original_reviewed_by_display?: string;
   data: Record<string, unknown>;
   extracted_fields: { field_name: string; value: unknown; source_text?: string }[];
   validations: Validation[];
@@ -270,6 +273,7 @@ export type ApprovalTask = {
   allocation_percentage?: string;
   allocation_note?: string;
   invoice_data: Record<string, unknown>;
+  allocations?: Array<{id: string; cost_center: string; amount: string; note?: string; own: boolean; assignments: Array<{approver: string; status: string}>}>;
   assignment_status: string;
   decision?: string;
   comment?: string;

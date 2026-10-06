@@ -55,6 +55,44 @@ function mockEmptyApi() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Stage B pages", () => {
+  it("defaults technical sections closed and auto-expands new validation warnings", async () => {
+    mockEmptyApi();
+    const {rerender} = render(<InvoiceDetail invoice={invoice} user={user} onBack={()=>undefined} onRefresh={()=>undefined}/>);
+    for (const title of ["Zdrojová metadata", "Evidence a dispozice", "Strukturovaná extrakce", "OCR text", "Historie workflow"]) expect(screen.getByRole("button",{name:new RegExp(`^${title}`)})).toHaveAttribute("aria-expanded","false");
+    const validation=screen.getByRole("button",{name:/^Deterministická validace/});
+    expect(validation).toHaveAttribute("aria-expanded","false");
+    rerender(<InvoiceDetail invoice={{...invoice,validations:[{code:"NOTICE",severity:"WARNING",message:"Zkontrolujte dodavatele"}]}} user={user} onBack={()=>undefined} onRefresh={()=>undefined}/>);
+    await waitFor(()=>expect(validation).toHaveAttribute("aria-expanded","true"));
+    fireEvent.click(validation);
+    expect(validation).toHaveAttribute("aria-expanded","false");
+  });
+
+  it("saves one selected section as 100 percent and accepts Czech decimal strings", async () => {
+    const fetchMock=vi.fn((input:RequestInfo|URL)=>Promise.resolve({ok:true,status:200,json:async()=>String(input).endsWith("/cost-centers")?[{id:"c",code:"100",name:"Správa",active:true}]:[]}));
+    vi.stubGlobal("fetch",fetchMock);
+    render(<InvoiceDetail invoice={{...invoice,data:{total_amount:"1497.38"}}} user={user} onBack={()=>undefined} onRefresh={()=>undefined}/>);
+    expect(screen.getByRole("radio",{name:"Jedna sekce"})).toBeChecked();
+    expect(screen.queryByRole("textbox",{name:"Částka"})).not.toBeInTheDocument();
+    await screen.findByRole("option",{name:"100 — Správa"});
+    fireEvent.change(screen.getByRole("combobox",{name:"Sekce rozúčtování 1"}),{target:{value:"c"}});
+    fireEvent.click(screen.getByRole("button",{name:"Uložit sekce"}));
+    await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith("/api/invoices/invoice-1/allocations",expect.objectContaining({body:expect.stringContaining('"percentage":"100"')})));
+    fireEvent.change(screen.getByRole("textbox",{name:/^Celkem/}),{target:{value:"1 497,38"}});
+    fireEvent.click(screen.getByRole("button",{name:"Uložit změny"}));
+    await waitFor(()=>expect(fetchMock).toHaveBeenCalledWith("/api/invoices/invoice-1",expect.objectContaining({body:expect.stringContaining('"total_amount":"1497.38"')})));
+    fireEvent.click(screen.getByRole("radio",{name:"Rozúčtovat na více sekcí"}));
+    expect(screen.getAllByRole("combobox",{name:/Sekce rozúčtování/})).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button",{name:"Přidat řádek"}));
+    expect(screen.getAllByRole("combobox",{name:/Sekce rozúčtování/})).toHaveLength(2);
+  });
+
+  it("ARES failure is informational and never changes the supplier form", async () => {
+    vi.stubGlobal("fetch",vi.fn((input:RequestInfo|URL)=>Promise.resolve({ok:true,status:200,json:async()=>String(input).includes("supplier-verification")?{status:"UNAVAILABLE",message:"ARES nedostupný"}:[]})));
+    render(<InvoiceDetail invoice={{...invoice,data:{supplier_name:"Původní",supplier_ico:"15049248"}}} user={user} onBack={()=>undefined} onRefresh={()=>undefined}/>);
+    fireEvent.click(screen.getByRole("button",{name:"Ověřit v ARES"}));
+    expect(await screen.findByText("ARES nedostupný")).toBeVisible();
+    expect(screen.getByRole("textbox",{name:"Dodavatel"})).toHaveValue("Původní");
+  });
   it("lets an uploader use every active section and explains auto-approval eligibility", async () => {
     const approver: User = { subject: "approver-1", username: "approver1", roles: ["APPROVER"], csrf_token: "csrf" };
     const centers = [
@@ -165,10 +203,12 @@ describe("Stage B pages", () => {
 
     const expectedPdfUrl = "/api/invoices/invoice-1/pdf";
     expect(screen.getByTitle("Originální faktura")).toHaveAttribute("src", expectedPdfUrl);
-    expect(screen.getByRole("link", { name: "Otevřít PDF v novém okně" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Otevřít originální PDF v novém okně" })).toHaveAttribute(
       "href",
       expectedPdfUrl,
     );
+    fireEvent.click(screen.getByRole("button", {name:/^OCR text/}));
+    fireEvent.click(screen.getByRole("button", {name:/^Zdrojová metadata/}));
     expect(screen.getByText("Synthetic OCR text")).toBeVisible();
     expect(screen.getByText("synthetic-invoice-cs-en.pdf")).toBeVisible();
   });
@@ -291,6 +331,7 @@ describe("Stage B pages", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", {name:/^Strukturovaná extrakce/}));
     expect(await screen.findByText(/AI vrátila hodnotu v neočekávaném formátu:/)).toBeVisible();
     expect(screen.getByText("DPH sazba").closest("li")).toHaveTextContent('"21%"');
     expect(screen.getByText(/Raw odpověď zachována: ano/)).toHaveTextContent("opravný retry: 1");

@@ -123,7 +123,7 @@ def build_approval_snapshot(db: Session, invoice: Invoice) -> dict[str, Any]:
             approvers.append(
                 {
                     "subject": assignment.approver_subject,
-                    "name": identity.username if identity else assignment.approver_subject,
+                    "name": (identity.display_name or identity.username or identity.email) if identity else assignment.approver_subject,
                     "decided_at": decision.created_at.isoformat(),
                 }
             )
@@ -351,7 +351,8 @@ def mark_approved_pdf_stored(
     artifact.paperless_document_id = paperless_document_id
     artifact.status = ApprovedPdfStatus.STORED
     artifact.stored_at = datetime.now(UTC)
-    if artifact.invoice.pohoda_import_method == PohodaImportMethod.PDF_ISDOC:
+    if (artifact.invoice.pohoda_import_method == PohodaImportMethod.PDF_ISDOC
+            and artifact.revision_id == artifact.invoice.current_revision.id):
         if artifact.invoice.status == InvoiceStatus.APPROVED:
             transition(db, artifact.invoice, InvoiceStatus.READY_FOR_EXPORT, "system")
         if artifact.invoice.status == InvoiceStatus.READY_FOR_EXPORT:

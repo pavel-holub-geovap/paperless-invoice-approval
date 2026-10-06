@@ -32,7 +32,8 @@ describe("Stage E pages", () => {
         revision: 4, supplier_name: "Dodavatel", invoice_number: "E-1",
         invoice_total: "1210.00", currency: "CZK", cost_center: "200",
         allocation_amount: "700.00", allocation_percentage: "57.851240",
-        allocation_note: "Vývoj", invoice_data: { due_date: "2026-09-03", variable_symbol: "20260001" },
+        allocation_note: "Vývoj", invoice_data: { due_date: "2026-09-03", variable_symbol: "20260001", description:"Licence", payment_required:true },
+        allocations:[{id:"a",cost_center:"200",amount:"700.00",own:true,assignments:[{approver:"Jan Schvalovatel",status:"PENDING"}]},{id:"b",cost_center:"100",amount:"510.00",own:false,note:"Podpora",assignments:[]}],
         assignment_status: "PENDING", current: true,
       }],
     }));
@@ -43,6 +44,14 @@ describe("Stage E pages", () => {
     expect(screen.getByRole("button", { name: "Vrátit" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Zamítnout" })).toBeVisible();
     expect(screen.getByText("03.09.2026")).toBeVisible();
+    fireEvent.click(screen.getByRole("button",{name:"Zobrazit originál a kontext dokladu"}));
+    expect(screen.getByTitle("Originální faktura")).toHaveAttribute("src","/api/invoices/invoice-1/pdf");
+    expect(screen.getByText("Licence")).toBeVisible();
+    expect(screen.getByText(/Moje schvalovaná část/)).toBeVisible();
+    expect(screen.getByText("Podpora")).toBeVisible();
+    expect(screen.queryByRole("textbox",{name:"Částka"})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button",{name:"Vrátit"}));
+    await waitFor(()=>expect(fetch).toHaveBeenCalledWith("/api/approvals/assignment-1/decision",expect.objectContaining({body:'{"action":"RETURN","comment":null}'})));
   });
 
   it("renders configurable cost centers", async () => {

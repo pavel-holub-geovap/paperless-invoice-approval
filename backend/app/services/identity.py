@@ -22,6 +22,7 @@ def synchronize_oidc_identity(
     subject = str(claims["sub"])
     username = str(claims.get("preferred_username") or subject)
     email = str(claims["email"]) if claims.get("email") else None
+    display_name = str(claims.get("name") or "").strip() or None
     user = db.get(UserIdentity, subject)
     if user is None:
         user = UserIdentity(subject=subject, username=username, email=email, roles=roles)
@@ -30,5 +31,13 @@ def synchronize_oidc_identity(
         user.username = username
         user.email = email
         user.roles = roles
+    user.display_name = display_name
     db.flush()
     return user
+
+
+def identity_display(db: Session, subject: str | None) -> str | None:
+    if not subject:
+        return None
+    user = db.get(UserIdentity, subject)
+    return (user.display_name or user.username or user.email or subject) if user else subject

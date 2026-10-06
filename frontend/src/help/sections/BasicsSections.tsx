@@ -11,6 +11,7 @@ export function BasicsSections() {
 
     <HelpSection id="prihlaseni" title="2. Přihlášení">
       <p>Na přihlašovací obrazovce zvolte <strong>Přihlásit přes Keycloak</strong> a použijte svůj firemní účet. Po přihlášení uvidíte nabídku odpovídající svým rolím.</p>
+      <p><strong>Odhlásit</strong> ukončí místní relaci Approval a přesměruje na odhlášení Keycloaku. Po návratu je nutné nové přihlášení; u starší relace může Keycloak vyžádat potvrzení odhlášení.</p>
       <ul>
         <li>Správce fronty začíná ve <strong>Frontě</strong>.</li>
         <li>Schvalovatel začíná v části <strong>Moje schválení</strong>.</li>

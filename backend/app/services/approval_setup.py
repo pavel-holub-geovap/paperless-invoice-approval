@@ -109,6 +109,14 @@ def replace_allocations(
         }
         for row in existing
     ]
+    carried = {
+        row.cost_center_id: [
+            assignment for assignment in db.scalars(select(ApprovalAssignment).where(
+                ApprovalAssignment.allocation_id == row.id,
+                ApprovalAssignment.active.is_(True),
+            )).all()
+        ] for row in existing
+    }
     for row in existing:
         row.active = False
         for assignment in db.scalars(
@@ -161,6 +169,19 @@ def replace_allocations(
         )
         db.add(allocation)
         db.flush()
+        if invoice.processing_mode == ProcessingMode.FOR_APPROVAL:
+            for prior in carried.get(item.cost_center_id, []):
+                identity = db.get(UserIdentity, prior.approver_subject)
+                if (identity and identity.active and "APPROVER" in identity.roles
+                    and has_section_permission(db, prior.approver_subject, item.cost_center_id)):
+                    db.add(ApprovalAssignment(
+                        invoice_id=invoice.id, revision_id=revision.id, allocation_id=allocation.id,
+                        approver_subject=prior.approver_subject, required=prior.required,
+                        assigned_by=actor,
+                    ))
+                    record_event(db, "APPROVER_CARRIED_FORWARD", actor=actor, invoice=invoice,
+                                 metadata={"allocation_id": allocation.id,
+                                           "approver_subject": prior.approver_subject})
         value = {
             "id": allocation.id,
             "cost_center": centres[item.cost_center_id].code,

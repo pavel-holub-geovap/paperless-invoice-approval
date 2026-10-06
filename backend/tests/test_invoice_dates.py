@@ -27,6 +27,8 @@ def payload() -> InvoiceExtractionV1:
     "label",
     [
         "DUZP",
+        "DÚZP",
+        "Datum uskutečnění zd. plnění",
         "Datum zd. plnění",
         "Datum zdan. plnění",
         "Datum uskutečnění zdanitelného plnění",

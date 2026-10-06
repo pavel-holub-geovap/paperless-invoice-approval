@@ -1,5 +1,13 @@
 # Testování
 
+## Uživatelské připomínky
+
+Regrese v `test_user_feedback.py` pokrývají nepovinné RETURN/REJECT (null/empty/whitespace/text), audit, carry-forward po RETURN s odstraněnou permission/rolí/identitou/změnou sekce, read-only approver kontext, bezpečný draft-only single-section přepočet, oddělení business/system audit, logout session a current approved PDF hash/revision. ARES unit testy používají MockTransport pro match/mismatch/404/5xx/timeout/invalid ICO/oversize a nespoléhají na internet.
+
+`StageBPages.test.tsx`, `StageEPages.test.tsx` a `decimals.test.ts` testují collapsible defaulty/attention, jedno středisko=100 %, přepnutí bez duplicity, českou čárku, nulové versus unknown zaokrouhlení, ARES informativnost a inline read-only PDF kontext. Celá backend sada chrání stávající AI/DPH/rounding/ISDOC/approved attachments/XML/RBAC/revisions a migration regression nyní končí na 0014.
+
+Živý `scripts/smoke_user_feedback.py` vytváří pouze vlastní syntetické doklady a zachovává je pro prohlížečové ověření. Používá skutečný OIDC login a HTTP download endpointy, kontroluje PDF hashe/embedded ISDOC, revision carry-forward, XML target-unit/XSD a logout → 401 → credential login. Neukládá secrets ani nemění existující uživatelské faktury. Spouštět v autorizovaném ubuntudocker podle deployment postupů; UI doplnit kontrolou defaultů, klávesnice a responzivity.
+
 ## Bootstrap a čistý deployment
 
 Pomocné funkce preflightu, generování `.env`, detekce Compose/modelu/migrací a

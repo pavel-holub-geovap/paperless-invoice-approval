@@ -413,12 +413,24 @@ def _copy_allocations_and_assignments(
             Allocation.active.is_(True),
         )
     ).all()
+    prior_revision = db.get(InvoiceRevision, old_revision_id)
     for old in old_allocations:
+        amount = old.amount
+        if (len(old_allocations) == 1 and old.percentage == Decimal("100")
+                and prior_revision.submitted_to_queue_at is None
+                and prior_revision.queue_manager_reviewed_at is None
+                and invoice.status in {InvoiceStatus.NEW, InvoiceStatus.VALIDATION, InvoiceStatus.NEEDS_REVIEW, InvoiceStatus.QUEUE_REVIEW}):
+            amount = Decimal(str(new_revision.data.get("total_amount") or "0")).quantize(Decimal("0.01"))
+            if amount != old.amount:
+                record_event(db, "ALLOCATION_AUTORECALCULATED", actor=actor, invoice=invoice,
+                             revision_number=new_revision.number,
+                             old_value={"amount": str(old.amount)}, new_value={"amount": str(amount)},
+                             comment="Jedna sekce (100 %) – přepočet nepotvrzeného návrhu")
         new = Allocation(
             invoice_id=invoice.id,
             revision_id=new_revision.id,
             cost_center_id=old.cost_center_id,
-            amount=old.amount,
+            amount=amount,
             percentage=old.percentage,
             note=old.note,
             vat_breakdown=list(old.vat_breakdown),
@@ -433,6 +445,15 @@ def _copy_allocations_and_assignments(
             )
         ).all()
         for assignment in assignments:
+            from app.services.section_permissions import has_section_permission
+
+            identity = db.get(UserIdentity, assignment.approver_subject)
+            if (
+                invoice.processing_mode != ProcessingMode.FOR_APPROVAL
+                or identity is None or not identity.active or "APPROVER" not in identity.roles
+                or not has_section_permission(db, assignment.approver_subject, old.cost_center_id)
+            ):
+                continue
             db.add(
                 ApprovalAssignment(
                     invoice_id=invoice.id,
@@ -856,8 +877,7 @@ def decide(
         raise WorkflowError("Schvalovatel již nemá oprávnění pro tuto sekci")
     if invoice.status != InvoiceStatus.AWAITING_APPROVAL:
         raise WorkflowError("Invoice is not awaiting approval")
-    if action in {ApprovalAction.RETURN, ApprovalAction.REJECT} and not (comment and comment.strip()):
-        raise WorkflowError("RETURN and REJECT require a comment")
+    comment = comment.strip() or None if comment else None
 
     now = datetime.now(UTC)
     decision = ApprovalDecision(
