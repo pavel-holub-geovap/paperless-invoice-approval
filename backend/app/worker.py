@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import logging
 import time
+from contextlib import suppress
 
 from sqlalchemy import select
 
@@ -345,26 +346,31 @@ async def process_one(paperless: PaperlessClient, ollama: OllamaClient | None) -
         return True
 
 
+async def maintain_heartbeat(interval: float = 15) -> None:
+    """Report event-loop liveness even during a bounded async OCR/LLM request."""
+    while True:
+        try:
+            with SessionLocal.begin() as db:
+                heartbeat = db.get(SystemHeartbeat, "worker")
+                if heartbeat is None:
+                    db.add(SystemHeartbeat(name="worker", details={"status": "running", "mode": "paperless-ai"}))
+                else:
+                    heartbeat.updated_at = utcnow()
+                    heartbeat.details = {"status": "running", "mode": "paperless-ai"}
+        except Exception:
+            logger.exception("worker_heartbeat_failed")
+        await asyncio.sleep(interval)
+
+
 async def run() -> None:
     settings = get_settings()
     paperless = PaperlessClient(settings)
     ollama = OllamaClient(settings) if settings.ai_extraction_enabled else None
     next_discovery = 0.0
     queue_pending_ai()
+    heartbeat_task = asyncio.create_task(maintain_heartbeat())
     try:
         while True:
-            with SessionLocal.begin() as db:
-                heartbeat = db.get(SystemHeartbeat, "worker")
-                if heartbeat is None:
-                    db.add(
-                        SystemHeartbeat(
-                            name="worker",
-                            details={"status": "running", "mode": "paperless-ai"},
-                        )
-                    )
-                else:
-                    heartbeat.updated_at = utcnow()
-                    heartbeat.details = {"status": "running", "mode": "paperless-ai"}
             if time.monotonic() >= next_discovery:
                 try:
                     await poll_pending_uploads(paperless)
@@ -377,6 +383,9 @@ async def run() -> None:
             if not processed:
                 await asyncio.sleep(settings.worker_poll_seconds)
     finally:
+        heartbeat_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await heartbeat_task
         await paperless.close()
         if ollama is not None:
             await ollama.close()

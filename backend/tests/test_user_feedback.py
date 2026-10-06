@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from urllib.parse import parse_qs, urlsplit
@@ -37,6 +39,41 @@ from app.services.identity import identity_display, synchronize_oidc_identity
 from app.services.supplier_registry import verify_supplier
 from app.services.validation import run_validations
 from app.services.workflow import WorkflowError, decide, submit_for_approval, update_invoice_data
+
+
+@pytest.mark.asyncio
+async def test_worker_heartbeat_continues_during_async_request(monkeypatch):
+    from app.worker import maintain_heartbeat
+
+    calls = []
+    continued = asyncio.Event()
+    class HeartbeatDb:
+        def get(self, model, key):
+            calls.append(key)
+            if len(calls) >= 2:
+                continued.set()
+            return None
+
+        def add(self, row):
+            assert row.name == "worker"
+
+    @contextmanager
+    def begin():
+        yield HeartbeatDb()
+
+    class Sessions:
+        pass
+    sessions = Sessions()
+    sessions.begin = begin
+    monkeypatch.setattr("app.worker.SessionLocal", sessions)
+    task = asyncio.create_task(maintain_heartbeat(interval=0.001))
+    try:
+        await asyncio.wait_for(continued.wait(), timeout=1)
+        assert len(calls) >= 2
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
 
 @pytest.mark.asyncio

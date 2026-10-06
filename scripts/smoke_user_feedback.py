@@ -154,9 +154,49 @@ def synthetic_pdf(number):
     return output.getvalue()
 
 
+def verify_xml_export(manager, base, user, plain):
+    require(str(plain["data"].get("invoice_number", "")).startswith("FEEDBACK-XML-"), "Only synthetic XML fixtures may be exported")
+    require(plain["status"] in {"APPROVED", "EXPORT_CREATED"}, "Invoice is not approved")
+    require(plain["data"].get("supplier_ico") == "28652240", "Supplier identity mismatch")
+    require(plain["data"].get("taxable_supply_date") == "2026-09-30", "DUZP mismatch")
+    generated = response_json(api(
+        manager, "POST", f"{base}/api/exports/invoices/{plain['id']}/generate",
+        user, {"reason": "Synthetic feedback smoke"}, expected=201,
+    ), "generated XML")
+    xml_response = manager.get(f"{base}/api/exports/artifacts/{generated['id']}/xml")
+    require(xml_response.status_code == 200, "Actual XML download failed")
+    root = ET.fromstring(xml_response.content)
+    require(root.attrib["ico"] == "15049248", "XML target unit mismatch")
+    current = detail(manager, base, plain["id"])
+    require(current["status"] == "EXPORT_CREATED", "Generated XML did not create export")
+    batch = response_json(api(
+        manager, "POST", base + "/api/exports", user,
+        {"invoice_ids": [plain["id"]]}, expected=201,
+    ), "ZIP")
+    downloaded = manager.get(f"{base}/api/exports/{batch['id']}/download")
+    require(downloaded.status_code == 200, "Actual ZIP download failed")
+    pdf = manager.get(f"{base}/api/invoices/{plain['id']}/approved-pdf").content
+    original = manager.get(f"{base}/api/invoices/{plain['id']}/pdf").content
+    require(pdf != original and pdf.startswith(b"%PDF"), "Accountant PDF must be derived")
+    with zipfile.ZipFile(BytesIO(downloaded.content)) as archive:
+        zip_pdf = archive.read(next(name for name in archive.namelist() if name.endswith(".pdf")))
+        require(zip_pdf == pdf, "ZIP does not contain current approved PDF")
+    return {
+        "xml_invoice_id": plain["id"], "paperless_document_id": plain["paperless_document_id"],
+        "ai_supplier_ico": plain["data"]["supplier_ico"],
+        "duzp": plain["data"]["taxable_supply_date"],
+        "ocr_length": len(plain["source"]["ocr_text"]),
+        "xml_artifact_id": generated["id"],
+        "xml_sha256": hashlib.sha256(xml_response.content).hexdigest(),
+        "xml_target_ico": root.attrib["ico"], "xml_key": root.attrib.get("key"),
+        "xsd": generated["status"], "zip_batch_id": batch["id"],
+        "approved_pdf_sha256": hashlib.sha256(pdf).hexdigest(), "zip_approved_pdf": "PASS",
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--phase", choices=["prepare", "finish"], default="prepare")
+    parser.add_argument("--phase", choices=["prepare", "finish", "export"], default="prepare")
     parser.add_argument("--invoice")
     args = parser.parse_args()
     base = os.environ["APP_BASE_URL"].rstrip("/")
@@ -291,6 +331,9 @@ def main():
                     "rbac": "PASS",
                 }
             )
+        elif args.phase == "export":
+            require(args.invoice is not None, "--invoice required")
+            report.update(verify_xml_export(manager, base, user, detail(manager, base, args.invoice)))
         else:
             require(args.invoice is not None, "--invoice required")
             invoice = detail(manager, base, args.invoice)
@@ -496,6 +539,7 @@ def main():
                     "POST",
                     f"{base}/api/exports/invoices/{plain['id']}/generate",
                     user,
+                    {"reason": "Synthetic feedback smoke"},
                     expected=201,
                 ),
                 "generated XML",
