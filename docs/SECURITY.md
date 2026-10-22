@@ -1,5 +1,20 @@
 # Bezpečnost
 
+## PHP2Shell audit 2026-10-22
+
+Pro CVE-2026-109618 a CVE-2026-109619 je ověřený stav **NOT AFFECTED**:
+v projektových runtime images/kontejnerech ani na hostiteli ubuntudocker nebyl
+nalezen PHP runtime. Kontrola zahrnula všech 12 Compose služeb (9 běžících
+a 3 ukončené provisioning joby), 10 konkrétních image IDs, package databases,
+image layers, procesy, listenery a skutečné Nginx request paths. Nejde o závěr
+odvozený pouze z deklarovaného Python/React stacku.
+
+Podrobný rozsah, image IDs/digests, falešné nálezy, omezení a provozní událost
+s dočasným diskovým prostorem jsou v
+[datovaném auditu](security/PHP2SHELL_2026-10-22.md).
+Závěr platí jen pro tyto dvě CVE a tuto inventuru, nikoli pro všechny budoucí
+images nebo obecnou bezpečnost hostitele. Runtime nebyl aktualizován ani restartován.
+
 PDF.js a jeho worker jsou bundlovány lokálně s uzamčenou verzí. Renderer čte
 jen same-origin BFF download s existující session, bez CDN a Paperless tokenu.
 PDF obsah se vykresluje, nikoli vykonává jako aplikační skript; business workflow
